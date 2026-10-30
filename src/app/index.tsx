@@ -11,6 +11,7 @@ import { creatorOnboardingComplete, requestPasswordReset } from '../fullPlatform
 import { CreatorDnaScreen, CreatorProfileScreen, NotificationsScreen, PickupScreen, QrProductEditorScreen, StorePreferencesScreen, StoreProfileScreen } from '../fullPrototypeScreens';
 import { isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
+import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, QrProduct, Role, Session, TabKey } from '../types';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
@@ -66,6 +67,19 @@ export default function AppIndex() {
       .finally(() => setLoading(false));
   }, [enterSession]);
 
+  useEffect(() => {
+    if (!session || session.demo) return;
+    void registerNativePush().catch(() => undefined);
+  }, [session]);
+
+  useEffect(() => {
+    const subscription = addPushResponseListener(data => {
+      if (data.kind === 'order') setSubview('pickup');
+      else setSubview('notifications');
+    });
+    return () => subscription.remove();
+  }, []);
+
   const login = async (email: string, password: string) => {
     try {
       const next = await signIn(email, password);
@@ -108,6 +122,7 @@ export default function AppIndex() {
 
   const logout = async () => {
     const wasDemo = session?.demo;
+    if (!wasDemo && isSupabaseConfigured) await deactivateNativePush().catch(() => undefined);
     setSession(null); setPendingStoreSession(null); setTab('home'); setSubview(null);
     if (!wasDemo && isSupabaseConfigured) await signOut();
   };

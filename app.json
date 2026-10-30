@@ -30,7 +30,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#4A6338",
+          "defaultChannel": "curit-updates"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

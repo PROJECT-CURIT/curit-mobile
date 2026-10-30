@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
@@ -22,6 +22,7 @@ import {
 } from './fullPlatform';
 import {
   friendlyError,
+  cancelManagedOrder,
   loadManagedOrders,
   loadStoreOnboarding,
   mediaUrl,
@@ -32,6 +33,7 @@ import {
   type StoreOnboarding,
 } from './platform';
 import type { QrProduct } from './types';
+import { registerNativePush } from './pushNotifications';
 
 const categoryOptions = ['도예·세라믹', '판화·프린트', '패브릭·섬유', '회화', '조각', '사진', '드로잉', '기타'];
 const regionOptions = ['서울', '경기', '인천', '강원', '대전·세종·충청', '광주·전라', '대구·경북', '부산·울산·경남', '제주', '전국 / 온라인'];
@@ -201,6 +203,7 @@ export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBac
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(!demo);
   const [notice, setNotice] = useState('');
+  const [cancellingId, setCancellingId] = useState('');
   const load = async () => { if (demo) return; setLoading(true); try { setOrders(await loadManagedOrders()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
   useEffect(() => {
     if (demo) return;
@@ -210,11 +213,28 @@ export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBac
   }, [demo]);
   const visible = orders.filter(order => order.fulfillmentStatus === status && `${order.id} ${order.productName} ${order.customerName}`.toLowerCase().includes(query.toLowerCase()));
   const change = async (order: ManagedOrder, next: ManagedOrder['fulfillmentStatus']) => { if (demo) { setOrders(current => current.map(item => item.id === order.id ? { ...item, fulfillmentStatus: next } : item)); return; } try { await updateManagedOrder(order.id, next); await load(); } catch (error) { setNotice(friendlyError(error)); } };
+  const executeCancel = (order: ManagedOrder) => {
+    setCancellingId(order.id); setNotice('');
+    void cancelManagedOrder(order.id)
+      .then(async result => { setNotice(result?.status === 'cancellation_pending' ? '취소 승인 결과를 기다리고 있습니다.' : '결제 취소와 재고 복구가 완료됐습니다.'); await load(); })
+      .catch(error => setNotice(friendlyError(error)))
+      .finally(() => setCancellingId(''));
+  };
+  const cancel = (order: ManagedOrder) => {
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm?.(`${order.amount.toLocaleString()}원 결제를 전액 취소할까요?`)) executeCancel(order);
+      return;
+    }
+    Alert.alert('결제를 전액 취소할까요?', `${order.amount.toLocaleString()}원이 토스를 통해 환불되고 재고와 정산 예정액이 되돌아갑니다.`, [
+      { text: '아니요', style: 'cancel' },
+      { text: '전액 취소', style: 'destructive', onPress: () => executeCancel(order) },
+    ]);
+  };
   const count = (value: ManagedOrder['fulfillmentStatus']) => orders.filter(order => order.fulfillmentStatus === value).length;
   return <View style={f.flex}><Header title="주문 · 현장 수령" back={onBack} action={<Pressable hitSlop={10} onPress={onOpenQr}><CuritText weight="semibold" style={f.brand}>QR 판매 설정</CuritText></Pressable>} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     <Button label="결제 완료 주문 확인" variant="secondary" onPress={() => { void load(); }} /><Field placeholder="주문번호 또는 상품명 검색" value={query} onChangeText={setQuery} />
     <View style={f.tabs}>{([['awaiting_pickup', '수령 대기'], ['reserved', '예약 작품'], ['delivered', '전달 완료']] as const).map(([value, label]) => <Pressable key={value} style={[f.tab, status === value && f.tabActive]} onPress={() => setStatus(value)}><CuritText weight={status === value ? 'semibold' : 'regular'} style={status === value ? f.brand : f.muted}>{label} {count(value)}</CuritText></Pressable>)}</View>
-    {loading ? <ActivityIndicator color={colors.brand} /> : visible.length ? visible.map(order => <View key={order.id} style={f.orderCard}><View style={f.row}><View style={f.flex}><CuritText style={f.hint}>{order.id.slice(-10)}</CuritText><CuritText weight="bold">{order.productName}</CuritText><CuritText style={f.description}>{order.quantity}개 · {order.amount.toLocaleString()}원</CuritText><CuritText style={f.hint}>{order.paymentMethod} · {order.customerName} · 전화번호 뒤 4자리 {order.customerPhoneLast4}</CuritText></View><Chip label={status === 'delivered' ? '전달 완료' : '결제 완료'} active={status !== 'delivered'} /></View>{status === 'awaiting_pickup' ? <Button label="상품 전달 확인" onPress={() => { void change(order, 'delivered'); }} /> : status === 'reserved' ? <Button label="수령 가능으로 전환" onPress={() => { void change(order, 'awaiting_pickup'); }} /> : null}</View>) : <Empty title="해당 주문이 없습니다" description="결제가 승인된 주문이 상태별로 표시됩니다." />}
+    {loading ? <ActivityIndicator color={colors.brand} /> : visible.length ? visible.map(order => <View key={order.id} style={f.orderCard}><View style={f.row}><View style={f.flex}><CuritText style={f.hint}>{order.id.slice(-10)}</CuritText><CuritText weight="bold">{order.productName}</CuritText><CuritText style={f.description}>{order.quantity}개 · {order.amount.toLocaleString()}원</CuritText><CuritText style={f.hint}>{order.paymentMethod} · {order.customerName} · 전화번호 뒤 4자리 {order.customerPhoneLast4}</CuritText></View><Chip label={status === 'delivered' ? '전달 완료' : '결제 완료'} active={status !== 'delivered'} /></View>{status === 'awaiting_pickup' ? <Button label="상품 전달 확인" onPress={() => { void change(order, 'delivered'); }} /> : status === 'reserved' ? <Button label="수령 가능으로 전환" onPress={() => { void change(order, 'awaiting_pickup'); }} /> : null}{status !== 'delivered' ? <Button label={cancellingId === order.id ? '취소 처리 중…' : '결제 전액 취소'} variant="secondary" disabled={Boolean(cancellingId)} onPress={() => cancel(order)} /> : null}</View>) : <Empty title="해당 주문이 없습니다" description="결제가 승인된 주문이 상태별로 표시됩니다." />}
     <View style={f.accordion}><CuritText weight="semibold">고객에게 어떤 정보를 요청하나요?</CuritText><CuritText style={f.description}>현장에서는 주문번호와 구매자명, 휴대폰 번호 뒤 4자리만 확인합니다. 전체 전화번호는 노출하지 않습니다.</CuritText></View>{notice ? <Notice text={notice} /> : null}
   </ScrollView></View>;
 }
@@ -223,13 +243,22 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
+  const [pushSaving, setPushSaving] = useState(false);
   useEffect(() => {
     let active = true;
     void loadNotifications().then(value => { if (active) setItems(value); }).catch(error => { if (active) setNotice(friendlyError(error)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
   const open = async (item: AppNotification) => { if (!item.read) { await markNotificationRead(item.id); setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value)); } };
-  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.scroll}>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
+  const connectPush = async () => {
+    setPushSaving(true); setNotice('');
+    try {
+      const result = await registerNativePush();
+      setNotice(result.status === 'registered' ? '이 기기에서 푸시 알림을 받을 수 있습니다.' : result.message);
+    } catch (error) { setNotice(friendlyError(error)); }
+    finally { setPushSaving(false); }
+  };
+  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.scroll}><View style={f.infoBanner}><CuritText weight="semibold">중요한 협업·주문 소식을 놓치지 마세요.</CuritText><CuritText style={f.description}>앱이 닫혀 있어도 새 협업 상태와 QR 주문·취소 결과를 알려드립니다.</CuritText><Button label={pushSaving ? '연결 중…' : '이 기기 푸시 알림 연결'} variant="secondary" disabled={pushSaving} onPress={() => { void connectPush(); }} /></View>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
 }
 
 export function SocialFeedSection({ canPost = false }: { canPost?: boolean }) {
