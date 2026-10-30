@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type StoreOnboarding } from './platform';
+import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
 import { colors, fonts, radius } from './theme';
 import { Button, Chip, CuritText, Field, Header, Icon } from './ui';
 
@@ -15,9 +15,15 @@ export type ProjectProduct = {
   mode: '전시·판매' | '전시만';
   type: 'goods' | 'artwork';
   imagePath?: string;
+  description?: string;
+  material?: string;
+  widthMm?: number | null;
+  heightMm?: number | null;
+  pickupMode?: 'immediate' | 'exhibition';
+  care?: string;
 };
 
-type ProductDraft = Pick<ProjectProduct, 'name' | 'image' | 'mode' | 'type'> & { price: string; stock: string };
+type ProductDraft = Pick<ProjectProduct, 'name' | 'image' | 'imagePath' | 'mode' | 'type'> & { price: string; stock: string; description: string; material: string; widthMm: string; heightMm: string; care: string };
 
 export const initialCreatorProducts: ProjectProduct[] = [
   { id: 'mug-black', name: '검정 머그', price: 15000, stock: 6, image: '', mode: '전시·판매', type: 'goods' },
@@ -25,16 +31,17 @@ export const initialCreatorProducts: ProjectProduct[] = [
 
 const ordinal = (index: number) => ['첫 번째', '두 번째', '세 번째', '네 번째'][index] ?? `${index + 1}번째`;
 
-export function CreatorProjectScreen({ products, onBack, onEdit }: { products: ProjectProduct[]; onBack: () => void; onEdit: () => void }) {
+export function CreatorProjectScreen({ project, products, onBack, onEdit }: { project: CreatorProjectDetails; products: ProjectProduct[]; onBack: () => void; onEdit: () => void }) {
   return (
     <View style={d.flex}>
       <Header title="내 전시 프로젝트" back={onBack} />
       <ScrollView contentContainerStyle={d.detailScroll} showsVerticalScrollIndicator={false}>
-        <CuritText weight="medium" style={d.status}>매칭 모집 중</CuritText>
-        <CuritText weight="bold" style={d.projectTitle}>최종 프로젝트</CuritText>
-        <CuritText style={d.description}>등록한 프로젝트 콘셉트</CuritText>
-        <CuritText style={d.meta}>서울</CuritText>
-        <CuritText style={d.status}>협업 목적 · 작품 판매</CuritText>
+        {project.coverUrl ? <Image source={{ uri: project.coverUrl }} style={d.projectCover} contentFit="cover" /> : null}
+        <CuritText weight="medium" style={d.status}>{project.status === 'recruiting' ? '매칭 모집 중' : project.status === 'matched' ? '매칭 완료' : project.status === 'archived' ? '비공개' : '작성 중'}</CuritText>
+        <CuritText weight="bold" style={d.projectTitle}>{project.title || '제목 없는 프로젝트'}</CuritText>
+        <CuritText style={d.description}>{project.concept || project.story || '프로젝트 이야기를 등록해 주세요.'}</CuritText>
+        <CuritText style={d.meta}>{project.region || '지역 협의'}</CuritText>
+        <CuritText style={d.status}>협업 목적 · {project.purpose || '작품 전시 및 판매'}</CuritText>
 
         <View style={d.productHeading}>
           <CuritText weight="bold" style={d.sectionTitle}>상품 {products.length}개</CuritText>
@@ -53,23 +60,35 @@ export function CreatorProjectScreen({ products, onBack, onEdit }: { products: P
             </View>
           ))}
         </View>
-        <View style={d.conditionCard}><CuritText weight="bold">판매 · 위탁 조건</CuritText><View style={d.row}><CuritText style={d.muted}>작가 배분 80%</CuritText><Icon name="chevron" size={16} color={colors.brand} /></View></View>
-        <View style={d.publishRow}><CuritText>프로젝트 공개</CuritText><CuritText weight="semibold" style={d.status}>공개 중 →</CuritText></View>
+        <View style={d.conditionCard}><CuritText weight="bold">판매 · 위탁 조건</CuritText><View style={d.row}><CuritText style={d.muted}>작가 배분 {project.creatorSharePercent}%</CuritText><Icon name="chevron" size={16} color={colors.brand} /></View></View>
+        <View style={d.publishRow}><CuritText>프로젝트 공개</CuritText><CuritText weight="semibold" style={d.status}>{project.status === 'draft' || project.status === 'archived' ? '비공개' : '공개 중'} →</CuritText></View>
       </ScrollView>
       <View style={d.stickyFooter}><Button label="프로젝트 수정" onPress={onEdit} /></View>
     </View>
   );
 }
 
-export function CreatorProjectEditScreen({ products, onSaveProduct, onBack }: { products: ProjectProduct[]; onSaveProduct: (item: Omit<ProjectProduct, 'id'>) => Promise<void>; onBack: () => void }) {
+export function CreatorProjectEditScreen({ project, products, onSaveProject, onSaveProduct, onUpdateProduct, onDeleteProduct, onBack }: { project: CreatorProjectDetails; products: ProjectProduct[]; onSaveProject: (value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) => Promise<void>; onSaveProduct: (item: Omit<ProjectProduct, 'id'>) => Promise<void>; onUpdateProduct: (id: string, item: Omit<ProjectProduct, 'id'>) => Promise<void>; onDeleteProduct: (id: string) => Promise<void>; onBack: () => void }) {
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [formOpen, setFormOpen] = useState(false);
-  const [draft, setDraft] = useState<ProductDraft>({ name: '', price: '', stock: '', image: '', mode: '전시·판매', type: 'goods' });
+  const emptyDraft: ProductDraft = { name: '', price: '', stock: '', image: '', imagePath: undefined, mode: '전시·판매', type: 'goods', description: '', material: '', widthMm: '', heightMm: '', care: '' };
+  const [draft, setDraft] = useState<ProductDraft>(emptyDraft);
+  const [editingId, setEditingId] = useState('');
+  const [title, setTitle] = useState(project.title);
+  const [story, setStory] = useState(project.story);
+  const [concept, setConcept] = useState(project.concept);
+  const [region, setRegion] = useState(project.region);
+  const [purpose, setPurpose] = useState(project.purpose);
+  const [coverUri, setCoverUri] = useState('');
+  const [creatorShare, setCreatorShare] = useState(String(project.creatorSharePercent));
+  const [publish, setPublish] = useState(!['draft', 'archived'].includes(project.status));
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
 
   const reset = () => {
-    setDraft({ name: '', price: '', stock: '', image: '', mode: '전시·판매', type: 'goods' });
+    setDraft(emptyDraft);
+    setEditingId('');
     setNotice('');
     setFormOpen(false);
     Keyboard.dismiss();
@@ -91,6 +110,30 @@ export function CreatorProjectEditScreen({ products, onSaveProduct, onBack }: { 
     setDraft(previous => ({ ...previous, image: asset.uri }));
   };
 
+  const pickCover = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
+    const asset = result.canceled ? undefined : result.assets[0];
+    if (asset?.uri) setCoverUri(asset.uri);
+  };
+
+  const projectPayload = (status: CreatorProjectDetails['status']) => ({
+    title: title.trim(), story: story.trim(), concept: concept.trim(), region: region.trim(), purpose: purpose.trim(),
+    status, coverPath: project.coverPath, creatorSharePercent: Math.min(90, Math.max(50, Number(creatorShare) || 80)), coverUri,
+  });
+
+  const saveBasic = async () => {
+    if (!title.trim() || !concept.trim() || !region.trim()) { setNotice('프로젝트명, 콘셉트, 활동 지역을 입력해 주세요.'); return; }
+    setSaving(true); setNotice('');
+    try { await onSaveProject(projectPayload(project.status)); setStep(2); }
+    catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
+  };
+
+  const editProduct = (item: ProjectProduct) => {
+    setEditingId(item.id);
+    setDraft({ name: item.name, price: String(item.price), stock: String(item.stock), image: item.image, imagePath: item.imagePath, mode: item.mode, type: item.type, description: item.description || '', material: item.material || '', widthMm: item.widthMm ? String(item.widthMm) : '', heightMm: item.heightMm ? String(item.heightMm) : '', care: item.care || '' });
+    setFormOpen(true); setNotice('');
+  };
+
   const saveProduct = async () => {
     const price = Number(draft.price);
     const stock = Number(draft.stock);
@@ -101,7 +144,8 @@ export function CreatorProjectEditScreen({ products, onSaveProduct, onBack }: { 
     setSaving(true);
     setNotice('');
     try {
-      await onSaveProduct({ name: draft.name.trim(), price, stock, image: draft.image, mode: draft.mode, type: draft.type });
+      const product = { name: draft.name.trim(), price, stock, image: draft.image, imagePath: draft.imagePath, mode: draft.mode, type: draft.type, description: draft.description.trim(), material: draft.material.trim(), widthMm: Number(draft.widthMm) || null, heightMm: Number(draft.heightMm) || null, pickupMode: draft.type === 'artwork' ? 'exhibition' as const : 'immediate' as const, care: draft.care.trim() };
+      if (editingId) await onUpdateProduct(editingId, product); else await onSaveProduct(product);
       reset();
     } catch (error) {
       setNotice(friendlyError(error));
@@ -112,21 +156,29 @@ export function CreatorProjectEditScreen({ products, onSaveProduct, onBack }: { 
 
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Header title="전시 프로젝트 수정" subtitle="내 전시 프로젝트" back={onBack} />
+      <Header title="전시 프로젝트 수정" subtitle={`${step}/3 · ${['기본 정보', '작품·굿즈', '최종 확인'][step - 1]}`} back={() => step === 1 ? onBack() : setStep((step - 1) as 1 | 2 | 3)} />
       <ScrollView ref={scrollRef} style={d.flex} contentContainerStyle={d.editScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View>
-          <CuritText style={d.status}>내 전시 프로젝트</CuritText>
-          <CuritText weight="bold" style={d.projectTitle}>최종 프로젝트</CuritText>
-          <CuritText style={d.description}>프로젝트 정보와 상품을 수정할 수 있어요. * 필수</CuritText>
-        </View>
+        <StepProgress current={step} labels={['1 기본', '2 상품', '3 확인']} />
+        {step === 1 ? <>
+          <View><CuritText weight="bold" style={d.projectTitle}>프로젝트를 소개해 주세요</CuritText><CuritText style={d.description}>공간 운영자가 협업 여부를 판단할 핵심 정보입니다.</CuritText></View>
+          <Pressable style={d.coverPicker} onPress={() => { void pickCover(); }}>{coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>대표 이미지 선택</CuritText></>}</Pressable>
+          <Field label="프로젝트명 *" value={title} onChangeText={setTitle} placeholder="예: 흙의 기억" />
+          <Field label="한 줄 콘셉트 *" value={concept} onChangeText={setConcept} placeholder="공간에 전달할 분위기를 적어주세요" />
+          <Field label="프로젝트 이야기" value={story} onChangeText={setStory} multiline style={d.textarea} />
+          <Field label="활동 지역 *" value={region} onChangeText={setRegion} placeholder="예: 서울·경기" />
+          <Field label="협업 목적" value={purpose} onChangeText={setPurpose} placeholder="예: 작품 전시 및 판매" />
+          {notice ? <CuritText style={d.error}>{notice}</CuritText> : null}<Button label={saving ? '저장 중…' : '저장하고 상품 등록'} disabled={saving} onPress={() => { void saveBasic(); }} />
+        </> : null}
 
+        {step === 2 ? <>
+        <View><CuritText weight="bold" style={d.projectTitle}>전시할 작품과 굿즈</CuritText><CuritText style={d.description}>각 상품의 판매·수령 조건까지 등록합니다.</CuritText></View>
         <View style={d.productHeading}><CuritText weight="bold" style={d.sectionTitle}>작품 · 굿즈 {products.length}개 *</CuritText></View>
         <View style={d.productStack}>
           {products.map((item, index) => (
             <View key={item.id} style={d.editProductCard}>
               {item.image ? <Image source={{ uri: item.image }} style={d.editThumb} contentFit="cover" /> : <View style={d.smallOrdinal}><CuritText weight="bold" style={d.ordinalText}>{String(index + 1).padStart(2, '0')}</CuritText></View>}
               <View style={d.flex}><CuritText style={d.ordinalLabel}>{ordinal(index)} 상품</CuritText><CuritText weight="semibold">{item.name}</CuritText><CuritText style={d.productMeta}>{item.price.toLocaleString()}원 · 재고 {item.stock}개</CuritText></View>
-              <Pressable style={d.miniButton}><CuritText weight="semibold" style={d.status}>수정</CuritText></Pressable>
+              <View style={d.row}><Pressable style={d.miniButton} onPress={() => editProduct(item)}><CuritText weight="semibold" style={d.status}>수정</CuritText></Pressable><Pressable style={d.miniButton} onPress={() => { void onDeleteProduct(item.id).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={d.removePhoto}>삭제</CuritText></Pressable></View>
             </View>
           ))}
         </View>
@@ -137,7 +189,7 @@ export function CreatorProjectEditScreen({ products, onSaveProduct, onBack }: { 
           </Pressable>
         ) : (
           <View style={d.productForm}>
-            <View style={d.formHeader}><CuritText weight="bold" style={d.formTitle}>{ordinal(products.length)} 상품 추가</CuritText><Pressable hitSlop={12} onPress={reset}><CuritText style={d.close}>×</CuritText></Pressable></View>
+            <View style={d.formHeader}><CuritText weight="bold" style={d.formTitle}>{editingId ? '상품 수정' : `${ordinal(products.length)} 상품 추가`}</CuritText><Pressable hitSlop={12} onPress={reset}><CuritText style={d.close}>×</CuritText></Pressable></View>
             <Pressable style={d.photoPicker} onPress={() => { void pickImage(); }}>
               <View style={d.photoSlot}>
                 {draft.image ? <Image source={{ uri: draft.image }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <Icon name="discover" color={colors.brand} />}
@@ -148,15 +200,29 @@ export function CreatorProjectEditScreen({ products, onSaveProduct, onBack }: { 
             {draft.image ? <Pressable onPress={() => setDraft(previous => ({ ...previous, image: '' }))}><CuritText style={d.removePhoto}>사진 삭제</CuritText></Pressable> : null}
 
             <Field label="상품명 *" value={draft.name} onChangeText={name => setDraft(previous => ({ ...previous, name }))} placeholder="예: 검정 머그" />
+            <Field label="작품·상품 설명" value={draft.description} onChangeText={description => setDraft(previous => ({ ...previous, description }))} placeholder="작품의 이야기와 특징을 적어주세요" multiline style={d.textarea} />
             <View style={d.formField}><CuritText weight="semibold" style={d.label}>판매 방식 *</CuritText><View style={d.modeRow}>{(['전시·판매', '전시만'] as const).map(mode => <Chip key={mode} label={mode} active={draft.mode === mode} onPress={() => setDraft(previous => ({ ...previous, mode }))} />)}</View></View>
             <View style={d.twoColumns}><View style={d.flex}><Field label="판매가 (원) *" value={draft.price} onChangeText={price => setDraft(previous => ({ ...previous, price: price.replace(/\D/g, '') }))} keyboardType="number-pad" placeholder="15000" /></View><View style={d.flex}><Field label="재고 *" value={draft.stock} onChangeText={stock => setDraft(previous => ({ ...previous, stock: stock.replace(/\D/g, '') }))} keyboardType="number-pad" placeholder="6" /></View></View>
             <View style={d.formField}><CuritText weight="semibold" style={d.label}>상품 유형 *</CuritText><View style={d.twoColumns}><ProductType active={draft.type === 'goods'} title="소형 굿즈" caption="결제 후 현장 수령" onPress={() => setDraft(previous => ({ ...previous, type: 'goods' }))} /><ProductType active={draft.type === 'artwork'} title="원화 · 전시 작품" caption="전시 종료 후 전달" onPress={() => setDraft(previous => ({ ...previous, type: 'artwork' }))} /></View></View>
+            <Field label="소재" value={draft.material} onChangeText={material => setDraft(previous => ({ ...previous, material }))} placeholder="예: 세라믹, 패브릭" />
+            <View style={d.twoColumns}><View style={d.flex}><Field label="가로(mm)" value={draft.widthMm} onChangeText={widthMm => setDraft(previous => ({ ...previous, widthMm: widthMm.replace(/\D/g, '') }))} keyboardType="number-pad" /></View><View style={d.flex}><Field label="세로(mm)" value={draft.heightMm} onChangeText={heightMm => setDraft(previous => ({ ...previous, heightMm: heightMm.replace(/\D/g, '') }))} keyboardType="number-pad" /></View></View>
+            <Field label="관리·설치 주의사항" value={draft.care} onChangeText={care => setDraft(previous => ({ ...previous, care }))} placeholder="파손·오염·설치 조건을 적어주세요" />
             {notice ? <CuritText style={d.error}>{notice}</CuritText> : null}
-            <Button label={saving ? '저장 중…' : '상품 저장'} disabled={saving} onPress={() => { void saveProduct(); }} />
+            <Button label={saving ? '저장 중…' : editingId ? '수정사항 저장' : '상품 저장'} disabled={saving} onPress={() => { void saveProduct(); }} />
           </View>
         )}
         <View style={d.editNotice}><CuritText style={d.hint}>이미 확정된 협업의 가격·공급 조건은 바뀌지 않으며, 변경 내용은 이후 제안부터 적용됩니다.</CuritText></View>
-        {!formOpen ? <Button label="수정 완료" onPress={onBack} /> : null}
+        {!formOpen ? <Button label="다음 · 최종 확인" disabled={!products.length} onPress={() => setStep(3)} /> : null}
+        </> : null}
+        {step === 3 ? <>
+          <View><CuritText weight="bold" style={d.projectTitle}>공개 전 최종 확인</CuritText><CuritText style={d.description}>등록한 정보는 협업 추천과 제안서에 그대로 사용됩니다.</CuritText></View>
+          {coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={d.projectCover} contentFit="cover" /> : null}
+          <View style={d.reviewCard}><ReviewRow label="프로젝트" value={title} /><ReviewRow label="콘셉트" value={concept} /><ReviewRow label="지역" value={region} /><ReviewRow label="상품" value={`${products.length}개`} /></View>
+          <Field label="작가 판매 배분율(%)" value={creatorShare} onChangeText={value => setCreatorShare(value.replace(/\D/g, ''))} keyboardType="number-pad" />
+          <ChoiceGroup title="공개 상태" values={['매칭 모집 공개', '임시 저장']} selected={[publish ? '매칭 모집 공개' : '임시 저장']} onToggle={value => setPublish(value === '매칭 모집 공개')} />
+          {notice ? <CuritText style={d.error}>{notice}</CuritText> : null}
+          <Button label={saving ? '저장 중…' : publish ? '프로젝트 공개' : '임시 저장'} disabled={saving} onPress={() => { setSaving(true); setNotice(''); void onSaveProject(projectPayload(publish ? 'recruiting' : 'draft')).then(onBack).catch(error => setNotice(friendlyError(error))).finally(() => setSaving(false)); }} />
+        </> : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -193,7 +259,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete }: { initial?: S
   const toggle = (value: string, current: string[], update: (next: string[]) => void) =>
     update(current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
 
-  const payload = (nextStep: number, complete = false) => ({
+  const payload = (nextStep: number, complete = initial?.complete ?? false) => ({
     name,
     category,
     address,
@@ -310,14 +376,14 @@ function RequiredAccordion({ title, open, complete, onPress, children }: { title
   return <View style={d.accordion}><Pressable style={d.accordionHeader} onPress={onPress}><View style={d.requiredTitle}><CuritText weight="bold">{title}</CuritText><CuritText weight="bold" style={d.requiredStar}>*</CuritText></View><View style={d.accordionRight}><CuritText style={d.hint}>{complete ? '작성 완료' : '필수'}</CuritText><View style={{ transform: [{ rotate: open ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={16} color={colors.brand} /></View></View></Pressable>{open ? <View style={d.accordionBody}>{children}</View> : null}</View>;
 }
 
-function StepProgress({ current }: { current: number }) {
-  return <View style={d.steps}>{['1 정보', '2 취향', '3 사진', '4 구역', '5 확인'].map((label, index) => { const active = index + 1 <= current; return <View key={label} style={d.step}><View style={[d.stepLine, active && d.stepLineActive]} /><CuritText weight={index + 1 === current ? 'semibold' : 'regular'} style={[d.stepLabel, active && d.status]}>{label}</CuritText></View>; })}</View>;
+function StepProgress({ current, labels = ['1 정보', '2 취향', '3 사진', '4 구역', '5 확인'] }: { current: number; labels?: string[] }) {
+  return <View style={d.steps}>{labels.map((label, index) => { const active = index + 1 <= current; return <View key={label} style={d.step}><View style={[d.stepLine, active && d.stepLineActive]} /><CuritText weight={index + 1 === current ? 'semibold' : 'regular'} style={[d.stepLabel, active && d.status]}>{label}</CuritText></View>; })}</View>;
 }
 
 const d = StyleSheet.create({
   flex: { flex: 1 }, row: { flexDirection: 'row', alignItems: 'center', gap: 4 }, muted: { color: colors.muted }, status: { color: colors.brand },
   detailScroll: { paddingHorizontal: 20, paddingTop: 30, paddingBottom: 24 }, editScroll: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 28, gap: 22 }, signupScroll: { padding: 20, paddingBottom: 28, gap: 20 },
-  projectTitle: { fontSize: 24, lineHeight: 31, marginTop: 8 }, description: { color: colors.muted, marginTop: 12 }, meta: { color: colors.muted, fontSize: 12, marginTop: 14 },
+  projectTitle: { fontSize: 24, lineHeight: 31, marginTop: 8 }, description: { color: colors.muted, marginTop: 12 }, meta: { color: colors.muted, fontSize: 12, marginTop: 14 }, projectCover: { width: '100%', height: 210, borderRadius: radius.lg, marginBottom: 18 }, coverPicker: { width: '100%', height: 190, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: '#C8D3BF', backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden' },
   productHeading: { marginTop: 28, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, sectionTitle: { fontSize: 17 }, hint: { color: colors.muted, fontSize: 11, lineHeight: 17 }, productStack: { gap: 12 },
   detailProductCard: { minHeight: 96, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: '#F8F8F8', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   ordinalBox: { width: 44, height: 58, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }, smallOrdinal: { width: 46, height: 46, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }, ordinalText: { color: colors.brand, fontSize: 17 }, detailThumb: { width: 58, height: 58, borderRadius: 12 }, editThumb: { width: 48, height: 48, borderRadius: 10 }, productName: { fontSize: 15 }, productMeta: { color: colors.muted, fontSize: 11, marginTop: 5 }, pickup: { color: colors.brand, fontSize: 10, marginTop: 5 }, plus: { color: colors.brand, fontSize: 18 },
