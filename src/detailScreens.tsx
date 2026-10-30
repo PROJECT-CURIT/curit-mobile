@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { images } from './data';
@@ -61,6 +61,7 @@ export function CreatorProjectScreen({ products, onBack, onEdit }: { products: P
 }
 
 export function CreatorProjectEditScreen({ products, onChange, onBack }: { products: ProjectProduct[]; onChange: (items: ProjectProduct[]) => void; onBack: () => void }) {
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<ProductDraft>({ name: '', price: '', stock: '', image: '', mode: '전시·판매', type: 'goods' });
   const [notice, setNotice] = useState('');
@@ -69,6 +70,11 @@ export function CreatorProjectEditScreen({ products, onChange, onBack }: { produ
     setDraft({ name: '', price: '', stock: '', image: '', mode: '전시·판매', type: 'goods' });
     setNotice('');
     setFormOpen(false);
+    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      if (Platform.OS === 'web' && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
+    });
   };
 
   const pickImage = async () => {
@@ -97,7 +103,7 @@ export function CreatorProjectEditScreen({ products, onChange, onBack }: { produ
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Header title="전시 프로젝트 수정" subtitle="내 전시 프로젝트" back={onBack} />
-      <ScrollView style={d.flex} contentContainerStyle={d.editScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={d.flex} contentContainerStyle={d.editScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View>
           <CuritText style={d.status}>내 전시 프로젝트</CuritText>
           <CuritText weight="bold" style={d.projectTitle}>최종 프로젝트</CuritText>
@@ -140,8 +146,8 @@ export function CreatorProjectEditScreen({ products, onChange, onBack }: { produ
           </View>
         )}
         <View style={d.editNotice}><CuritText style={d.hint}>이미 확정된 협업의 가격·공급 조건은 바뀌지 않으며, 변경 내용은 이후 제안부터 적용됩니다.</CuritText></View>
+        {!formOpen ? <Button label="수정 완료" onPress={onBack} /> : null}
       </ScrollView>
-      {!formOpen ? <View style={d.stickyFooter}><Button label="수정 완료" onPress={onBack} /></View> : null}
     </KeyboardAvoidingView>
   );
 }
