@@ -1,7 +1,7 @@
 import type { QrProduct, Role, Session } from './types';
 import { getSupabase } from './supabase';
 import type { ProjectProduct } from './detailScreens';
-import { config } from './config';
+import { buildCommerceApiUrl } from './config';
 
 type ProfileRow = { id: string; role: Role; display_name: string };
 
@@ -195,7 +195,7 @@ export async function managementRequest(path: string, init?: RequestInit) {
   if (error || !data.session?.access_token) throw new Error('로그인이 필요합니다.');
   let response: Response;
   try {
-    response = await fetch(`${config.apiUrl}${path}`, {
+    response = await fetch(buildCommerceApiUrl(path), {
       ...init,
       headers: {
         Authorization: `Bearer ${data.session.access_token}`,
