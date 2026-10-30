@@ -58,7 +58,7 @@ export function ChatHubScreen({ role, demo, onOpenCurator, onOpenCollaboration }
   </View>;
 }
 
-export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; onOpenCurator: () => void; onProposalCreated: () => void }) {
+export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; onOpenCurator: () => void; onProposalCreated: (id: string) => void }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -72,10 +72,10 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
     if (demo || busy) { setNotice('데모 모드에서는 제안을 저장하지 않습니다. 서버 계정으로 로그인해 주세요.'); return; }
     setBusy(item.targetId); setNotice('');
     try {
-      if (item.collaborationId) { setNotice('이미 진행 중인 협업을 채팅에서 확인할 수 있어요.'); onProposalCreated(); return; }
-      await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`);
+      if (item.collaborationId) { setNotice('이미 진행 중인 협업으로 이동합니다.'); onProposalCreated(item.collaborationId); return; }
+      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`);
       setNotice('협업 제안을 보냈습니다. 채팅에서 승인 상태를 확인할 수 있어요.');
-      onProposalCreated();
+      if (id) onProposalCreated(id);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(''); }
   };
   return <View style={c.flex}>
