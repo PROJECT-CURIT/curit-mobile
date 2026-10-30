@@ -1,4 +1,4 @@
-import { buildQrApiUrl } from './config';
+import { buildQrApiUrl, config } from './config';
 import type { QrProduct } from './types';
 
 type JsonRecord = Record<string, unknown>;
@@ -23,7 +23,15 @@ export function normalizeQrProduct(token: string, payload: JsonRecord): QrProduc
 }
 
 export async function fetchQrProduct(token: string, signal?: AbortSignal) {
-  const response = await fetch(buildQrApiUrl(token), { signal });
+  const response = await fetch(buildQrApiUrl(token), {
+    signal,
+    headers: config.supabaseAnonKey
+      ? {
+          apikey: config.supabaseAnonKey,
+          Authorization: `Bearer ${config.supabaseAnonKey}`,
+        }
+      : undefined,
+  });
   if (!response.ok) throw new Error(`QR 상품 조회 실패 (${response.status})`);
   return normalizeQrProduct(token, (await response.json()) as JsonRecord);
 }
