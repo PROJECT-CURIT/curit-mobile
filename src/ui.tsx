@@ -26,8 +26,8 @@ export function Header({ title, subtitle, back, action }: { title: string; subti
     <View style={styles.header}>
       {back ? <Pressable onPress={back} hitSlop={12} style={styles.headerSide}><Icon name="back" /></Pressable> : <View style={styles.headerSide} />}
       <View style={styles.headerTitleWrap}>
-        <CuritText weight="bold" style={styles.headerTitle}>{title}</CuritText>
-        {subtitle ? <CuritText style={styles.headerSubtitle}>{subtitle}</CuritText> : null}
+        <CuritText weight="bold" numberOfLines={1} style={styles.headerTitle}>{title}</CuritText>
+        {subtitle ? <CuritText numberOfLines={1} style={styles.headerSubtitle}>{subtitle}</CuritText> : null}
       </View>
       <View style={[styles.headerSide, styles.headerAction]}>{action}</View>
     </View>
@@ -107,9 +107,9 @@ const styles = StyleSheet.create({
   header: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 },
   headerSide: { width: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
   headerAction: { alignItems: 'flex-end' },
-  headerTitleWrap: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: 17 },
-  headerSubtitle: { color: colors.muted, fontSize: 11, lineHeight: 15 },
+  headerTitleWrap: { flex: 1, minWidth: 0, alignItems: 'center' },
+  headerTitle: { width: '100%', flexShrink: 1, textAlign: 'center', fontSize: 17 },
+  headerSubtitle: { width: '100%', flexShrink: 1, color: colors.muted, fontSize: 11, lineHeight: 15, textAlign: 'center' },
   bottomNav: { height: 74, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, flexDirection: 'row', backgroundColor: colors.surface },
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
   navLabel: { color: colors.subtle, fontSize: 10, lineHeight: 12 },

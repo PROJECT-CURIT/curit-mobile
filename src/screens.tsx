@@ -86,12 +86,22 @@ function ProjectRow({ item }: { item: (typeof projects)[number] }) {
 
 export function DiscoverScreen({ role }: { role: Role }) {
   const [filter, setFilter] = useState('전체');
+  const [dnaOpen, setDnaOpen] = useState(false);
   return (
     <View style={s.flex}>
       <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} />
       <ScrollView contentContainerStyle={s.scroll}>
         <Field placeholder={role === 'creator' ? '매장명, 지역, 분위기 검색' : '작가명, 작품명, 태그 검색'} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>{['전체', '모집 중', '전시·판매 중', '매칭 완료'].map(value => <Chip key={value} label={value} active={filter === value} onPress={() => setFilter(value)} />)}</ScrollView>
+        {role === 'creator' ? <>
+          <View style={s.exploreTabs}><CuritText weight="semibold" style={s.exploreTabActive}>매장</CuritText><CuritText style={s.exploreTab}>작품 · 작가</CuritText><CuritText style={s.exploreTab}>소식</CuritText></View>
+          <View style={s.dnaFilter}>
+            <Pressable style={s.dnaFilterHeader} onPress={() => setDnaOpen(value => !value)}>
+              <CuritText weight="semibold">공간 DNA 필터</CuritText>
+              <View style={s.dnaFilterSummary}><CuritText numberOfLines={1} style={s.dnaSummaryText}>{filter === '전체' ? '전체 조건' : filter}</CuritText><View style={{ transform: [{ rotate: dnaOpen ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={17} color={colors.brand} /></View></View>
+            </Pressable>
+            {dnaOpen ? <View style={s.dnaFilterBody}><CuritText style={s.dnaFilterLabel}>협업 상태</CuritText><View style={s.dnaChips}>{['전체', '모집 중', '전시·판매 중', '매칭 완료'].map(value => <Chip key={value} label={value} active={filter === value} onPress={() => setFilter(value)} />)}</View></View> : null}
+          </View>
+        </> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>{['전체', '모집 중', '전시·판매 중', '매칭 완료'].map(value => <Chip key={value} label={value} active={filter === value} onPress={() => setFilter(value)} />)}</ScrollView>}
         {role === 'creator' ? <View style={s.grid}>{stores.map(store => <StoreCard key={store.name} {...store} />)}</View> : <View style={s.discoverList}>{projects.map(item => <ProjectTile key={item.id} item={item} />)}</View>}
       </ScrollView>
     </View>
@@ -121,9 +131,11 @@ function StoreManagement({ onOpenQr }: { onOpenQr: () => void }) {
 
 function QuickAction({ icon, label, description, onPress }: { icon: 'qr' | 'management' | 'chat' | 'store'; label: string; description: string; onPress?: () => void }) { return <Pressable style={s.quickAction} onPress={onPress}><View style={s.quickIcon}><Icon name={icon} color={colors.brand} /></View><CuritText weight="semibold">{label}</CuritText><CuritText style={s.gridMeta}>{description}</CuritText></Pressable>; }
 
-export function MyScreen({ role, onLogout }: { role: Role; onLogout: () => void }) {
-  const rows = ['프로필 및 공간 정보', '알림 설정', '계정 및 개인정보', '이용약관', '고객센터'];
-  return <View style={s.flex}><Header title="마이" /><ScrollView contentContainerStyle={s.scroll}><View style={s.profileCard}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 22 }}>{role === 'creator' ? '김' : '아'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.cardTitle}>{role === 'creator' ? '김서연 도예' : '아늑한 서울'}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '@soyeon_craft · 도예·세라믹' : '서울 성동구 성수동 · 카페'}</CuritText></View><Icon name="chevron" color={colors.subtle} /></View>{rows.map(row => <Pressable key={row} style={s.settingsRow}><CuritText style={s.flex}>{row}</CuritText><Icon name="chevron" size={17} color={colors.subtle} /></Pressable>)}<View style={{ marginTop: 18 }}><Button label="로그아웃" variant="secondary" onPress={onLogout} /></View></ScrollView></View>;
+export function MyScreen({ role, onLogout, onOpenProject }: { role: Role; onLogout: () => void; onOpenProject?: () => void }) {
+  const rows = role === 'creator'
+    ? [{ label: '내 전시 프로젝트', onPress: onOpenProject }, { label: '프로필 및 활동 정보' }, { label: '알림 설정' }, { label: '계정 및 개인정보' }, { label: '고객센터' }]
+    : [{ label: '프로필 및 공간 정보' }, { label: '알림 설정' }, { label: '계정 및 개인정보' }, { label: '이용약관' }, { label: '고객센터' }];
+  return <View style={s.flex}><Header title="마이" /><ScrollView contentContainerStyle={s.scroll}><View style={s.profileCard}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 22 }}>{role === 'creator' ? '김' : '아'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.cardTitle}>{role === 'creator' ? '김서연 도예' : '아늑한 서울'}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '@soyeon_craft · 도예·세라믹' : '서울 성동구 성수동 · 카페'}</CuritText></View><Icon name="chevron" color={colors.subtle} /></View>{rows.map(row => <Pressable key={row.label} style={s.settingsRow} onPress={row.onPress}><CuritText style={s.flex}>{row.label}</CuritText>{row.label === '내 전시 프로젝트' ? <CuritText style={s.settingsValue}>관리</CuritText> : null}<Icon name="chevron" size={17} color={colors.subtle} /></Pressable>)}<View style={{ marginTop: 18 }}><Button label="로그아웃" variant="secondary" onPress={onLogout} /></View></ScrollView></View>;
 }
 
 export function QrProductsScreen({ onBack }: { onBack: () => void }) {
@@ -161,10 +173,13 @@ const s = StyleSheet.create({
   aiBanner: { backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: 14, flexDirection: 'row', gap: 12, marginBottom: 26 }, aiBadge: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   projectList: { gap: 10 }, projectRow: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, projectThumb: { width: 72, height: 72, borderRadius: radius.sm }, tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }, tag: { color: colors.muted, fontSize: 10, backgroundColor: '#F5F5F5', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 3 },
   filters: { gap: 8, paddingVertical: 16 }, discoverList: { gap: 14 }, projectTile: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' }, tileImage: { width: '100%', height: 176 }, tileBody: { padding: 14, gap: 7 },
+  exploreTabs: { flexDirection: 'row', minHeight: 54, alignItems: 'flex-end', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 4, marginBottom: 20 }, exploreTab: { color: colors.muted, paddingBottom: 12 }, exploreTabActive: { color: colors.brand, paddingBottom: 11, borderBottomWidth: 2, borderBottomColor: colors.brand },
+  dnaFilter: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: 18, overflow: 'hidden' }, dnaFilterHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }, dnaFilterSummary: { flex: 1, minWidth: 0, marginLeft: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }, dnaSummaryText: { color: colors.muted, fontSize: 11, flexShrink: 1, textAlign: 'right' }, dnaFilterBody: { borderTopWidth: 1, borderTopColor: colors.border, padding: 14, gap: 10 }, dnaFilterLabel: { color: colors.muted, fontSize: 11 }, dnaChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   searchPad: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, chatRow: { flexDirection: 'row', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, chatTime: { color: colors.subtle, fontSize: 10 }, chatProject: { color: colors.brand, fontSize: 11, marginVertical: 2 },
   collabCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, flexDirection: 'row', gap: 12, marginBottom: 12 }, collabImage: { width: 74, height: 74, borderRadius: radius.sm }, progressTrack: { height: 5, backgroundColor: colors.border, borderRadius: 3, marginVertical: 10 }, progress: { height: 5, backgroundColor: colors.brand, borderRadius: 3 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 }, quickAction: { width: '48.5%', minHeight: 112, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, justifyContent: 'center' }, quickIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingBottom: 22, borderBottomWidth: 1, borderBottomColor: colors.border }, profileAvatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, settingsRow: { minHeight: 54, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' },
+  settingsValue: { color: colors.brand, fontSize: 12, marginRight: 6 },
   storeInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: 14 }, errorBox: { marginVertical: 14, backgroundColor: '#FFF2EF', borderRadius: radius.sm, padding: 13, gap: 5 }, errorHint: { color: colors.muted, fontSize: 11 },
   qrRow: { minHeight: 92, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }, qrImage: { width: 66, height: 66, borderRadius: radius.sm }, qrArrow: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, tokenText: { color: colors.subtle, fontSize: 9, maxWidth: 190 },
 });
