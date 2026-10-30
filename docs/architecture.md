@@ -17,7 +17,7 @@
 CURI:T Mobile
   ├─ 역할별 앱 UI·프로토타입 상태
   ├─ GET /api/v1/qr/{opaqueToken} ──> curit-api
-  └─ /q/{opaqueToken} 열기 ────────> curit-qr-web
+  └─ /?qr={opaqueToken} 열기 ──────> curit-qr-web
                                       └─ 결제·재고는 API 재조회
 ```
 

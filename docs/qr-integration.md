@@ -12,12 +12,12 @@ Android 에뮬레이터에서는 localhost 대신 `10.0.2.2`를 사용한다. �
 ## 상품별 URL
 
 ```text
-demo-mug-white-gray → /q/demo-mug-white-gray
-demo-bowl-set-2026  → /q/demo-bowl-set-2026
-demo-dessert-plate  → /q/demo-dessert-plate
+demo-mug-white-gray → /?qr=demo-mug-white-gray
+demo-bowl-set-2026  → /?qr=demo-bowl-set-2026
+demo-dessert-plate  → /?qr=demo-dessert-plate
 ```
 
-앱은 `GET /api/v1/qr/{token}`으로 세 상품을 각각 조회한다. QR 상세 화면에서 생성되는 QR 역시 같은 `/q/{token}`을 인코딩한다. 따라서 상품마다 QR은 다르지만 운영 환경만 바꾸면 토큰 계약은 유지된다.
+앱은 `GET /api/v1/qr/{token}`으로 세 상품을 각각 조회한다. QR 상세 화면에서 생성되는 QR은 GitHub Pages 직접 접속도 HTTP 200을 유지하도록 `/?qr={token}`을 인코딩한다. 따라서 상품마다 QR은 다르지만 운영 환경만 바꾸면 토큰 계약은 유지된다.
 
 ## 배포 전 필수 조건
 
