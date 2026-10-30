@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "CURI:T",
+    "slug": "curit-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "curit",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F8F4"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "kr.curit.mobile"
+    },
+    "android": {
+      "package": "kr.curit.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#4A6338"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "148d1147-4660-4cde-935f-7f3c95b1cd28"
+      }
+    },
+    "owner": "ah_young"
+  }
+}

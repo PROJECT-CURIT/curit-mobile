@@ -1,0 +1,211 @@
+{
+  "screen": "login",
+  "role": null,
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "sampleData": "isolated synthetic browser accounts; not production defaults",
+  "controls": [
+    {
+      "tag": "h1",
+      "label": "다시 만나 반가워요.",
+      "rect": {
+        "x": 35,
+        "y": 116,
+        "width": 320,
+        "height": 35
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "28px",
+      "fontWeight": "700",
+      "lineHeight": "35px",
+      "letterSpacing": "-1.12px",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "input",
+      "label": "",
+      "rect": {
+        "x": 35,
+        "y": 233,
+        "width": 320,
+        "height": 48
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "600",
+      "lineHeight": "21px",
+      "letterSpacing": "normal",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "12px",
+      "padding": [
+        "0px",
+        "14px",
+        "0px",
+        "14px"
+      ],
+      "display": "inline-block"
+    },
+    {
+      "tag": "input",
+      "label": "비밀번호",
+      "rect": {
+        "x": 35,
+        "y": 323,
+        "width": 320,
+        "height": 48
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "600",
+      "lineHeight": "21px",
+      "letterSpacing": "normal",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "12px",
+      "padding": [
+        "0px",
+        "64px",
+        "0px",
+        "14px"
+      ],
+      "display": "inline-block"
+    },
+    {
+      "tag": "button",
+      "label": "비밀번호 보기",
+      "rect": {
+        "x": 307.98,
+        "y": 327,
+        "width": 43.02,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "11px",
+      "fontWeight": "400",
+      "lineHeight": "16.5px",
+      "letterSpacing": "normal",
+      "color": "rgb(102, 102, 102)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "input",
+      "label": "",
+      "rect": {
+        "x": 35,
+        "y": 401,
+        "width": 16,
+        "height": 16
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "18px",
+      "letterSpacing": "normal",
+      "color": "rgb(101, 101, 101)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "비밀번호 재설정",
+      "rect": {
+        "x": 279.39,
+        "y": 387,
+        "width": 75.61,
+        "height": 44
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "18px",
+      "letterSpacing": "normal",
+      "color": "rgb(101, 101, 101)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "로그인",
+      "rect": {
+        "x": 35,
+        "y": 447,
+        "width": 320,
+        "height": 49
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "600",
+      "lineHeight": "21px",
+      "letterSpacing": "normal",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(74, 99, 56)",
+      "borderRadius": "12px",
+      "padding": [
+        "14px",
+        "16px",
+        "14px",
+        "16px"
+      ],
+      "display": "inline-block"
+    },
+    {
+      "tag": "button",
+      "label": "회원가입",
+      "rect": {
+        "x": 232.47,
+        "y": 512,
+        "width": 41.48,
+        "height": 44
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "600",
+      "lineHeight": "18px",
+      "letterSpacing": "normal",
+      "color": "rgb(74, 99, 56)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    }
+  ]
+}
