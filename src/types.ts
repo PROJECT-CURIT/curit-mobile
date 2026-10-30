@@ -91,3 +91,13 @@ export interface CollaborationMessage {
   content: string;
   createdAt: string;
 }
+
+export interface CollaborationItem {
+  projectItemId: string;
+  name: string;
+  imageUrl: string;
+  price: number;
+  stock: number;
+  quantity: number;
+  creatorConfirmed: boolean;
+}

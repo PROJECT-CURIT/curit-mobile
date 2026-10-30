@@ -20,6 +20,8 @@ QR 연결을 확인하려면 `curit-api`를 4100번, `curit-qr-web`을 5173번 �
 
 승인된 협업에는 서버가 상품별 무작위 QR을 발급합니다. 앱의 QR 상품 관리 화면은 Supabase JWT로 참여자 권한을 확인한 뒤 실제 발급 목록과 미발급 후보를 조회합니다.
 
+Figma Make에 포함된 크리에이터 프로필·DNA·프로젝트 편집, 매장 프로필·취향, 커뮤니티·팔로우·좋아요·댓글, 협업 알림, QR 판매 설정, 현장 수령 관리도 운영 데이터에 연결되어 있습니다. 화면별 구현과 외부 계약이 필요한 경계는 [화면 매트릭스](docs/screen-matrix.md)에서 확인할 수 있습니다.
+
 ## 배포
 
 Expo 프로젝트 `@ah_young/curit-mobile`과 연결되어 있습니다. `eas.json`의 `preview`는 Android APK/iOS Simulator 검증용이고 `production`은 스토어 제출용입니다. 실제 스토어 제출에는 Apple Developer·Google Play Console 자격증명이 별도로 필요합니다.

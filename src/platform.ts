@@ -100,7 +100,7 @@ function imageExtension(uri: string, mimeType?: string | null) {
     : 'jpg';
 }
 
-export async function uploadMedia(uri: string, folder: 'store' | 'project', mimeType?: string | null) {
+export async function uploadMedia(uri: string, folder: 'store' | 'project' | 'profile' | 'post', mimeType?: string | null) {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   const user = auth.user;
@@ -246,35 +246,109 @@ export async function issueQrListing(projectItemId: string, collaborationId: str
   return mapManagedQrProduct(item as Record<string, unknown>);
 }
 
+export async function updateQrListing(id: string, updates: { price?: number; stock?: number; saleStatus?: 'active' | 'preparing'; pickupMode?: 'immediate' | 'exhibition' }): Promise<QrProduct> {
+  const item = await managementRequest(`/api/management/listings/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+  return mapManagedQrProduct(item as Record<string, unknown>);
+}
+
+export type ManagedOrder = {
+  id: string;
+  listingId: string;
+  productName: string;
+  imageUrl: string;
+  customerName: string;
+  customerPhoneLast4: string;
+  quantity: number;
+  amount: number;
+  paymentMethod: string;
+  pickupMode: 'immediate' | 'exhibition';
+  pickupDate: string;
+  fulfillmentStatus: 'awaiting_pickup' | 'reserved' | 'delivered';
+  deliveredAt: string | null;
+  createdAt: string;
+};
+
+export async function loadManagedOrders(): Promise<ManagedOrder[]> {
+  const result = await managementRequest('/api/management/orders');
+  return (Array.isArray(result?.orders) ? result.orders : []).map((row: Record<string, unknown>) => ({
+    id: String(row.id),
+    listingId: String(row.listingId),
+    productName: String(row.productName || '등록 상품'),
+    imageUrl: String(row.imageUrl || ''),
+    customerName: String(row.customerName || ''),
+    customerPhoneLast4: String(row.customerPhoneLast4 || ''),
+    quantity: Number(row.quantity || 0),
+    amount: Number(row.amount || 0),
+    paymentMethod: String(row.paymentMethod || ''),
+    pickupMode: row.pickupMode === 'exhibition' ? 'exhibition' : 'immediate',
+    pickupDate: String(row.pickupDate || ''),
+    fulfillmentStatus: ['reserved', 'delivered'].includes(String(row.fulfillmentStatus)) ? row.fulfillmentStatus as ManagedOrder['fulfillmentStatus'] : 'awaiting_pickup',
+    deliveredAt: row.deliveredAt ? String(row.deliveredAt) : null,
+    createdAt: String(row.createdAt || ''),
+  }));
+}
+
+export async function updateManagedOrder(id: string, fulfillmentStatus: ManagedOrder['fulfillmentStatus']) {
+  await managementRequest(`/api/management/orders/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ fulfillmentStatus }),
+  });
+}
+
 export async function loadCreatorProject() {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
   let { data: project, error } = await supabase
     .from('projects')
-    .select('id')
+    .select('id, title, story, concept, region, purpose, status, cover_path, creator_share_percent')
     .eq('creator_id', auth.user.id)
     .order('updated_at', { ascending: false })
     .limit(1)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{
+      id: string;
+      title: string | null;
+      story: string | null;
+      concept: string | null;
+      region: string | null;
+      purpose: string | null;
+      status: string | null;
+      cover_path: string | null;
+      creator_share_percent: number | null;
+    }>();
   if (error) throw new Error(error.message);
   if (!project) {
     const result = await supabase
       .from('projects')
       .insert({ creator_id: auth.user.id, title: '최종 프로젝트', concept: '프로젝트 정보와 상품을 등록해 주세요.', region: '서울', status: 'draft' })
-      .select('id')
-      .single<{ id: string }>();
+      .select('id, title, story, concept, region, purpose, status, cover_path, creator_share_percent')
+      .single();
     if (result.error) throw new Error(result.error.message);
     project = result.data;
   }
   const items = await supabase
     .from('project_items')
-    .select('id, name, price, stock, image_path, sale_mode, item_type')
+    .select('id, name, description, price, stock, image_path, sale_mode, item_type, material, width_mm, height_mm, pickup_mode, care')
     .eq('project_id', project.id)
     .order('created_at');
   if (items.error) throw new Error(items.error.message);
   return {
     projectId: project.id,
+    project: {
+      id: String(project.id),
+      title: String(project.title || ''),
+      story: String(project.story || ''),
+      concept: String(project.concept || ''),
+      region: String(project.region || ''),
+      purpose: String(project.purpose || ''),
+      status: String(project.status || 'draft') as 'draft' | 'recruiting' | 'matched' | 'archived',
+      coverPath: project.cover_path ? String(project.cover_path) : '',
+      coverUrl: project.cover_path ? mediaUrl(String(project.cover_path)) : '',
+      creatorSharePercent: Number(project.creator_share_percent || 80),
+    },
     products: (items.data ?? []).map((item) => ({
       id: String(item.id),
       name: String(item.name),
@@ -284,6 +358,12 @@ export async function loadCreatorProject() {
       imagePath: item.image_path ? String(item.image_path) : undefined,
       mode: item.sale_mode === 'display_only' ? '전시만' as const : '전시·판매' as const,
       type: item.item_type === 'artwork' ? 'artwork' as const : 'goods' as const,
+      description: String(item.description || ''),
+      material: String(item.material || ''),
+      widthMm: item.width_mm === null ? null : Number(item.width_mm),
+      heightMm: item.height_mm === null ? null : Number(item.height_mm),
+      pickupMode: item.pickup_mode === 'exhibition' ? 'exhibition' as const : 'immediate' as const,
+      care: String(item.care || ''),
     })),
   };
 }
@@ -300,7 +380,52 @@ export async function addProjectProduct(projectId: string, product: Omit<Project
     price: product.price,
     stock: product.stock,
     image_path: imagePath || null,
+    description: product.description || '',
+    material: product.material || '',
+    width_mm: product.widthMm || null,
+    height_mm: product.heightMm || null,
+    pickup_mode: product.pickupMode || (product.type === 'artwork' ? 'exhibition' : 'immediate'),
+    care: product.care || '',
   });
+  if (error) throw new Error(error.message);
+  return loadCreatorProject();
+}
+
+export type CreatorProjectDetails = Awaited<ReturnType<typeof loadCreatorProject>>['project'];
+
+export async function saveCreatorProject(projectId: string, value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) {
+  let coverPath = value.coverPath;
+  if (value.coverUri && !/^(https?:)/.test(value.coverUri)) coverPath = await uploadMedia(value.coverUri, 'project');
+  const { error } = await getSupabase().from('projects').update({
+    title: value.title.trim(),
+    story: value.story.trim(),
+    concept: value.concept.trim(),
+    region: value.region.trim(),
+    purpose: value.purpose.trim(),
+    status: value.status,
+    cover_path: coverPath || null,
+    creator_share_percent: value.creatorSharePercent,
+  }).eq('id', projectId);
+  if (error) throw new Error(error.message);
+  return loadCreatorProject();
+}
+
+export async function updateProjectProduct(productId: string, product: Omit<ProjectProduct, 'id'>) {
+  const imagePath = product.image && !/^(https?:)/.test(product.image)
+    ? await uploadMedia(product.image, 'project')
+    : product.imagePath;
+  const { error } = await getSupabase().from('project_items').update({
+    name: product.name.trim(), description: product.description || '', item_type: product.type,
+    sale_mode: product.mode === '전시만' ? 'display_only' : 'display_sale', price: product.price, stock: product.stock,
+    image_path: imagePath || null, material: product.material || '', width_mm: product.widthMm || null,
+    height_mm: product.heightMm || null, pickup_mode: product.pickupMode || (product.type === 'artwork' ? 'exhibition' : 'immediate'), care: product.care || '',
+  }).eq('id', productId);
+  if (error) throw new Error(error.message);
+  return loadCreatorProject();
+}
+
+export async function deleteProjectProduct(productId: string) {
+  const { error } = await getSupabase().from('project_items').delete().eq('id', productId);
   if (error) throw new Error(error.message);
   return loadCreatorProject();
 }
