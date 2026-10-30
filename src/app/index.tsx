@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { BottomNav, ScreenFrame } from '../ui';
-import { AccountSignupScreen, ChatScreen, DiscoverScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
+import { AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
+import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen } from '../curationScreens';
 import { CreatorProjectEditScreen, CreatorProjectScreen, initialCreatorProducts, StoreSignupScreen, type ProjectProduct } from '../detailScreens';
 import { config } from '../config';
 import { addProjectProduct, currentSession, friendlyError, loadCreatorProject, loadStoreOnboarding, signIn, signOut, signUp, storeOnboardingComplete, type StoreOnboarding } from '../platform';
 import { isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
-import type { Role, Session, TabKey } from '../types';
+import type { CollaborationSummary, Role, Session, TabKey } from '../types';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
 
@@ -20,7 +21,8 @@ export default function AppIndex() {
   const [pendingStoreSession, setPendingStoreSession] = useState<Session | null>(null);
   const [pendingStoreOnboarding, setPendingStoreOnboarding] = useState<StoreOnboarding | null>(null);
   const [tab, setTab] = useState<TabKey>('home');
-  const [subview, setSubview] = useState<'qr-products' | 'creator-project' | 'creator-project-edit' | 'settlements' | null>(null);
+  const [subview, setSubview] = useState<'qr-products' | 'creator-project' | 'creator-project-edit' | 'settlements' | 'curator' | 'collaboration' | null>(null);
+  const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
   const [creatorProducts, setCreatorProducts] = useState<ProjectProduct[]>(initialCreatorProducts);
   const [creatorProjectId, setCreatorProjectId] = useState('');
 
@@ -128,11 +130,13 @@ export default function AppIndex() {
   if (subview === 'settlements') return <ScreenFrame><SettlementScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen products={creatorProducts} onSaveProduct={saveCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
+  if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={() => { setSubview(null); setTab('chat'); }} /></ScreenFrame>;
+  if (subview === 'collaboration' && selectedCollaboration) return <ScreenFrame><CollaborationDetailScreen role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo} onBack={() => setSubview(null)} onChanged={() => setSubview(null)} /></ScreenFrame>;
 
   const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onMove={target => setTab(target as TabKey)} />
-    : tab === 'discover' ? <DiscoverScreen role={session.role} />
-    : tab === 'chat' ? <ChatScreen />
-    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenSettlements={() => setSubview('settlements')} />
+    : tab === 'discover' ? <MatchingDiscoverScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onProposalCreated={() => setTab('chat')} />
+    : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
+    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
     : <MyScreen role={session.role} displayName={session.displayName} onLogout={logout} onOpenProject={() => setSubview('creator-project')} />;
 
   return <ScreenFrame footer={<BottomNav role={session.role} active={tab} onChange={setTab} />}>{content}</ScreenFrame>;
