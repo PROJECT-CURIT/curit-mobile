@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { BottomNav, ScreenFrame } from '../ui';
 import { AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
 import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen } from '../curationScreens';
+import { loadCollaborations } from '../curation';
 import { CreatorProjectEditScreen, CreatorProjectScreen, initialCreatorProducts, StoreSignupScreen, type ProjectProduct } from '../detailScreens';
 import { config } from '../config';
 import { addProjectProduct, currentSession, friendlyError, loadCreatorProject, loadStoreOnboarding, signIn, signOut, signUp, storeOnboardingComplete, type StoreOnboarding } from '../platform';
@@ -116,6 +117,21 @@ export default function AppIndex() {
     setCreatorProducts(result.products);
   };
 
+  const openCollaboration = async (id: string) => {
+    if (!session) return;
+    setTab('chat');
+    setSubview(null);
+    try {
+      const items = session.demo ? [] : await loadCollaborations(session.role);
+      const item = items.find(candidate => candidate.id === id);
+      if (!item) return;
+      setSelectedCollaboration(item);
+      setSubview('collaboration');
+    } catch {
+      // The chat hub remains available when the detail refresh fails.
+    }
+  };
+
   if (loading) return <ScreenFrame><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.brand} /></View></ScreenFrame>;
   if (!session) return <ScreenFrame>{authView === 'login'
     ? <LoginScreen onLogin={login} onSignUp={() => setAuthView('role')} onDemo={demoLogin} demoEnabled={config.demoMode} configured={isSupabaseConfigured} />
@@ -130,11 +146,11 @@ export default function AppIndex() {
   if (subview === 'settlements') return <ScreenFrame><SettlementScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen products={creatorProducts} onSaveProduct={saveCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
-  if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={() => { setSubview(null); setTab('chat'); }} /></ScreenFrame>;
+  if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={id => { void openCollaboration(id); }} /></ScreenFrame>;
   if (subview === 'collaboration' && selectedCollaboration) return <ScreenFrame><CollaborationDetailScreen role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo} onBack={() => setSubview(null)} onChanged={() => setSubview(null)} /></ScreenFrame>;
 
   const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onMove={target => setTab(target as TabKey)} />
-    : tab === 'discover' ? <MatchingDiscoverScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onProposalCreated={() => setTab('chat')} />
+    : tab === 'discover' ? <MatchingDiscoverScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onProposalCreated={id => { void openCollaboration(id); }} />
     : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
     : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
     : <MyScreen role={session.role} displayName={session.displayName} onLogout={logout} onOpenProject={() => setSubview('creator-project')} />;
