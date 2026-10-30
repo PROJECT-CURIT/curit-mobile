@@ -189,7 +189,7 @@ export async function loadStoreOnboarding(userId: string): Promise<StoreOnboardi
   };
 }
 
-async function managementRequest(path: string, init?: RequestInit) {
+export async function managementRequest(path: string, init?: RequestInit) {
   const supabase = getSupabase();
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) throw new Error('로그인이 필요합니다.');
@@ -295,6 +295,19 @@ export async function updateManagedOrder(id: string, fulfillmentStatus: ManagedO
   await managementRequest(`/api/management/orders/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify({ fulfillmentStatus }),
+  });
+}
+
+export async function cancelManagedOrder(id: string, reason = '매장 운영자 요청') {
+  return managementRequest(`/api/management/orders/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function dispatchCollaborationPush(collaborationId: string) {
+  await managementRequest(`/api/push/collaborations/${encodeURIComponent(collaborationId)}`, {
+    method: 'POST',
   });
 }
 

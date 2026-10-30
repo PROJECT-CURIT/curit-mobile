@@ -1,4 +1,4 @@
-import { mediaUrl } from './platform';
+import { dispatchCollaborationPush, mediaUrl } from './platform';
 import { getSupabase } from './supabase';
 import type {
   CollaborationItem,
@@ -307,7 +307,9 @@ export async function createCollaborationProposal(recommendation: MatchRecommend
     p_message: message.trim(),
   });
   if (result.error) throw new Error(result.error.message);
-  return String((result.data as { id?: string } | null)?.id || '');
+  const collaborationId = String((result.data as { id?: string } | null)?.id || '');
+  if (collaborationId) await dispatchCollaborationPush(collaborationId).catch(() => undefined);
+  return collaborationId;
 }
 
 export async function loadCollaborations(role: Role): Promise<CollaborationSummary[]> {
@@ -348,6 +350,7 @@ export async function loadCollaborations(role: Role): Promise<CollaborationSumma
 export async function transitionCollaboration(collaborationId: string, action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete', message = '') {
   const result = await getSupabase().rpc('transition_curit_collaboration', { p_collaboration_id: collaborationId, p_action: action, p_message: message.trim() });
   if (result.error) throw new Error(result.error.message);
+  await dispatchCollaborationPush(collaborationId).catch(() => undefined);
 }
 
 export async function loadCollaborationItems(collaboration: CollaborationSummary): Promise<CollaborationItem[]> {
