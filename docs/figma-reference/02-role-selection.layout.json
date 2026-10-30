@@ -1,0 +1,136 @@
+{
+  "screen": "onboarding",
+  "role": null,
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "sampleData": "isolated synthetic browser accounts; not production defaults",
+  "controls": [
+    {
+      "tag": "button",
+      "label": "로그인으로 돌아가기",
+      "rect": {
+        "x": 16,
+        "y": 60,
+        "width": 44,
+        "height": 44
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "lineHeight": "24px",
+      "letterSpacing": "normal",
+      "color": "rgb(26, 26, 26)",
+      "background": "oklab(0.999994 0.0000455678 0.0000200868 / 0.95)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "h1",
+      "label": "매장에는 새로운 무드,작가에게는 새로운 무대",
+      "rect": {
+        "x": 24,
+        "y": 459,
+        "width": 342,
+        "height": 68.31
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "28px",
+      "fontWeight": "700",
+      "lineHeight": "34.16px",
+      "letterSpacing": "-0.5px",
+      "color": "rgb(26, 26, 26)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "크리에이터작품·굿즈를 만들어요",
+      "rect": {
+        "x": 24,
+        "y": 685.5,
+        "width": 166,
+        "height": 78.5
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "lineHeight": "24px",
+      "letterSpacing": "normal",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(26, 26, 26)",
+      "borderRadius": "13px",
+      "padding": [
+        "16px",
+        "8px",
+        "16px",
+        "8px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "매장 운영자공간을 운영해요",
+      "rect": {
+        "x": 200,
+        "y": 685.5,
+        "width": 166,
+        "height": 78.5
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "lineHeight": "24px",
+      "letterSpacing": "normal",
+      "color": "rgb(26, 26, 26)",
+      "background": "rgb(248, 248, 248)",
+      "borderRadius": "13px",
+      "padding": [
+        "16px",
+        "8px",
+        "16px",
+        "8px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "이미 계정이 있나요? 로그인",
+      "rect": {
+        "x": 24,
+        "y": 776,
+        "width": 342,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "18px",
+      "letterSpacing": "normal",
+      "color": "rgb(101, 101, 101)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    }
+  ]
+}

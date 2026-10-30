@@ -1,0 +1,708 @@
+{
+  "screen": "store-reg/taste",
+  "role": "store",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "sampleData": "isolated synthetic browser accounts; not production defaults",
+  "fontFaces": [
+    {
+      "family": "Pretendard",
+      "weight": "900",
+      "status": "unloaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "800",
+      "status": "loaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "700",
+      "status": "loaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "600",
+      "status": "loaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "500",
+      "status": "loaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "400",
+      "status": "loaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "300",
+      "status": "unloaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "200",
+      "status": "unloaded"
+    },
+    {
+      "family": "Pretendard",
+      "weight": "100",
+      "status": "unloaded"
+    }
+  ],
+  "controls": [
+    {
+      "tag": "button",
+      "label": "뒤로 가기",
+      "rect": {
+        "x": 18,
+        "y": 56,
+        "width": 44,
+        "height": 44
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "lineHeight": "24px",
+      "letterSpacing": "normal",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "h2",
+      "label": "공간 분위기 선택",
+      "rect": {
+        "x": 20,
+        "y": 254,
+        "width": 350,
+        "height": 20
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "600",
+      "lineHeight": "20px",
+      "letterSpacing": "normal",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "미니멀",
+      "rect": {
+        "x": 20,
+        "y": 286,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "600",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "rgb(74, 99, 56)",
+      "background": "rgb(229, 238, 221)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "내추럴",
+      "rect": {
+        "x": 85.13,
+        "y": 286,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "우드톤",
+      "rect": {
+        "x": 150.25,
+        "y": 286,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "빈티지",
+      "rect": {
+        "x": 215.38,
+        "y": 286,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "모던",
+      "rect": {
+        "x": 280.5,
+        "y": 286,
+        "width": 46.75,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "아트",
+      "rect": {
+        "x": 20,
+        "y": 334,
+        "width": 46.75,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "더보기",
+      "rect": {
+        "x": 74.75,
+        "y": 334,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "h2",
+      "label": "공간 색감 선택",
+      "rect": {
+        "x": 20,
+        "y": 398,
+        "width": 350,
+        "height": 20
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "600",
+      "lineHeight": "20px",
+      "letterSpacing": "normal",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "block"
+    },
+    {
+      "tag": "button",
+      "label": "아이보리",
+      "rect": {
+        "x": 20,
+        "y": 430,
+        "width": 67.48,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "화이트",
+      "rect": {
+        "x": 95.48,
+        "y": 430,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "베이지",
+      "rect": {
+        "x": 160.61,
+        "y": 430,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "600",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "rgb(74, 99, 56)",
+      "background": "rgb(229, 238, 221)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "브라운",
+      "rect": {
+        "x": 225.73,
+        "y": 430,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "블랙",
+      "rect": {
+        "x": 290.86,
+        "y": 430,
+        "width": 46.75,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "그레이",
+      "rect": {
+        "x": 20,
+        "y": 478,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "더보기",
+      "rect": {
+        "x": 85.13,
+        "y": 478,
+        "width": 57.13,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "분위기 전환",
+      "rect": {
+        "x": 20,
+        "y": 573.5,
+        "width": 80.88,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "공간 전시",
+      "rect": {
+        "x": 108.88,
+        "y": 573.5,
+        "width": 70.5,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "포토존 구성",
+      "rect": {
+        "x": 187.38,
+        "y": 573.5,
+        "width": 80.88,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "지역 크리에이터 소개",
+      "rect": {
+        "x": 20,
+        "y": 621.5,
+        "width": 125.38,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "상품 판매",
+      "rect": {
+        "x": 153.38,
+        "y": 621.5,
+        "width": 70.5,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "button",
+      "label": "브랜드 표현",
+      "rect": {
+        "x": 231.88,
+        "y": 621.5,
+        "width": 80.88,
+        "height": 40
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "16px",
+      "letterSpacing": "normal",
+      "color": "oklch(0.439 0 0)",
+      "background": "rgb(255, 255, 255)",
+      "borderRadius": "3.35544e+07px",
+      "padding": [
+        "0px",
+        "12px",
+        "0px",
+        "12px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "summary",
+      "label": "예산 · 선호 가격대선택",
+      "rect": {
+        "x": 37,
+        "y": 702.5,
+        "width": 316,
+        "height": 44
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "600",
+      "lineHeight": "20px",
+      "letterSpacing": "normal",
+      "color": "rgb(0, 0, 0)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderRadius": "0px",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "display": "flex"
+    },
+    {
+      "tag": "input",
+      "label": "",
+      "rect": {
+        "x": 37,
+        "y": 785,
+        "width": 316,
+        "height": 49
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "lineHeight": "21px",
+      "letterSpacing": "normal",
+      "color": "rgb(26, 26, 26)",
+      "background": "rgb(248, 248, 248)",
+      "borderRadius": "12px",
+      "padding": [
+        "13px",
+        "16px",
+        "13px",
+        "16px"
+      ],
+      "display": "inline-block"
+    },
+    {
+      "tag": "button",
+      "label": "사진 등록하기",
+      "rect": {
+        "x": 20,
+        "y": 787.5,
+        "width": 350,
+        "height": 56
+      },
+      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", sans-serif",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "lineHeight": "24px",
+      "letterSpacing": "normal",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(74, 99, 56)",
+      "borderRadius": "14px",
+      "padding": [
+        "16px",
+        "0px",
+        "16px",
+        "0px"
+      ],
+      "display": "block"
+    }
+  ]
+}
