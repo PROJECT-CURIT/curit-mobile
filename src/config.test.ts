@@ -4,7 +4,7 @@ import { buildQrApiUrl, buildQrWebUrl } from './config';
 describe('QR URL builders', () => {
   it('builds a stable product web URL and removes trailing slash', () => {
     expect(buildQrWebUrl('demo-dessert-plate', 'https://qr.curit.kr/')).toBe(
-      'https://qr.curit.kr/q/demo-dessert-plate',
+      'https://qr.curit.kr/?qr=demo-dessert-plate',
     );
   });
 

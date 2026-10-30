@@ -12,7 +12,7 @@ export const config = {
 };
 
 export function buildQrWebUrl(token: string, baseUrl = config.qrWebUrl) {
-  return `${trimSlash(baseUrl)}/q/${encodeURIComponent(token)}`;
+  return `${trimSlash(baseUrl)}/?qr=${encodeURIComponent(token)}`;
 }
 
 export function buildQrApiUrl(token: string, baseUrl = config.apiUrl) {
