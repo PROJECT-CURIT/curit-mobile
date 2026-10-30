@@ -60,8 +60,12 @@ function terms(value: string | string[]) {
     .toLocaleLowerCase('ko-KR')
     .replace(/[^0-9a-z가-힣]+/g, ' ')
     .split(/\s+/)
-    .map(item => item.trim())
+    .map(item => item.trim().replace(/(?:에게|에서|으로|와|과|은|는|이|가|을|를|에)$/u, ''))
     .filter(item => item.length > 1 && !STOP_WORDS.has(item)))];
+}
+
+function displayTerm(value: string) {
+  return value === 'qr' ? 'QR' : value;
 }
 
 function overlap(left: string[], right: string[]) {
@@ -104,15 +108,17 @@ async function storeRecommendations(): Promise<MatchRecommendation[]> {
   if (!projects.length) return [];
   const creatorIds = [...new Set(projects.map(project => project.creator_id))];
   const projectIds = projects.map(project => project.id);
-  const [profilesResult, creatorsResult, itemsResult] = await Promise.all([
+  const [profilesResult, creatorsResult, itemsResult, collaborationsResult] = await Promise.all([
     supabase.from('profiles').select('id, display_name').in('id', creatorIds),
     supabase.from('creator_profiles').select('user_id, introduction, categories, regions').in('user_id', creatorIds),
     supabase.from('project_items').select('project_id, name, price, stock, image_path, material').in('project_id', projectIds),
+    supabase.from('collaborations').select('id, project_id, status').eq('store_id', storeResult.data.id).in('project_id', projectIds),
   ]);
-  if (profilesResult.error || creatorsResult.error || itemsResult.error) throw new Error(profilesResult.error?.message ?? creatorsResult.error?.message ?? itemsResult.error?.message ?? '추천 데이터를 불러오지 못했습니다.');
+  if (profilesResult.error || creatorsResult.error || itemsResult.error || collaborationsResult.error) throw new Error(profilesResult.error?.message ?? creatorsResult.error?.message ?? itemsResult.error?.message ?? collaborationsResult.error?.message ?? '추천 데이터를 불러오지 못했습니다.');
   const names = new Map((profilesResult.data ?? []).map(row => [String(row.id), String(row.display_name)]));
   const creators = new Map(((creatorsResult.data ?? []) as CreatorProfileRow[]).map(row => [row.user_id, row]));
   const items = (itemsResult.data ?? []) as ProjectItemRow[];
+  const collaborations = new Map((collaborationsResult.data ?? []).map(row => [String(row.project_id), { id: String(row.id), status: row.status as CollaborationStatus }]));
   const store = storeResult.data;
   const storeTerms = terms([store.category, store.introduction, store.target_audience, ...store.mood_tags, ...store.purpose_tags]);
 
@@ -127,7 +133,7 @@ async function storeRecommendations(): Promise<MatchRecommendation[]> {
     const installFit = store.exhibition_zones.length > 0 && projectItems.length > 0;
     const score = clampScore(61 + Math.min(21, matched.length * 5) + (budgetFit ? 8 : -10) + (regionFit ? 5 : 0) + (installFit ? 4 : 0));
     const reasons = [
-      matched.length ? `${matched.slice(0, 3).join('·')} 취향이 매장 DNA와 겹쳐요` : '등록한 공간 목적과 작품 전시 방식이 맞아요',
+      matched.length ? `${matched.slice(0, 3).map(displayTerm).join('·')} 취향이 매장 DNA와 겹쳐요` : '등록한 공간 목적과 작품 전시 방식이 맞아요',
       budgetFit ? `최저 상품가가 매장 예산 범위에 들어와요` : '현재 예산보다 높은 상품이 있어 수량 조정이 필요해요',
       installFit ? `${store.exhibition_zones.length}개 전시 구역에 배치 가능한 재고가 있어요` : '설치 구역과 재고를 협의해야 해요',
       regionFit ? '활동 지역과 매장 지역이 가까워요' : '',
@@ -143,6 +149,8 @@ async function storeRecommendations(): Promise<MatchRecommendation[]> {
       tags: [...new Set([...(creator?.categories ?? []), ...matched])].slice(0, 4),
       imageUrl: projectItems[0]?.image_path ? mediaUrl(projectItems[0].image_path) : undefined,
       priceRange: priceLabel(projectItems),
+      collaborationId: collaborations.get(project.id)?.id,
+      collaborationStatus: collaborations.get(project.id)?.status,
     };
   }).sort((a, b) => b.score - a.score).slice(0, 6);
 }
@@ -163,6 +171,11 @@ async function creatorRecommendations(): Promise<MatchRecommendation[]> {
   const ownItems = ((itemsResult.data ?? []) as ProjectItemRow[]).filter(item => !project || item.project_id === project.id);
   const creatorTerms = terms([creator?.introduction ?? '', ...(creator?.categories ?? []), ...(creator?.regions ?? []), project?.story ?? '', project?.concept ?? '', ...ownItems.flatMap(item => [item.name, item.material])]);
   const stores = (storesResult.data ?? []) as StoreRow[];
+  const collaborationsResult = stores.length
+    ? await supabase.from('collaborations').select('id, store_id, status').eq('creator_id', auth.user.id).in('store_id', stores.map(store => store.id))
+    : { data: [], error: null };
+  if (collaborationsResult.error) throw new Error(collaborationsResult.error.message);
+  const collaborations = new Map((collaborationsResult.data ?? []).map(row => [String(row.store_id), { id: String(row.id), status: row.status as CollaborationStatus }]));
   return stores.map(store => {
     const storeTerms = terms([store.category, store.address, store.introduction, store.target_audience, ...store.mood_tags, ...store.purpose_tags]);
     const matched = overlap(creatorTerms, storeTerms);
@@ -179,12 +192,14 @@ async function creatorRecommendations(): Promise<MatchRecommendation[]> {
       description: store.introduction || `${store.target_audience} 고객이 방문하는 공간입니다.`,
       score,
       reasons: [
-        matched.length ? `${matched.slice(0, 3).join('·')} 조건이 작품 DNA와 맞아요` : '작품 전시 목적과 매장의 운영 목적이 맞아요',
+        matched.length ? `${matched.slice(0, 3).map(displayTerm).join('·')} 조건이 작품 DNA와 맞아요` : '작품 전시 목적과 매장의 운영 목적이 맞아요',
         zones.length ? `${zones.slice(0, 2).join('·')} 구역에 배치할 수 있어요` : '구체적인 배치 구역은 협의가 필요해요',
         regionFit ? '선호 활동 지역과 일치해요' : budgetFit ? '작품 가격이 매장 예산 범위에 들어와요' : '예산에 맞춘 상품 구성이 필요해요',
       ],
       tags: [...new Set([...store.mood_tags, store.category, ...zones])].filter((tag): tag is string => Boolean(tag)).slice(0, 4),
       imageUrl: store.photo_paths[0] ? mediaUrl(store.photo_paths[0]) : undefined,
+      collaborationId: collaborations.get(store.id)?.id,
+      collaborationStatus: collaborations.get(store.id)?.status,
     };
   }).sort((a, b) => b.score - a.score).slice(0, 6);
 }
@@ -284,6 +299,7 @@ export async function sendCuratorMessage(role: Role, content: string) {
 }
 
 export async function createCollaborationProposal(recommendation: MatchRecommendation, message: string) {
+  if (recommendation.collaborationId) return recommendation.collaborationId;
   const result = await getSupabase().rpc('create_curit_proposal', {
     p_target_id: recommendation.targetId,
     p_target_kind: recommendation.targetType,

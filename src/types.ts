@@ -50,6 +50,8 @@ export interface MatchRecommendation {
   tags: string[];
   imageUrl?: string;
   priceRange?: string;
+  collaborationId?: string;
+  collaborationStatus?: CollaborationStatus;
 }
 
 export interface CuratorMessage {
