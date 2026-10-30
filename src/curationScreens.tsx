@@ -108,7 +108,16 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
   const [notice, setNotice] = useState('');
   useEffect(() => {
     if (demo) return;
-    void loadCuratorMessages(role).then(setMessages).catch(caught => setNotice(friendlyError(caught))).finally(() => setLoading(false));
+    void Promise.all([loadCuratorMessages(role), loadMatchRecommendations(role)])
+      .then(([savedMessages, currentRecommendations]) => {
+        const currentByTarget = new Map(currentRecommendations.map(item => [`${item.targetType}:${item.targetId}`, item]));
+        setMessages(savedMessages.map(message => ({
+          ...message,
+          recommendations: message.recommendations.map(saved => currentByTarget.get(`${saved.targetType}:${saved.targetId}`) ?? saved),
+        })));
+      })
+      .catch(caught => setNotice(friendlyError(caught)))
+      .finally(() => setLoading(false));
   }, [demo, role]);
 
   const submit = async (text = input) => {
