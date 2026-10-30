@@ -71,7 +71,12 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
   const propose = async (item: MatchRecommendation) => {
     if (demo || busy) { setNotice('데모 모드에서는 제안을 저장하지 않습니다. 서버 계정으로 로그인해 주세요.'); return; }
     setBusy(item.targetId); setNotice('');
-    try { await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`); setNotice('협업 제안을 보냈습니다. 채팅에서 승인 상태를 확인할 수 있어요.'); onProposalCreated(); } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(''); }
+    try {
+      if (item.collaborationId) { setNotice('이미 진행 중인 협업을 채팅에서 확인할 수 있어요.'); onProposalCreated(); return; }
+      await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`);
+      setNotice('협업 제안을 보냈습니다. 채팅에서 승인 상태를 확인할 수 있어요.');
+      onProposalCreated();
+    } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(''); }
   };
   return <View style={c.flex}>
     <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
@@ -130,6 +135,11 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
     setProposalTarget(item.targetId); setNotice('');
     try {
       if (demo) { setNotice('데모 모드에서는 제안 화면만 확인할 수 있습니다. 서버 계정으로 로그인하면 실제 제안이 저장됩니다.'); return; }
+      if (item.collaborationId) {
+        setNotice('이미 진행 중인 협업으로 이동합니다.');
+        onProposalCreated(item.collaborationId);
+        return;
+      }
       const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다. 추천 적합도 ${item.score}%와 조건을 확인했습니다.`);
       setNotice('협업 제안을 보냈습니다. 상대방 승인 후 다음 단계가 열립니다.');
       if (id) onProposalCreated(id);
@@ -167,9 +177,19 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
       <View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
-      <Button label={busy ? '제안 저장 중…' : '이 후보에게 협업 제안'} disabled={busy || item.targetId.startsWith('demo-')} onPress={onPropose} />
+      <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy || item.targetId.startsWith('demo-')} onPress={onPropose} />
     </View>
   </View>;
+}
+
+function collaborationRecommendationLabel(status?: MatchRecommendation['collaborationStatus']) {
+  if (status === 'active') return '전시 중';
+  if (status === 'approved') return '최종 확인';
+  if (status === 'negotiating') return '조율 중';
+  if (status === 'proposed') return '승인 대기';
+  if (status === 'completed') return '완료';
+  if (status === 'cancelled') return '취소됨';
+  return '진행 중';
 }
 
 export function CollaborationDetailScreen({ role, userId, item, demo, onBack, onChanged }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; onBack: () => void; onChanged: () => void }) {
