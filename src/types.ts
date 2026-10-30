@@ -2,8 +2,11 @@ export type Role = 'creator' | 'store';
 export type TabKey = 'home' | 'discover' | 'chat' | 'management' | 'my';
 
 export interface Session {
+  userId: string;
   role: Role;
   displayName: string;
+  email: string;
+  demo?: boolean;
 }
 
 export interface ArtProject {
@@ -19,8 +22,10 @@ export interface ArtProject {
 }
 
 export interface QrProduct {
+  id?: string;
   token: string;
   productId: string;
+  collaborationId?: string;
   name: string;
   price: number;
   stock: number;
@@ -28,4 +33,6 @@ export interface QrProduct {
   pickupMode: string;
   imageUrl?: string;
   artistName?: string;
+  qrUrl?: string;
+  issuable?: boolean;
 }

@@ -1,6 +1,6 @@
 # CURI:T Mobile
 
-독립 크리에이터와 오프라인 매장의 전시 협업을 연결하는 CURI:T 네이티브 앱입니다. Figma Make 시안을 React Native로 다시 구현했으며, 매장 운영자는 기존 `curit-api`의 상품별 QR 토큰을 조회하고 `curit-qr-web` 구매 화면을 열 수 있습니다.
+독립 크리에이터와 오프라인 매장의 전시 협업을 연결하는 CURI:T 네이티브 앱입니다. Figma Make 시안을 React Native로 다시 구현했으며 Supabase Auth·PostgreSQL RLS·Storage로 계정, 프로젝트, 매장, 이미지를 여러 기기에서 영구 저장합니다.
 
 ## 실행
 
@@ -15,6 +15,14 @@ pnpm start
 - 반응형 웹 확인: `pnpm web`
 
 QR 연결을 확인하려면 `curit-api`를 4100번, `curit-qr-web`을 5173번 포트에서 실행합니다. 설정과 경계는 [QR 연동 문서](docs/qr-integration.md)를 참고하세요.
+
+`.env`에는 Supabase Project URL과 Publishable Key만 넣습니다. Service Role Key와 결제 시크릿 키는 앱에 넣으면 안 됩니다. 매장 가입은 기본 정보→취향→사진→전시 구역→확인의 5단계이며 각 단계 완료 시 서버에 임시 저장되고, 중단 후 로그인해도 저장된 단계부터 이어집니다.
+
+승인된 협업에는 서버가 상품별 무작위 QR을 발급합니다. 앱의 QR 상품 관리 화면은 Supabase JWT로 참여자 권한을 확인한 뒤 실제 발급 목록과 미발급 후보를 조회합니다.
+
+## 배포
+
+Expo 프로젝트 `@ah_young/curit-mobile`과 연결되어 있습니다. `eas.json`의 `preview`는 Android APK/iOS Simulator 검증용이고 `production`은 스토어 제출용입니다. 실제 스토어 제출에는 Apple Developer·Google Play Console 자격증명이 별도로 필요합니다.
 
 ## 검증
 

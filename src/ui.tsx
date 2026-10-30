@@ -1,6 +1,6 @@
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radius } from './theme';
 import type { Role, TabKey } from './types';
@@ -52,7 +52,7 @@ export function Icon({ name, size = 22, color = colors.ink }: { name: keyof type
 }
 
 export function BottomNav({ role, active, onChange }: { role: Role; active: TabKey; onChange: (tab: TabKey) => void }) {
-  const labels: Array<[TabKey, string]> = [
+  const labels: [TabKey, string][] = [
     ['home', '홈'], ['discover', '탐색'], ['chat', '채팅'], ['management', role === 'creator' ? '협업관리' : '매장 관리'], ['my', '마이'],
   ];
   return (
