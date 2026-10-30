@@ -83,15 +83,39 @@ export function RoleSelectionScreen({ onSelect, onBack }: { onSelect: (role: Rol
   );
 }
 
-export function HomeScreen({ role, displayName, onMove }: { role: Role; displayName: string; onMove: (target: string) => void }) {
-  return role === 'creator' ? <CreatorHome displayName={displayName} onMove={onMove} /> : <StoreHome displayName={displayName} onMove={onMove} />;
+function useCommerceSummary(role: Role, demo?: boolean) {
+  const [summary, setSummary] = useState({ salesCount: demo ? 8 : 0, expectedSettlement: demo ? 310000 : 0, loading: !demo });
+  useEffect(() => {
+    if (demo) return;
+    let active = true;
+    void loadSettlements()
+      .then(entries => {
+        if (!active) return;
+        const eligible = entries.filter(entry => entry.status !== 'cancelled' && entry.status !== 'held');
+        setSummary({
+          salesCount: new Set(eligible.map(entry => entry.orderId)).size,
+          expectedSettlement: eligible.reduce((sum, entry) => sum + (role === 'creator' ? entry.creatorAmount : entry.storeAmount), 0),
+          loading: false,
+        });
+      })
+      .catch(() => {
+        if (active) setSummary(current => ({ ...current, loading: false }));
+      });
+    return () => { active = false; };
+  }, [demo, role]);
+  return summary;
 }
 
-function CreatorHome({ displayName, onMove }: { displayName: string; onMove: (target: string) => void }) {
+export function HomeScreen({ role, displayName, demo, onMove }: { role: Role; displayName: string; demo?: boolean; onMove: (target: string) => void }) {
+  return role === 'creator' ? <CreatorHome displayName={displayName} demo={demo} onMove={onMove} /> : <StoreHome displayName={displayName} demo={demo} onMove={onMove} />;
+}
+
+function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?: boolean; onMove: (target: string) => void }) {
+  const summary = useCommerceSummary('creator', demo);
   return (
     <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
       <View style={s.homeHeader}><View><CuritText style={s.eyebrow}>CURI:T</CuritText><CuritText weight="bold" style={s.greeting}>안녕하세요, {displayName} 님</CuritText></View><View style={s.avatar}><CuritText weight="bold">{displayName[0] || 'C'}</CuritText></View></View>
-      <Pressable style={s.heroCard} onPress={() => onMove('management')}><View style={s.heroCopy}><CuritText style={s.heroLabel}>진행 중인 전시</CuritText><CuritText weight="bold" style={s.heroTitle}>흙의 기억</CuritText><CuritText style={s.heroMeta}>아늑한 서울 · QR 조회 203 · 8건 판매</CuritText></View><Image source={projects[0]?.image} style={s.heroImage} contentFit="cover" /></Pressable>
+      <Pressable style={s.heroCard} onPress={() => onMove('management')}><View style={s.heroCopy}><CuritText style={s.heroLabel}>진행 중인 전시</CuritText><CuritText weight="bold" style={s.heroTitle}>흙의 기억</CuritText><CuritText style={s.heroMeta}>아늑한 서울 · QR 조회 203 · {summary.loading ? '—' : `${summary.salesCount}건`} 판매</CuritText></View><Image source={projects[0]?.image} style={s.heroImage} contentFit="cover" /></Pressable>
       <SectionTitle title="새 매장 제안" action="전체 보기" onPress={() => onMove('discover')} />
       <View style={s.grid}>{stores.slice(0, 2).map(store => <StoreCard key={store.name} {...store} />)}</View>
       <SectionTitle title="다음 일정" />
@@ -100,11 +124,12 @@ function CreatorHome({ displayName, onMove }: { displayName: string; onMove: (ta
   );
 }
 
-function StoreHome({ displayName, onMove }: { displayName: string; onMove: (target: string) => void }) {
+function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: boolean; onMove: (target: string) => void }) {
+  const summary = useCommerceSummary('store', demo);
   return (
     <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
       <View style={s.homeHeader}><View><CuritText style={s.eyebrow}>CURI:T</CuritText><CuritText weight="bold" style={s.greeting}>{displayName}의 오늘</CuritText></View><View style={s.avatar}><Icon name="store" size={19} /></View></View>
-      <Pressable style={s.statusCard} onPress={() => onMove('management')}><View style={s.statusTop}><View><CuritText style={s.muted}>현재 전시</CuritText><CuritText weight="bold" style={s.cardTitle}>흙의 기억</CuritText></View><Chip label="전시·판매 중" /></View><View style={s.metrics}><Metric value="203" label="QR 조회" /><Metric value="8건" label="판매" /><Metric value="31만원" label="예상 정산" /></View></Pressable>
+      <Pressable style={s.statusCard} onPress={() => onMove('management')}><View style={s.statusTop}><View><CuritText style={s.muted}>현재 전시</CuritText><CuritText weight="bold" style={s.cardTitle}>흙의 기억</CuritText></View><Chip label="전시·판매 중" /></View><View style={s.metrics}><Metric value="203" label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View></Pressable>
       <View style={s.aiBanner}><View style={s.aiBadge}><CuritText weight="bold" style={{ color: colors.brand }}>T</CuritText></View><View style={s.flex}><CuritText weight="semibold">공간 DNA 기준으로 3개 작품을 추천했어요</CuritText><CuritText style={s.muted}>방문객과 예산 조건이 잘 맞는 순서예요</CuritText></View></View>
       <SectionTitle title="AI 추천 작품" action="추천 더 받기" onPress={() => onMove('discover')} />
       <View style={s.projectList}>{projects.slice(0, 3).map(item => <ProjectRow key={item.id} item={item} />)}</View>
@@ -155,16 +180,18 @@ export function ChatScreen() {
   return <View style={s.flex}><Header title="협업 메시지" /><View style={s.searchPad}><Field placeholder="대화 검색" /></View>{chats.map(chat => <Pressable key={chat.name} style={s.chatRow}><View style={s.avatar}><CuritText weight="bold">{chat.name[0]}</CuritText></View><View style={s.flex}><View style={s.row}><CuritText weight="semibold">{chat.name}</CuritText><CuritText style={s.chatTime}>{chat.time}</CuritText></View><CuritText style={s.chatProject}>{chat.project}</CuritText><CuritText style={s.muted} numberOfLines={1}>{chat.message}</CuritText></View></Pressable>)}</View>;
 }
 
-export function ManagementScreen({ role, onOpenQr, onOpenSettlements }: { role: Role; onOpenQr: () => void; onOpenSettlements: () => void }) {
-  return role === 'creator' ? <CreatorManagement onOpenSettlements={onOpenSettlements} /> : <StoreManagement onOpenQr={onOpenQr} onOpenSettlements={onOpenSettlements} />;
+export function ManagementScreen({ role, demo, onOpenQr, onOpenSettlements }: { role: Role; demo?: boolean; onOpenQr: () => void; onOpenSettlements: () => void }) {
+  return role === 'creator' ? <CreatorManagement demo={demo} onOpenSettlements={onOpenSettlements} /> : <StoreManagement demo={demo} onOpenQr={onOpenQr} onOpenSettlements={onOpenSettlements} />;
 }
 
-function CreatorManagement({ onOpenSettlements }: { onOpenSettlements: () => void }) {
-  return <View style={s.flex}><Header title="협업 관리" /><ScrollView contentContainerStyle={s.scroll}><View style={s.metricsBox}><Metric value="3" label="진행 중" /><Metric value="12" label="완료" /><Metric value="310,000원" label="예상 정산" /></View><View style={{ marginBottom: 18 }}><Button label="주문·정산 내역" variant="secondary" onPress={onOpenSettlements} /></View><SectionTitle title="진행 중인 협업" /><View style={s.collabCard}><Image source={projects[0]?.image} style={s.collabImage} /><View style={s.flex}><CuritText weight="bold">흙의 기억</CuritText><CuritText style={s.muted}>아늑한 서울 · 전시·판매 중</CuritText><View style={s.progressTrack}><View style={[s.progress, { width: '68%' }]} /></View><CuritText style={s.gridMeta}>종료 2026.12.31 · 8건 판매</CuritText></View></View><View style={s.collabCard}><Image source={projects[2]?.image} style={s.collabImage} /><View style={s.flex}><CuritText weight="bold">고요한 초록</CuritText><CuritText style={s.muted}>리프 쇼룸 · 조건 조율 중</CuritText><CuritText style={s.gridMeta}>작품 수량과 발송일을 확인해주세요</CuritText></View></View></ScrollView></View>;
+function CreatorManagement({ demo, onOpenSettlements }: { demo?: boolean; onOpenSettlements: () => void }) {
+  const summary = useCommerceSummary('creator', demo);
+  return <View style={s.flex}><Header title="협업 관리" /><ScrollView contentContainerStyle={s.scroll}><View style={s.metricsBox}><Metric value="3" label="진행 중" /><Metric value="12" label="완료" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View><View style={{ marginBottom: 18 }}><Button label="주문·정산 내역" variant="secondary" onPress={onOpenSettlements} /></View><SectionTitle title="진행 중인 협업" /><View style={s.collabCard}><Image source={projects[0]?.image} style={s.collabImage} /><View style={s.flex}><CuritText weight="bold">흙의 기억</CuritText><CuritText style={s.muted}>아늑한 서울 · 전시·판매 중</CuritText><View style={s.progressTrack}><View style={[s.progress, { width: '68%' }]} /></View><CuritText style={s.gridMeta}>종료 2026.12.31 · {summary.loading ? '—' : `${summary.salesCount}건`} 판매</CuritText></View></View><View style={s.collabCard}><Image source={projects[2]?.image} style={s.collabImage} /><View style={s.flex}><CuritText weight="bold">고요한 초록</CuritText><CuritText style={s.muted}>리프 쇼룸 · 조건 조율 중</CuritText><CuritText style={s.gridMeta}>작품 수량과 발송일을 확인해주세요</CuritText></View></View></ScrollView></View>;
 }
 
-function StoreManagement({ onOpenQr, onOpenSettlements }: { onOpenQr: () => void; onOpenSettlements: () => void }) {
-  return <View style={s.flex}><Header title="매장 관리" /><ScrollView contentContainerStyle={s.scroll}><View style={s.metricsBox}><Metric value="203" label="QR 조회" /><Metric value="8건" label="이번 달 판매" /><Metric value="31만원" label="예상 정산" /></View><View style={s.quickGrid}><QuickAction icon="qr" label="QR 상품 관리" description="수량·판매 상태" onPress={onOpenQr} /><QuickAction icon="management" label="판매·정산" description="주문·정산 내역" onPress={onOpenSettlements} /><QuickAction icon="chat" label="협업 채팅" description="작가와 일정 조율" /><QuickAction icon="store" label="공간 DNA" description="추천 조건 수정" /></View><SectionTitle title="진행 중인 전시" /><View style={s.collabCard}><Image source={projects[0]?.image} style={s.collabImage} /><View style={s.flex}><View style={s.row}><CuritText weight="bold">흙의 기억</CuritText><Chip label="전시·판매 중" /></View><CuritText style={s.muted}>김서연 · 종료 2026.12.31</CuritText><View style={s.tagRow}><CuritText style={s.tag}>QR 203</CuritText><CuritText style={s.tag}>판매 8건</CuritText></View></View></View><View style={s.aiBanner}><View style={s.aiBadge}><CuritText weight="bold" style={{ color: colors.brand }}>T</CuritText></View><View style={s.flex}><CuritText weight="semibold">다음 전시 제안</CuritText><CuritText style={s.muted}>박수아 작가의 겨울 패브릭 컬렉션과 공간 반응이 잘 맞아요.</CuritText></View></View></ScrollView></View>;
+function StoreManagement({ demo, onOpenQr, onOpenSettlements }: { demo?: boolean; onOpenQr: () => void; onOpenSettlements: () => void }) {
+  const summary = useCommerceSummary('store', demo);
+  return <View style={s.flex}><Header title="매장 관리" /><ScrollView contentContainerStyle={s.scroll}><View style={s.metricsBox}><Metric value="203" label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="이번 달 판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View><View style={s.quickGrid}><QuickAction icon="qr" label="QR 상품 관리" description="수량·판매 상태" onPress={onOpenQr} /><QuickAction icon="management" label="판매·정산" description="주문·정산 내역" onPress={onOpenSettlements} /><QuickAction icon="chat" label="협업 채팅" description="작가와 일정 조율" /><QuickAction icon="store" label="공간 DNA" description="추천 조건 수정" /></View><SectionTitle title="진행 중인 전시" /><View style={s.collabCard}><Image source={projects[0]?.image} style={s.collabImage} /><View style={s.flex}><View style={s.row}><CuritText weight="bold">흙의 기억</CuritText><Chip label="전시·판매 중" /></View><CuritText style={s.muted}>김서연 · 종료 2026.12.31</CuritText><View style={s.tagRow}><CuritText style={s.tag}>QR 203</CuritText><CuritText style={s.tag}>판매 {summary.loading ? '—' : `${summary.salesCount}건`}</CuritText></View></View></View><View style={s.aiBanner}><View style={s.aiBadge}><CuritText weight="bold" style={{ color: colors.brand }}>T</CuritText></View><View style={s.flex}><CuritText weight="semibold">다음 전시 제안</CuritText><CuritText style={s.muted}>박수아 작가의 겨울 패브릭 컬렉션과 공간 반응이 잘 맞아요.</CuritText></View></View></ScrollView></View>;
 }
 
 function QuickAction({ icon, label, description, onPress }: { icon: 'qr' | 'management' | 'chat' | 'store'; label: string; description: string; onPress?: () => void }) { return <Pressable style={s.quickAction} onPress={onPress}><View style={s.quickIcon}><Icon name={icon} color={colors.brand} /></View><CuritText weight="semibold">{label}</CuritText><CuritText style={s.gridMeta}>{description}</CuritText></Pressable>; }

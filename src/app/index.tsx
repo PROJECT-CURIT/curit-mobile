@@ -129,10 +129,10 @@ export default function AppIndex() {
   if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen products={creatorProducts} onSaveProduct={saveCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
 
-  const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} onMove={target => setTab(target as TabKey)} />
+  const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onMove={target => setTab(target as TabKey)} />
     : tab === 'discover' ? <DiscoverScreen role={session.role} />
     : tab === 'chat' ? <ChatScreen />
-    : tab === 'management' ? <ManagementScreen role={session.role} onOpenQr={() => setSubview('qr-products')} onOpenSettlements={() => setSubview('settlements')} />
+    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenSettlements={() => setSubview('settlements')} />
     : <MyScreen role={session.role} displayName={session.displayName} onLogout={logout} onOpenProject={() => setSubview('creator-project')} />;
 
   return <ScreenFrame footer={<BottomNav role={session.role} active={tab} onChange={setTab} />}>{content}</ScreenFrame>;
