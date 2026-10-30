@@ -13,7 +13,7 @@ export function ScreenFrame({ children, footer }: PropsWithChildren<{ footer?: R
   const insets = useSafeAreaInsets();
   return (
     <View style={styles.outer}>
-      <View style={[styles.phone, { paddingTop: insets.top }]}>
+      <View style={[styles.phone, { paddingTop: insets.top, paddingBottom: footer ? 0 : insets.bottom }]}>
         <View style={styles.flex}>{children}</View>
         {footer ? <View style={{ paddingBottom: insets.bottom }}>{footer}</View> : null}
       </View>
@@ -88,11 +88,11 @@ export function Field(props: TextInputProps & { label?: string }) {
 }
 
 export function Chip({ label, active, onPress }: { label: string; active?: boolean; onPress?: () => void }) {
-  return <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}><CuritText weight={active ? 'semibold' : 'regular'} style={[styles.chipText, active && { color: colors.surface }]}>{label}</CuritText></Pressable>;
+  return <Pressable accessibilityRole={onPress ? 'button' : undefined} accessibilityState={onPress ? { selected: Boolean(active) } : undefined} disabled={!onPress} hitSlop={onPress ? 8 : undefined} onPress={onPress} style={[styles.chip, active && styles.chipActive]}><CuritText weight={active ? 'semibold' : 'regular'} style={[styles.chipText, active && { color: colors.surface }]}>{label}</CuritText></Pressable>;
 }
 
 export function SectionTitle({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
-  return <View style={styles.sectionTitle}><CuritText weight="bold" style={{ fontSize: 18 }}>{title}</CuritText>{action ? <Pressable onPress={onPress}><CuritText style={{ color: colors.muted }}>{action}</CuritText></Pressable> : null}</View>;
+  return <View style={styles.sectionTitle}><CuritText weight="bold" style={{ fontSize: 18 }}>{title}</CuritText>{action ? <Pressable accessibilityRole="button" disabled={!onPress} hitSlop={10} onPress={onPress} style={styles.sectionAction}><CuritText style={{ color: colors.muted }}>{action}</CuritText></Pressable> : null}</View>;
 }
 
 export function Empty({ title, description }: { title: string; description: string }) {
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   outer: { flex: 1, backgroundColor: Platform.OS === 'web' ? colors.canvas : colors.surface, alignItems: 'center' },
   phone: { width: '100%', maxWidth: 430, flex: 1, backgroundColor: colors.surface, ...Platform.select({ web: { boxShadow: '0 8px 40px rgba(0,0,0,.10)' } as ViewStyle }) },
   header: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 },
-  headerSide: { width: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
+  headerSide: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   headerAction: { alignItems: 'flex-end' },
   headerTitleWrap: { flex: 1, minWidth: 0, alignItems: 'center' },
   headerTitle: { width: '100%', flexShrink: 1, textAlign: 'center', fontSize: 17 },
@@ -125,6 +125,7 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipText: { fontSize: 12, lineHeight: 15 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  sectionAction: { minHeight: 44, justifyContent: 'center', paddingLeft: 12 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 36, gap: 10 },
   emptyIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' },
   emptyDescription: { color: colors.muted, textAlign: 'center' },
