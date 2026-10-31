@@ -23,10 +23,69 @@ export type CreatorProfileData = {
   onboardingComplete: boolean;
 };
 
+export type VerificationKind = 'creator_activity' | 'store_operation';
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+export type VerificationRequest = {
+  id: string;
+  kind: VerificationKind;
+  status: VerificationStatus;
+  evidencePath: string;
+  evidenceUrl: string;
+  note: string;
+  reviewNote: string;
+  submittedAt: string;
+  reviewedAt: string;
+};
+
 async function currentUserId() {
   const { data } = await getSupabase().auth.getUser();
   if (!data.user) throw new Error('로그인이 필요합니다.');
   return data.user.id;
+}
+
+export async function loadVerificationRequest(kind: VerificationKind): Promise<VerificationRequest | null> {
+  const userId = await currentUserId();
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('verification_requests')
+    .select('id, kind, status, evidence_path, note, review_note, submitted_at, reviewed_at')
+    .eq('user_id', userId)
+    .eq('kind', kind)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const signed = await supabase.storage.from('verification-evidence').createSignedUrl(String(data.evidence_path), 60 * 60);
+  return {
+    id: String(data.id), kind: data.kind as VerificationKind, status: data.status as VerificationStatus,
+    evidencePath: String(data.evidence_path), evidenceUrl: signed.data?.signedUrl || '', note: String(data.note || ''),
+    reviewNote: String(data.review_note || ''), submittedAt: String(data.submitted_at), reviewedAt: String(data.reviewed_at || ''),
+  };
+}
+
+function verificationExtension(uri: string, mimeType?: string | null) {
+  if (mimeType === 'image/png') return 'png';
+  if (mimeType === 'image/webp') return 'webp';
+  const extension = uri.match(/\.([a-zA-Z0-9]{2,5})(?:\?|$)/)?.[1]?.toLowerCase().replace('jpeg', 'jpg');
+  return extension === 'png' || extension === 'webp' || extension === 'jpg' ? extension : 'jpg';
+}
+
+export async function submitVerificationRequest(kind: VerificationKind, imageUri: string, note: string, mimeType?: string | null) {
+  const userId = await currentUserId();
+  const supabase = getSupabase();
+  const extension = verificationExtension(imageUri, mimeType);
+  const evidencePath = `${userId}/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+  const body = await (await fetch(imageUri)).arrayBuffer();
+  if (body.byteLength > 5 * 1024 * 1024) throw new Error('증빙 이미지는 5MB 이하여야 합니다.');
+  const upload = await supabase.storage.from('verification-evidence').upload(evidencePath, body, {
+    contentType: mimeType || (extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg'),
+    upsert: false,
+  });
+  if (upload.error) throw new Error(upload.error.message);
+  const submitted = await supabase.rpc('submit_verification_request', { p_kind: kind, p_evidence_path: evidencePath, p_note: note.trim() });
+  if (submitted.error) {
+    await supabase.storage.from('verification-evidence').remove([evidencePath]);
+    throw new Error(submitted.error.message);
+  }
+  return loadVerificationRequest(kind);
 }
 
 export async function creatorOnboardingComplete(userId: string) {

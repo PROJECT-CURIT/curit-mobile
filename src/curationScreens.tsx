@@ -25,6 +25,12 @@ const statusLabel: Record<CollaborationSummary['status'], string> = {
   proposed: '승인 대기', negotiating: '조건 조율 중', approved: '매장 최종 확인', active: '전시·판매 중', completed: '협업 완료', cancelled: '취소',
 };
 
+const dnaFilterGroups = [
+  ['매장 유형', ['카페', '서점', '쇼룸']],
+  ['분위기', ['미니멀', '우드톤', '조용함']],
+  ['전시 위치', ['벽면', '선반', '테이블', '창가', '카운터']],
+] as const;
+
 export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenCollaboration }: { role: Role; demo?: boolean; demoItems?: CollaborationSummary[]; onOpenCurator: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
   const [loadedItems, setLoadedItems] = useState<CollaborationSummary[]>([]);
   const [loading, setLoading] = useState(!demo);
@@ -57,6 +63,10 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
 export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; onOpenCurator: () => void; onProposalCreated: (id: string) => void }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
+  const [regionOpen, setRegionOpen] = useState(false);
+  const [dnaOpen, setDnaOpen] = useState(false);
+  const [region, setRegion] = useState('전체');
+  const [dnaFilters, setDnaFilters] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
@@ -64,7 +74,19 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
   useEffect(() => {
     void loadMatchRecommendations(role, demo).then(setItems).catch(caught => setNotice(friendlyError(caught))).finally(() => setLoading(false));
   }, [demo, role]);
-  const visible = items.filter(item => [item.title, item.subtitle, item.description, ...item.tags].join(' ').toLocaleLowerCase('ko-KR').includes(query.trim().toLocaleLowerCase('ko-KR')));
+  const visible = items.filter(item => {
+    const text = [item.title, item.subtitle, item.description, ...item.tags].join(' ').toLocaleLowerCase('ko-KR');
+    const queryMatches = text.includes(query.trim().toLocaleLowerCase('ko-KR'));
+    const regionMatches = role !== 'creator' || region === '전체' || region === '전국 / 온라인'
+      || region.split(/[·/]/).some(value => value.trim() && text.includes(value.trim().toLocaleLowerCase('ko-KR')));
+    const dnaMatches = role !== 'creator' || dnaFilterGroups.every(([, values]) => {
+      const selected = values.filter(value => dnaFilters.includes(value));
+      return selected.length === 0 || selected.some(value => text.includes(value.toLocaleLowerCase('ko-KR')));
+    });
+    return queryMatches && regionMatches && dnaMatches;
+  });
+  const toggleDna = (value: string) => setDnaFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
+  const resetFilters = () => { setRegion('전체'); setDnaFilters([]); };
   const propose = async (item: MatchRecommendation) => {
     if (busy) return;
     if (demo) {
@@ -83,9 +105,29 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
   return <View style={c.flex}>
     <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
     <ScrollView contentContainerStyle={c.discoverScroll} keyboardShouldPersistTaps="handled">
+      <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
       <View style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
       {section === 'news' || section === 'creators' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} /> : <>
-      <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
+      {role === 'creator' ? <>
+        <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
+        <View style={c.filterCard}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: regionOpen }} style={c.filterHeader} onPress={() => setRegionOpen(value => !value)}>
+            <View><CuritText style={c.filterEyebrow}>지역 필터</CuritText><CuritText weight="semibold">{region}</CuritText></View>
+            <View style={{ transform: [{ rotate: regionOpen ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={17} color={colors.brand} /></View>
+          </Pressable>
+          {regionOpen ? <View style={c.filterBody}><View style={c.filterOptions}>{['전체', '서울', '경기', '인천', '강원', '대전·세종·충청', '광주·전라', '대구·경북', '부산·울산·경남', '제주', '전국 / 온라인'].map(value => <Chip key={value} label={value} active={region === value} onPress={() => setRegion(value)} />)}</View></View> : null}
+        </View>
+        <View style={c.filterCard}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: dnaOpen }} style={c.filterHeader} onPress={() => setDnaOpen(value => !value)}>
+            <View style={c.flex}><CuritText weight="semibold">공간 DNA 필터</CuritText>{dnaFilters.length ? <CuritText style={c.filterEyebrow}>{dnaFilters.join(' · ')}</CuritText> : null}</View>
+            <View style={{ transform: [{ rotate: dnaOpen ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={17} color={colors.brand} /></View>
+          </Pressable>
+          {dnaOpen ? <View style={c.filterBody}>
+            {dnaFilterGroups.map(([label, values]) => <View key={label} style={c.filterGroup}><CuritText style={c.filterEyebrow}>{label}</CuritText><View style={c.filterOptions}>{values.map(value => <Chip key={value} label={value} active={dnaFilters.includes(value)} onPress={() => toggleDna(value)} />)}</View></View>)}
+            <Pressable accessibilityRole="button" style={c.resetFilter} onPress={resetFilters}><CuritText style={c.muted}>필터 초기화</CuritText></Pressable>
+          </View> : null}
+        </View>
+      </> : null}
       <Pressable style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">추천 점수는 이렇게 계산해요</CuritText><CuritText style={c.pinCaption}>취향뿐 아니라 지역·예산·설치 구역·판매 재고를 함께 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={() => { void propose(item); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
@@ -304,5 +346,5 @@ const c = StyleSheet.create({
   composerWrap: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, paddingTop: 8 }, topicRow: { gap: 7, paddingHorizontal: 12, paddingBottom: 8 }, composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }, input: { flex: 1, minHeight: 46, borderRadius: 23, backgroundColor: '#F7F7F7', borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, fontFamily: fonts.regular, color: colors.ink }, send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }, sendDisabled: { backgroundColor: colors.border }, sendText: { color: colors.surface, fontSize: 20 },
   recommendation: { marginLeft: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface }, recommendationWide: { marginLeft: 0 }, recommendationImage: { width: '100%', height: 148 }, recommendationBody: { padding: 14, gap: 10 }, recommendationTitle: { fontSize: 17 }, score: { minWidth: 48, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft, alignItems: 'center' }, description: { color: colors.muted, lineHeight: 21 }, reasonBox: { borderRadius: radius.sm, padding: 10, backgroundColor: colors.brandPale, gap: 6 }, reasonRow: { flexDirection: 'row', gap: 7 }, check: { color: colors.brand }, reasonText: { flex: 1, fontSize: 12, color: colors.muted }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { fontSize: 10, color: colors.brand, backgroundColor: colors.brandSoft, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
   detailScroll: { padding: 18, paddingBottom: 32 }, termCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: 16, gap: 12 }, termGrid: { gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }, termRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 18 }, termLabel: { color: colors.muted, fontSize: 12 }, termValue: { flex: 1, textAlign: 'right', fontSize: 12 }, flowHint: { color: colors.brand, fontSize: 11, backgroundColor: colors.brandSoft, padding: 10, borderRadius: radius.sm }, section: { fontSize: 17, marginTop: 24, marginBottom: 12 }, itemCard: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, marginBottom: 10 }, itemImage: { width: 58, height: 58, borderRadius: radius.sm }, itemPlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center' }, quantity: { flexDirection: 'row', alignItems: 'center', gap: 2 }, quantityTap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, quantityButton: { fontSize: 20, color: colors.brand }, termInput: { minHeight: 88, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top', marginVertical: 12 }, collabBubble: { maxWidth: '82%', borderRadius: 15, padding: 12, marginBottom: 8 }, ownCollabBubble: { backgroundColor: colors.brand, alignSelf: 'flex-end', borderTopRightRadius: 4 }, otherCollabBubble: { backgroundColor: colors.brandPale, alignSelf: 'flex-start', borderTopLeftRadius: 4 }, actionButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 20 }, actionButton: { minWidth: '47%', flexGrow: 1 },
-  headerAi: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, discoverScroll: { padding: 18, paddingBottom: 36 }, exploreTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 18 }, exploreTab: { flex: 1, alignItems: 'center', paddingVertical: 13 }, exploreTabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, searchBox: { minHeight: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#F8F8F8', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 }, searchInput: { flex: 1, minHeight: 46, color: colors.ink, fontFamily: fonts.regular }, explainBanner: { borderRadius: radius.md, backgroundColor: colors.brandSoft, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }, discoverCard: { marginBottom: 14 },
+  headerAi: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, discoverScroll: { padding: 18, paddingBottom: 36 }, exploreTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 8, marginBottom: 18 }, exploreTab: { flex: 1, alignItems: 'center', paddingVertical: 13 }, exploreTabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, searchBox: { minHeight: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#F8F8F8', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 }, searchInput: { flex: 1, minHeight: 46, color: colors.ink, fontFamily: fonts.regular }, directoryTitle: { fontSize: 19, lineHeight: 28, marginBottom: 14 }, filterCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', marginBottom: 10, backgroundColor: colors.surface }, filterHeader: { minHeight: 58, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }, filterEyebrow: { color: colors.muted, fontSize: 11, lineHeight: 17 }, filterBody: { borderTopWidth: 1, borderTopColor: colors.border, padding: 14, gap: 14 }, filterGroup: { gap: 8 }, filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, resetFilter: { minHeight: 42, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 4 }, explainBanner: { borderRadius: radius.md, backgroundColor: colors.brandSoft, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }, discoverCard: { marginBottom: 14 },
 });

@@ -11,14 +11,18 @@ import {
   loadCreatorProfile,
   loadNotifications,
   loadSocialFeed,
+  loadVerificationRequest,
   markNotificationRead,
   saveCreatorDna,
   saveCreatorProfile,
+  submitVerificationRequest,
   toggleCreatorFollow,
   togglePostLike,
   type AppNotification,
   type CreatorProfileData,
   type SocialPost,
+  type VerificationKind,
+  type VerificationRequest,
 } from './fullPlatform';
 import {
   friendlyError,
@@ -241,6 +245,64 @@ export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBac
   </ScrollView></View>;
 }
 
+export function VerificationScreen({ kind, demo = false, onBack }: { kind: VerificationKind; demo?: boolean; onBack: () => void }) {
+  const creator = kind === 'creator_activity';
+  const [request, setRequest] = useState<VerificationRequest | null>(null);
+  const [imageUri, setImageUri] = useState('');
+  const [mimeType, setMimeType] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(!demo);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (demo) return;
+    let active = true;
+    void loadVerificationRequest(kind)
+      .then(value => { if (active) { setRequest(value); setNote(value?.note || ''); } })
+      .catch(error => { if (active) setNotice(friendlyError(error)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [demo, kind]);
+  const chooseEvidence = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
+    const asset = result.canceled ? undefined : result.assets[0];
+    if (asset?.uri) { setImageUri(asset.uri); setMimeType(asset.mimeType || null); setNotice(''); }
+  };
+  const submit = async () => {
+    if (!imageUri) { setNotice('확인 가능한 증빙 이미지를 먼저 선택해 주세요.'); return; }
+    setSaving(true); setNotice('');
+    try {
+      if (demo) {
+        setRequest({ id: 'demo-verification', kind, status: 'pending', evidencePath: imageUri, evidenceUrl: imageUri, note: note.trim(), reviewNote: '', submittedAt: new Date().toISOString(), reviewedAt: '' });
+        setNotice('심사용 데모에서 검토 요청 상태를 반영했습니다.');
+      } else {
+        setRequest(await submitVerificationRequest(kind, imageUri, note, mimeType));
+        setNotice('증빙을 안전하게 저장하고 검토 요청을 접수했습니다.');
+      }
+      setImageUri('');
+    } catch (error) { setNotice(friendlyError(error)); }
+    finally { setSaving(false); }
+  };
+  const statusLabel = request?.status === 'approved' ? '승인 완료' : request?.status === 'rejected' ? '보완 필요' : request ? '검토 중' : '제출 전';
+  const preview = imageUri || request?.evidenceUrl || '';
+  return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Header title={creator ? '활동 인증' : '매장 운영 인증'} back={onBack} />
+    <ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+      {loading ? <ActivityIndicator color={colors.brand} style={f.loader} /> : <>
+        <View style={f.verificationStatus}><View style={f.flex}><CuritText weight="bold">{creator ? '크리에이터 활동 확인' : '오프라인 매장 운영 확인'}</CuritText><CuritText style={f.description}>{creator ? '포트폴리오·전시·판매 활동을 확인할 수 있는 자료를 제출해 주세요.' : '사업자등록증 또는 매장 운영 사실을 확인할 수 있는 자료를 제출해 주세요.'}</CuritText></View><Chip label={statusLabel} active={request?.status === 'approved'} /></View>
+        {request?.reviewNote ? <View style={f.infoBanner}><CuritText weight="semibold">검토 의견</CuritText><CuritText style={f.description}>{request.reviewNote}</CuritText></View> : null}
+        {preview ? <Image source={{ uri: preview }} style={f.evidenceImage} contentFit="cover" /> : <Pressable accessibilityRole="button" style={f.evidencePlaceholder} onPress={() => { void chooseEvidence(); }}><Icon name="store" size={30} color={colors.brand} /><CuritText weight="semibold">증빙 이미지 선택</CuritText><CuritText style={f.hint}>JPG, PNG, WEBP · 최대 5MB</CuritText></Pressable>}
+        <Button label={preview ? '증빙 이미지 변경' : '증빙 이미지 선택'} variant="secondary" onPress={() => { void chooseEvidence(); }} />
+        <Field label="검토 참고사항" value={note} onChangeText={setNote} placeholder={creator ? '활동 링크나 확인할 내용을 적어 주세요.' : '매장명과 확인할 내용을 적어 주세요.'} multiline style={f.textarea} />
+        <View style={f.infoBanner}><CuritText weight="semibold">개인정보 안내</CuritText><CuritText style={f.description}>증빙 이미지는 공개 프로필에 노출되지 않으며 인증 검토 목적으로만 비공개 저장됩니다. 주민등록번호 등 불필요한 정보는 가린 뒤 제출해 주세요.</CuritText></View>
+        <Button label={saving ? '제출 중…' : request ? '증빙 다시 제출' : '검토 요청하기'} disabled={saving || !imageUri} onPress={() => { void submit(); }} />
+        {request ? <CuritText style={f.hint}>최근 제출: {new Date(request.submittedAt).toLocaleString('ko-KR')}</CuritText> : null}
+        {notice ? <Notice text={notice} /> : null}
+      </>}
+    </ScrollView>
+  </KeyboardAvoidingView>;
+}
+
 export function NotificationsScreen({ onBack, demo = false }: { onBack: () => void; demo?: boolean }) {
   const [items, setItems] = useState<AppNotification[]>(demo ? [{ id: 'demo-notification', title: '흙의 기억 협업이 전시 중입니다', body: 'QR 판매와 현장 수령 현황을 확인해 주세요.', kind: 'collaboration', entityId: 'demo-collaboration', read: false, createdAt: new Date().toISOString() }] : []);
   const [loading, setLoading] = useState(!demo);
@@ -347,6 +409,7 @@ const f = StyleSheet.create({
   two: { flexDirection: 'row', gap: 10 }, infoBanner: { backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: 16, gap: 5 }, qrProductImage: { width: '100%', height: 180, borderRadius: radius.md }, preview: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 18, alignItems: 'center', gap: 9 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border }, tab: { flex: 1, paddingVertical: 13, alignItems: 'center' }, tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, orderCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 15 }, row: { flexDirection: 'row', alignItems: 'center', gap: 10 }, accordion: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
   notification: { flexDirection: 'row', gap: 12, padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border }, notificationUnread: { backgroundColor: colors.brandPale }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 7 }, dotRead: { backgroundColor: colors.border },
+  verificationStatus: { minHeight: 92, flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16 }, evidenceImage: { width: '100%', height: 220, borderRadius: radius.md, backgroundColor: colors.brandPale }, evidencePlaceholder: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.brand, borderRadius: radius.md, backgroundColor: colors.brandPale },
   headerTextAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

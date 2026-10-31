@@ -1,4 +1,4 @@
-import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
+import { useState, type ComponentProps, type PropsWithChildren, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,10 +80,28 @@ export function Button({ label, onPress, variant = 'primary', disabled }: { labe
 
 export function Field(props: TextInputProps & { label?: string }) {
   const accessibilityLabel = props.accessibilityLabel ?? props.label;
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = props.secureTextEntry === true;
+  const { style, ...inputProps } = props;
   return (
     <View style={styles.fieldWrap}>
       {props.label ? <CuritText weight="semibold" style={styles.fieldLabel}>{props.label}</CuritText> : null}
-      <TextInput placeholderTextColor="#B7B7B7" {...props} accessibilityLabel={accessibilityLabel} style={[styles.field, props.style]} />
+      <View style={isPassword ? styles.passwordField : undefined}>
+        <TextInput
+          placeholderTextColor="#B7B7B7"
+          {...inputProps}
+          secureTextEntry={isPassword && !passwordVisible}
+          accessibilityLabel={accessibilityLabel}
+          style={[styles.field, isPassword && styles.passwordInput, style]}
+        />
+        {isPassword ? <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={passwordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
+          hitSlop={8}
+          style={styles.passwordToggle}
+          onPress={() => setPasswordVisible(value => !value)}
+        ><CuritText weight="semibold" style={styles.passwordToggleText}>{passwordVisible ? '숨기기' : '보기'}</CuritText></Pressable> : null}
+      </View>
     </View>
   );
 }
@@ -122,6 +140,10 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.surface, fontSize: 15 },
   fieldWrap: { gap: 8 }, fieldLabel: { fontSize: 13 },
   field: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 15, fontFamily: fonts.regular, color: colors.ink, backgroundColor: colors.surface },
+  passwordField: { position: 'relative', justifyContent: 'center' },
+  passwordInput: { paddingRight: 76 },
+  passwordToggle: { position: 'absolute', right: 6, minWidth: 58, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  passwordToggleText: { color: colors.brand, fontSize: 12 },
   chip: { minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: colors.surface },
   chipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipText: { fontSize: 12, lineHeight: 15 },
