@@ -8,16 +8,21 @@ import { loadCollaborations, loadMatchRecommendations } from './curation';
 import { fetchQrProduct } from './api';
 import { friendlyError, issueQrListing, loadManagedQrProducts, loadSettlements, type SettlementEntry } from './platform';
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role } from './types';
+import { demoQrProducts } from './demoContent';
 
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const demoSettlements: SettlementEntry[] = [{ id: 'demo-settlement', orderId: 'QR-DEMO-20261030', grossAmount: 35000, creatorAmount: 28000, storeAmount: 3500, platformAmount: 3500, status: 'scheduled', scheduledFor: '2026-11-13', createdAt: '2026-10-30T06:00:00Z' }];
 
 async function fetchQrCatalog(demo?: boolean) {
   if (!demo) return { items: await loadManagedQrProducts(), warning: '' };
-  const sampleViews = [203, 158, 61];
-  const results = await Promise.allSettled(qrTokens.map((token, index) => fetchQrProduct(token).then(item => ({ ...item, viewCount: sampleViews[index] || 0 }))));
-  const items = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
-  return { items, warning: items.length === qrTokens.length ? '' : '일부 샘플 QR 상품을 불러오지 못했습니다.' };
+  const results = await Promise.allSettled(qrTokens.map(token => fetchQrProduct(token)));
+  const items = demoQrProducts.map((fallback, index) => {
+    const result = results[index];
+    return result?.status === 'fulfilled'
+      ? { ...fallback, ...result.value, viewCount: fallback.viewCount, qrUrl: fallback.qrUrl }
+      : fallback;
+  });
+  return { items, warning: '' };
 }
 
 export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEnabled, configured }: { onLogin: (email: string, password: string) => Promise<void>; onSignUp: () => void; onDemo: (role: Role) => void; onResetPassword: (email: string) => Promise<void>; demoEnabled: boolean; configured: boolean }) {

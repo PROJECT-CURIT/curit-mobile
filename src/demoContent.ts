@@ -1,5 +1,7 @@
 import type { CreatorProfileData } from './fullPlatform';
 import type { StoreOnboarding } from './platform';
+import { buildQrWebUrl } from './config';
+import type { QrProduct } from './types';
 
 export const demoCreatorProfile: CreatorProfileData = {
   userId: 'demo-creator',
@@ -42,3 +44,45 @@ export const demoStoreOnboarding: StoreOnboarding = {
   step: 5,
   complete: true,
 };
+
+export const demoQrProducts: QrProduct[] = [
+  {
+    id: 'demo-mug-white-gray',
+    token: 'demo-mug-white-gray',
+    productId: 'demo-mug-white-gray',
+    name: '머그컵 (화이트·그레이)',
+    price: 35000,
+    stock: 12,
+    viewCount: 203,
+    status: 'ACTIVE',
+    pickupMode: 'immediate',
+    artistName: '김서연',
+    qrUrl: buildQrWebUrl('demo-mug-white-gray'),
+  },
+  {
+    id: 'demo-bowl-set-2026',
+    token: 'demo-bowl-set-2026',
+    productId: 'demo-bowl-set-2026',
+    name: '볼 세트 (2개)',
+    price: 82000,
+    stock: 6,
+    viewCount: 158,
+    status: 'ACTIVE',
+    pickupMode: 'immediate',
+    artistName: '김서연',
+    qrUrl: buildQrWebUrl('demo-bowl-set-2026'),
+  },
+  {
+    id: 'demo-dessert-plate',
+    token: 'demo-dessert-plate',
+    productId: 'demo-dessert-plate',
+    name: '디저트 플레이트',
+    price: 55000,
+    stock: 8,
+    viewCount: 61,
+    status: 'ACTIVE',
+    pickupMode: 'immediate',
+    artistName: '김서연',
+    qrUrl: buildQrWebUrl('demo-dessert-plate'),
+  },
+];
