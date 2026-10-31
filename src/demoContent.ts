@@ -24,6 +24,22 @@ export function demoCollaboration(role: Role): CollaborationSummary {
   };
 }
 
+export function demoProposalCollaboration(role: Role): CollaborationSummary {
+  return {
+    ...demoCollaboration(role),
+    id: 'demo-proposal',
+    status: role === 'creator' ? 'approved' : 'proposed',
+    startsOn: '2026-11-07',
+    endsOn: '2027-02-05',
+    terms: {
+      initiatedBy: role,
+      message: role === 'creator'
+        ? '크리에이터가 추천 결과를 확인하고 매장에 협업을 제안했습니다.'
+        : '매장이 추천 결과를 확인하고 크리에이터에게 협업을 제안했습니다.',
+    },
+  };
+}
+
 export const demoCreatorProfile: CreatorProfileData = {
   userId: 'demo-creator',
   displayName: '김서연',

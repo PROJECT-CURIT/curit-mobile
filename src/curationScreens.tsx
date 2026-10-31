@@ -68,7 +68,7 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
     if (busy) return;
     if (demo) {
       setNotice('심사용 샘플 협업으로 이동합니다. 실제 계정에서는 제안이 서버에 저장됩니다.');
-      onProposalCreated('demo-collaboration');
+      onProposalCreated('demo-proposal');
       return;
     }
     setBusy(item.targetId); setNotice('');
@@ -149,7 +149,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
     try {
       if (demo) {
         setNotice('심사용 샘플 협업으로 이동합니다. 실제 계정에서는 제안이 서버에 저장됩니다.');
-        onProposalCreated('demo-collaboration');
+        onProposalCreated('demo-proposal');
         return;
       }
       if (item.collaborationId) {
@@ -268,7 +268,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, onBack, on
   return <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Header title={item.counterpartName} subtitle={`${item.projectTitle} · ${statusLabel[item.status]}`} back={onBack} />
     <ScrollView style={c.flex} contentContainerStyle={c.detailScroll} keyboardShouldPersistTaps="handled">
-      <View style={c.termCard}><View style={c.between}><CuritText weight="bold" style={c.recommendationTitle}>{item.projectTitle}</CuritText><Chip label={statusLabel[item.status]} /></View><CuritText style={c.muted}>{item.storeName} × {item.creatorName}</CuritText><View style={c.termGrid}><Term label="기간" value={item.startsOn && item.endsOn ? `${item.startsOn} ~ ${item.endsOn}` : '협의 중'} /><Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} /></View><CuritText style={c.flowHint}>제안 → 크리에이터 승인 → 매장 최종 확정 → QR 발급·전시</CuritText></View>
+      <View style={c.termCard}><View style={c.between}><CuritText weight="bold" style={c.recommendationTitle}>{item.projectTitle}</CuritText><Chip label={statusLabel[item.status]} /></View><CuritText style={c.muted}>{item.storeName} × {item.creatorName}</CuritText><View style={c.termGrid}><Term label="기간" value={item.startsOn && item.endsOn ? `${item.startsOn} ~ ${item.endsOn}` : '협의 중'} /><Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} /></View><CuritText style={c.flowHint}>{item.terms.initiatedBy === 'creator' ? '크리에이터 제안 → 매장 최종 확정 → QR 발급·전시' : '매장 제안 → 크리에이터 승인 → 매장 최종 확정 → QR 발급·전시'}</CuritText></View>
       <CuritText weight="bold" style={c.section}>전시 작품 · 수량</CuritText>
       {termsBusy && !collaborationItems.length ? <ActivityIndicator color={colors.brand} /> : collaborationItems.map(value => <View key={value.projectItemId} style={c.itemCard}>{value.imageUrl ? <Image source={{ uri: value.imageUrl }} style={c.itemImage} /> : <View style={[c.itemImage, c.itemPlaceholder]}><Icon name="management" color={colors.brand} /></View>}<View style={c.flex}><CuritText weight="semibold">{value.name}</CuritText><CuritText style={c.muted}>{value.price.toLocaleString()}원 · 재고 {value.stock}개</CuritText><CuritText style={value.creatorConfirmed ? c.brandText : c.time}>{value.creatorConfirmed ? '크리에이터 확인 완료' : '확인 전'}</CuritText></View><View style={c.quantity}><Pressable accessibilityLabel="수량 줄이기" accessibilityRole="button" disabled={role === 'creator'} style={c.quantityTap} onPress={() => setCollaborationItems(current => current.map(candidate => candidate.projectItemId === value.projectItemId ? { ...candidate, quantity: Math.max(1, candidate.quantity - 1), creatorConfirmed: false } : candidate))}><CuritText style={c.quantityButton}>−</CuritText></Pressable><CuritText weight="bold">{value.quantity}</CuritText><Pressable accessibilityLabel="수량 늘리기" accessibilityRole="button" disabled={role === 'creator'} style={c.quantityTap} onPress={() => setCollaborationItems(current => current.map(candidate => candidate.projectItemId === value.projectItemId ? { ...candidate, quantity: Math.min(candidate.stock, candidate.quantity + 1), creatorConfirmed: false } : candidate))}><CuritText style={c.quantityButton}>＋</CuritText></Pressable></View></View>)}
       <CuritText weight="bold" style={c.section}>배치 · 운영 조건</CuritText>
