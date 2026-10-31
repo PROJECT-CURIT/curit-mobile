@@ -229,6 +229,7 @@ function mapManagedQrProduct(item: Record<string, unknown>): QrProduct {
     name: String(item.name || '등록 상품'),
     price: Number(item.price || 0),
     stock: Number(item.stock || 0),
+    viewCount: Number(item.viewCount || 0),
     status: ['ACTIVE', 'PAUSED', 'SOLD_OUT'].includes(String(item.status)) ? item.status as QrProduct['status'] : 'PAUSED',
     pickupMode: String(item.pickupMode || 'immediate'),
     imageUrl: typeof item.imageUrl === 'string' ? item.imageUrl : undefined,

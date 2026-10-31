@@ -29,6 +29,7 @@ export interface QrProduct {
   name: string;
   price: number;
   stock: number;
+  viewCount?: number;
   status: 'ACTIVE' | 'PAUSED' | 'SOLD_OUT';
   pickupMode: string;
   imageUrl?: string;
