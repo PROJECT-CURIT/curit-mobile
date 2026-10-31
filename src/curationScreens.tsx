@@ -15,6 +15,7 @@ import {
 } from './curation';
 import { SocialFeedSection } from './fullPrototypeScreens';
 import { images } from './data';
+import { demoCollaboration } from './demoContent';
 import { friendlyError } from './platform';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
@@ -24,17 +25,8 @@ const statusLabel: Record<CollaborationSummary['status'], string> = {
   proposed: '승인 대기', negotiating: '조건 조율 중', approved: '매장 최종 확인', active: '전시·판매 중', completed: '협업 완료', cancelled: '취소',
 };
 
-function demoCollaborations(role: Role): CollaborationSummary[] {
-  return [{
-    id: 'demo-collaboration', projectId: 'demo-project', storeId: 'demo-store', creatorId: 'demo-creator',
-    projectTitle: '흙의 기억', storeName: '아늑한 서울', creatorName: '김서연',
-    counterpartName: role === 'creator' ? '아늑한 서울' : '김서연', status: 'active', startsOn: '2026-10-01', endsOn: '2026-12-31',
-    creatorShare: 80, storeShare: 10, platformShare: 10, terms: { message: '공간 DNA 추천으로 시작한 협업입니다.' }, updatedAt: new Date().toISOString(),
-  }];
-}
-
 export function ChatHubScreen({ role, demo, onOpenCurator, onOpenCollaboration }: { role: Role; demo?: boolean; onOpenCurator: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
-  const [items, setItems] = useState<CollaborationSummary[]>(demo ? demoCollaborations(role) : []);
+  const [items, setItems] = useState<CollaborationSummary[]>(demo ? [demoCollaboration(role)] : []);
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -73,7 +65,12 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
   }, [demo, role]);
   const visible = items.filter(item => [item.title, item.subtitle, item.description, ...item.tags].join(' ').toLocaleLowerCase('ko-KR').includes(query.trim().toLocaleLowerCase('ko-KR')));
   const propose = async (item: MatchRecommendation) => {
-    if (demo || busy) { setNotice('데모 모드에서는 제안을 저장하지 않습니다. 서버 계정으로 로그인해 주세요.'); return; }
+    if (busy) return;
+    if (demo) {
+      setNotice('심사용 샘플 협업으로 이동합니다. 실제 계정에서는 제안이 서버에 저장됩니다.');
+      onProposalCreated('demo-collaboration');
+      return;
+    }
     setBusy(item.targetId); setNotice('');
     try {
       if (item.collaborationId) { setNotice('이미 진행 중인 협업으로 이동합니다.'); onProposalCreated(item.collaborationId); return; }
@@ -150,7 +147,11 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
     if (proposalTarget) return;
     setProposalTarget(item.targetId); setNotice('');
     try {
-      if (demo) { setNotice('데모 모드에서는 제안 화면만 확인할 수 있습니다. 서버 계정으로 로그인하면 실제 제안이 저장됩니다.'); return; }
+      if (demo) {
+        setNotice('심사용 샘플 협업으로 이동합니다. 실제 계정에서는 제안이 서버에 저장됩니다.');
+        onProposalCreated('demo-collaboration');
+        return;
+      }
       if (item.collaborationId) {
         setNotice('이미 진행 중인 협업으로 이동합니다.');
         onProposalCreated(item.collaborationId);
@@ -193,7 +194,7 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
       <View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
-      <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy || item.targetId.startsWith('demo-')} onPress={onPropose} />
+      <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy} onPress={onPropose} />
     </View>
   </View>;
 }

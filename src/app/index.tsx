@@ -13,7 +13,7 @@ import { isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
 import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, QrProduct, Role, Session, TabKey } from '../types';
-import { demoStoreOnboarding } from '../demoContent';
+import { demoCollaboration, demoStoreOnboarding } from '../demoContent';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
 
@@ -179,8 +179,13 @@ export default function AppIndex() {
     if (!session) return;
     setTab('chat');
     setSubview(null);
+    if (session.demo) {
+      setSelectedCollaboration(demoCollaboration(session.role));
+      setSubview('collaboration');
+      return;
+    }
     try {
-      const items = session.demo ? [] : await loadCollaborations(session.role);
+      const items = await loadCollaborations(session.role);
       const item = items.find(candidate => candidate.id === id);
       if (!item) return;
       setSelectedCollaboration(item);

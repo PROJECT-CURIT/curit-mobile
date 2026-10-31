@@ -1,7 +1,28 @@
 import type { CreatorProfileData } from './fullPlatform';
 import type { StoreOnboarding } from './platform';
 import { buildQrWebUrl } from './config';
-import type { QrProduct } from './types';
+import type { CollaborationSummary, QrProduct, Role } from './types';
+
+export function demoCollaboration(role: Role): CollaborationSummary {
+  return {
+    id: 'demo-collaboration',
+    projectId: 'demo-project',
+    storeId: 'demo-store',
+    creatorId: 'demo-creator',
+    projectTitle: '흙의 기억',
+    storeName: '아늑한 서울',
+    creatorName: '김서연',
+    counterpartName: role === 'creator' ? '아늑한 서울' : '김서연',
+    status: 'active',
+    startsOn: '2026-10-01',
+    endsOn: '2026-12-31',
+    creatorShare: 80,
+    storeShare: 10,
+    platformShare: 10,
+    terms: { message: '공간 DNA 추천으로 시작한 협업입니다.' },
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 export const demoCreatorProfile: CreatorProfileData = {
   userId: 'demo-creator',
