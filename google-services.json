@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "191587911213",
+    "project_id": "curi-t",
+    "storage_bucket": "curi-t.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:191587911213:android:a7b92f719259ed9a21daa4",
+        "android_client_info": {
+          "package_name": "kr.curit.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-BmjHJ1Cw6B69atsKtIB8ZbSA6rYuMYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

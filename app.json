@@ -7,17 +7,13 @@
     "scheme": "curit",
     "userInterfaceStyle": "light",
     "icon": "./assets/images/icon.png",
-    "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F7F8F4"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "kr.curit.mobile"
     },
     "android": {
       "package": "kr.curit.mobile",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#4A6338"
@@ -31,6 +27,15 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F8F4"
+        }
+      ],
       [
         "expo-notifications",
         {
