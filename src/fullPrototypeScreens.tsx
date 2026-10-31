@@ -34,7 +34,7 @@ import {
 } from './platform';
 import type { QrProduct } from './types';
 import { registerNativePush } from './pushNotifications';
-import { demoCreatorProfile, demoStoreOnboarding } from './demoContent';
+import { demoCreatorProfile, demoSocialPosts, demoStoreOnboarding } from './demoContent';
 
 const categoryOptions = ['도예·세라믹', '판화·프린트', '패브릭·섬유', '회화', '조각', '사진', '드로잉', '기타'];
 const regionOptions = ['서울', '경기', '인천', '강원', '대전·세종·충청', '광주·전라', '대구·경북', '부산·울산·경남', '제주', '전국 / 온라인'];
@@ -263,22 +263,43 @@ export function NotificationsScreen({ onBack, demo = false }: { onBack: () => vo
   return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.scroll}><View style={f.infoBanner}><CuritText weight="semibold">중요한 협업·주문 소식을 놓치지 마세요.</CuritText><CuritText style={f.description}>앱이 닫혀 있어도 새 협업 상태와 QR 주문·취소 결과를 알려드립니다.</CuritText><Button label={pushSaving ? '연결 중…' : '이 기기 푸시 알림 연결'} variant="secondary" disabled={pushSaving} onPress={() => { void connectPush(); }} /></View>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
 }
 
-export function SocialFeedSection({ canPost = false }: { canPost?: boolean }) {
-  const [items, setItems] = useState<SocialPost[]>([]);
-  const [loading, setLoading] = useState(true);
+export function SocialFeedSection({ canPost = false, demo = false }: { canPost?: boolean; demo?: boolean }) {
+  const [items, setItems] = useState<SocialPost[]>(demo ? demoSocialPosts : []);
+  const [loading, setLoading] = useState(!demo);
   const [compose, setCompose] = useState('');
   const [postImage, setPostImage] = useState('');
   const [commentFor, setCommentFor] = useState('');
   const [comment, setComment] = useState('');
   const [notice, setNotice] = useState('');
-  const load = async () => { setLoading(true); try { setItems(await loadSocialFeed()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
+  const load = async () => { if (demo) return; setLoading(true); try { setItems(await loadSocialFeed()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
   useEffect(() => {
+    if (demo) return;
     let active = true;
     void loadSocialFeed().then(value => { if (active) setItems(value); }).catch(error => { if (active) setNotice(friendlyError(error)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [demo]);
   const choosePostImage = async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 }); const asset = result.canceled ? undefined : result.assets[0]; if (asset?.uri) setPostImage(asset.uri); };
-  const create = async () => { if (!compose.trim()) return; try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); } catch (error) { setNotice(friendlyError(error)); } };
+  const create = async () => {
+    if (!compose.trim()) return;
+    if (demo) {
+      setItems(current => [{ id: `demo-own-${Date.now()}`, creatorId: 'demo-creator', creatorName: '김서연', handle: 'soyeon_craft', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
+      setCompose(''); setPostImage(''); setNotice('심사용 데모 피드에 소식을 등록했습니다.'); return;
+    }
+    try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); } catch (error) { setNotice(friendlyError(error)); }
+  };
+  const toggleFollow = async (item: SocialPost) => {
+    if (demo) { setItems(current => current.map(value => value.creatorId === item.creatorId ? { ...value, followed: !item.followed } : value)); return; }
+    await toggleCreatorFollow(item.creatorId, item.followed); await load();
+  };
+  const toggleLike = async (item: SocialPost) => {
+    if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, liked: !item.liked, likes: Math.max(0, item.likes + (item.liked ? -1 : 1)) } : value)); return; }
+    await togglePostLike(item.id, item.liked); await load();
+  };
+  const addComment = async (item: SocialPost) => {
+    if (!comment.trim()) return;
+    if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, comments: value.comments + 1 } : value)); setComment(''); setCommentFor(''); setNotice('심사용 데모에 댓글 반응을 반영했습니다.'); return; }
+    await addPostComment(item.id, comment); setComment(''); setCommentFor(''); await load();
+  };
   if (loading) return <ActivityIndicator color={colors.brand} style={f.loader} />;
   return <View style={f.feed}>
     {canPost ? <View style={f.compose}>
@@ -290,18 +311,18 @@ export function SocialFeedSection({ canPost = false }: { canPost?: boolean }) {
       <View style={f.row}>
         {item.avatarUrl ? <Image source={{ uri: item.avatarUrl }} style={f.avatarSmall} /> : <View style={f.avatarSmall}><CuritText weight="bold">{item.creatorName[0]}</CuritText></View>}
         <View style={f.flex}><CuritText weight="semibold">{item.creatorName}</CuritText><CuritText style={f.hint}>@{item.handle || 'creator'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</CuritText></View>
-        {!item.own ? <Chip label={item.followed ? '팔로잉' : '팔로우'} active={item.followed} onPress={() => { void toggleCreatorFollow(item.creatorId, item.followed).then(load); }} /> : <Chip label="내 소식" />}
+        {!item.own ? <Chip label={item.followed ? '팔로잉' : '팔로우'} active={item.followed} onPress={() => { void toggleFollow(item).catch(error => setNotice(friendlyError(error))); }} /> : <Chip label="내 소식" />}
       </View>
       <CuritText style={f.longText}>{item.content}</CuritText>
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.postImage} /> : null}
       <View style={f.socialActions}>
-        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void togglePostLike(item.id, item.liked).then(load); }}><CuritText style={item.liked ? f.brand : f.muted}>♥ {item.likes}</CuritText></Pressable>
+        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void toggleLike(item).catch(error => setNotice(friendlyError(error))); }}><CuritText style={item.liked ? f.brand : f.muted}>♥ {item.likes}</CuritText></Pressable>
         <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => setCommentFor(commentFor === item.id ? '' : item.id)}><CuritText style={f.muted}>댓글 {item.comments}</CuritText></Pressable>
         <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void Share.share({ message: item.content }); }}><CuritText style={f.muted}>공유</CuritText></Pressable>
       </View>
       {commentFor === item.id ? <View style={f.commentRow}>
         <TextInput value={comment} onChangeText={setComment} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} />
-        <Pressable accessibilityRole="button" disabled={!comment.trim()} style={f.commentSubmit} onPress={() => { if (comment.trim()) void addPostComment(item.id, comment).then(() => { setComment(''); setCommentFor(''); return load(); }); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
+        <Pressable accessibilityRole="button" disabled={!comment.trim()} style={f.commentSubmit} onPress={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
       </View> : null}
     </View>) : <Empty title="등록된 소식이 없습니다" description="크리에이터의 새 작품과 전시 소식이 여기에 표시됩니다." />}
     {notice ? <Notice text={notice} /> : null}

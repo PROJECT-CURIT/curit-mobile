@@ -13,7 +13,7 @@ import { isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
 import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, QrProduct, Role, Session, TabKey } from '../types';
-import { demoCollaboration, demoProposalCollaboration, demoStoreOnboarding } from '../demoContent';
+import { demoCollaboration, demoIncomingCollaboration, demoProposalCollaboration, demoStoreOnboarding } from '../demoContent';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
 
@@ -28,6 +28,7 @@ export default function AppIndex() {
   const [tab, setTab] = useState<TabKey>('home');
   const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-preferences' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
+  const [demoCollaborations, setDemoCollaborations] = useState<CollaborationSummary[]>([]);
   const [creatorProducts, setCreatorProducts] = useState<ProjectProduct[]>(initialCreatorProducts);
   const [creatorProjectId, setCreatorProjectId] = useState('');
   const [creatorProject, setCreatorProject] = useState<CreatorProjectDetails>({ id: 'demo-project', title: '흙의 기억', story: '흙이 일상에 머무는 순간을 담았습니다.', concept: '따뜻한 생활 도예 컬렉션', region: '서울', purpose: '작품 전시 및 판매', status: 'recruiting', coverPath: '', coverUrl: '', creatorSharePercent: 80 });
@@ -100,6 +101,7 @@ export default function AppIndex() {
   const demoLogin = (role: Role) => {
     const next = { userId: `demo-${role}`, email: `demo-${role}@curit.local`, role, displayName: role === 'creator' ? '김서연' : '아늑한 서울', demo: true } satisfies Session;
     if (role === 'store') setStoreOnboarding(demoStoreOnboarding);
+    setDemoCollaborations([demoIncomingCollaboration(role), demoCollaboration(role)]);
     setSession(next); setTab('home'); setAuthView('login');
   };
 
@@ -126,7 +128,7 @@ export default function AppIndex() {
   const logout = async () => {
     const wasDemo = session?.demo;
     if (!wasDemo && isSupabaseConfigured) await deactivateNativePush().catch(() => undefined);
-    setSession(null); setPendingStoreSession(null); setTab('home'); setSubview(null);
+    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setTab('home'); setSubview(null);
     if (!wasDemo && isSupabaseConfigured) await signOut();
   };
 
@@ -180,7 +182,11 @@ export default function AppIndex() {
     setTab('chat');
     setSubview(null);
     if (session.demo) {
-      setSelectedCollaboration(id === 'demo-proposal' ? demoProposalCollaboration(session.role) : demoCollaboration(session.role));
+      const next = id === 'demo-proposal'
+        ? demoProposalCollaboration(session.role)
+        : demoCollaborations.find(item => item.id === id) ?? demoCollaboration(session.role);
+      if (id === 'demo-proposal') setDemoCollaborations(current => [next, ...current.filter(item => item.id !== next.id)]);
+      setSelectedCollaboration(next);
       setSubview('collaboration');
       return;
     }
@@ -220,11 +226,15 @@ export default function AppIndex() {
   if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen project={creatorProject} products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen project={creatorProject} products={creatorProducts} onSaveProject={saveProject} onSaveProduct={saveCreatorProduct} onUpdateProduct={saveCreatorProductUpdate} onDeleteProduct={removeCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
   if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={id => { void openCollaboration(id); }} /></ScreenFrame>;
-  if (subview === 'collaboration' && selectedCollaboration) return <ScreenFrame><CollaborationDetailScreen role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo} onBack={() => setSubview(null)} onChanged={() => setSubview(null)} /></ScreenFrame>;
+  if (subview === 'collaboration' && selectedCollaboration) return <ScreenFrame><CollaborationDetailScreen role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo} onBack={() => setSubview(null)} onChanged={() => setSubview(null)} onDemoStatusChanged={status => {
+    const updated = { ...selectedCollaboration, status, updatedAt: new Date().toISOString() };
+    setSelectedCollaboration(updated);
+    setDemoCollaborations(current => current.map(item => item.id === updated.id ? updated : item));
+  }} /></ScreenFrame>;
 
   const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onMove={target => setTab(target as TabKey)} />
     : tab === 'discover' ? <MatchingDiscoverScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onProposalCreated={id => { void openCollaboration(id); }} />
-    : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
+    : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} demoItems={session.demo ? demoCollaborations : undefined} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
     : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenPickup={() => setSubview('pickup')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
     : <MyScreen role={session.role} displayName={session.displayName} demo={session.demo} onLogout={logout} onOpenProject={() => setSubview('creator-project')} onOpenProfile={() => setSubview('creator-profile')} onOpenDna={() => setSubview('creator-dna')} onOpenStore={() => setSubview('store-profile')} onOpenPreferences={() => setSubview('store-preferences')} onOpenNotifications={() => setSubview('notifications')} onOpenSettlements={() => setSubview('settlements')} onOpenAccount={() => setSubview('account')} />;
 

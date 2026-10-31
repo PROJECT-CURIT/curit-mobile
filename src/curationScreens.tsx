@@ -15,7 +15,7 @@ import {
 } from './curation';
 import { SocialFeedSection } from './fullPrototypeScreens';
 import { images } from './data';
-import { demoCollaboration } from './demoContent';
+import { demoCollaboration, demoIncomingCollaboration, nextDemoCollaborationStatus } from './demoContent';
 import { friendlyError } from './platform';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
@@ -25,13 +25,14 @@ const statusLabel: Record<CollaborationSummary['status'], string> = {
   proposed: '승인 대기', negotiating: '조건 조율 중', approved: '매장 최종 확인', active: '전시·판매 중', completed: '협업 완료', cancelled: '취소',
 };
 
-export function ChatHubScreen({ role, demo, onOpenCurator, onOpenCollaboration }: { role: Role; demo?: boolean; onOpenCurator: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
-  const [items, setItems] = useState<CollaborationSummary[]>(demo ? [demoCollaboration(role)] : []);
+export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenCollaboration }: { role: Role; demo?: boolean; demoItems?: CollaborationSummary[]; onOpenCurator: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
+  const [loadedItems, setLoadedItems] = useState<CollaborationSummary[]>([]);
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState('');
+  const items = demo ? (demoItems ?? [demoIncomingCollaboration(role), demoCollaboration(role)]) : loadedItems;
   useEffect(() => {
     if (demo) return;
-    void loadCollaborations(role).then(setItems).catch(caught => setError(friendlyError(caught))).finally(() => setLoading(false));
+    void loadCollaborations(role).then(setLoadedItems).catch(caught => setError(friendlyError(caught))).finally(() => setLoading(false));
   }, [demo, role]);
   return <View style={c.flex}>
     <Header title="채팅" />
@@ -83,7 +84,7 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
     <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
     <ScrollView contentContainerStyle={c.discoverScroll} keyboardShouldPersistTaps="handled">
       <View style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
-      {section === 'news' || section === 'creators' ? (demo ? <Empty title="서버 계정에서 이용할 수 있어요" description="크리에이터 소식 작성·팔로우·좋아요·댓글은 실제 계정 데이터로 저장됩니다." /> : <SocialFeedSection canPost={role === 'creator'} />) : <>
+      {section === 'news' || section === 'creators' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} /> : <>
       <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
       <Pressable style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">추천 점수는 이렇게 계산해요</CuritText><CuritText style={c.pinCaption}>취향뿐 아니라 지역·예산·설치 구역·판매 재고를 함께 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
@@ -209,7 +210,7 @@ function collaborationRecommendationLabel(status?: MatchRecommendation['collabor
   return '진행 중';
 }
 
-export function CollaborationDetailScreen({ role, userId, item, demo, onBack, onChanged }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; onBack: () => void; onChanged: () => void }) {
+export function CollaborationDetailScreen({ role, userId, item, demo, onBack, onChanged, onDemoStatusChanged }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; onBack: () => void; onChanged: () => void; onDemoStatusChanged?: (status: CollaborationSummary['status']) => void }) {
   const [messages, setMessages] = useState<CollaborationMessage[]>(demo ? [{ id: 'demo-message', collaborationId: item.id, senderId: role === 'creator' ? 'demo-store' : 'demo-creator', content: '전시 조건과 상품 수량을 확인했습니다.', createdAt: new Date().toISOString() }] : []);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(!demo);
@@ -218,6 +219,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, onBack, on
   const [zone, setZone] = useState(String(item.terms.installationZone || '선반'));
   const [termNote, setTermNote] = useState(String(item.terms.note || ''));
   const [termsBusy, setTermsBusy] = useState(!demo);
+  const [currentStatus, setCurrentStatus] = useState(item.status);
   const refreshMessages = async () => {
     if (demo) return;
     setBusy(true);
@@ -252,23 +254,32 @@ export function CollaborationDetailScreen({ role, userId, item, demo, onBack, on
     try { await sendCollaborationMessage(item.id, input); setInput(''); await refreshMessages(); } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(false); }
   };
   const transition = async (action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete') => {
-    if (demo || busy) { setNotice('데모 모드에서는 상태를 변경하지 않습니다.'); return; }
+    if (busy) return;
+    if (demo) {
+      const nextStatus = nextDemoCollaborationStatus(currentStatus, action, role);
+      if (nextStatus === currentStatus) { setNotice('현재 역할과 협업 단계에서는 이 상태로 변경할 수 없습니다.'); return; }
+      setCurrentStatus(nextStatus);
+      onDemoStatusChanged?.(nextStatus);
+      setInput('');
+      setNotice(`심사용 데모 상태를 '${statusLabel[nextStatus]}'으로 변경했습니다.`);
+      return;
+    }
     setBusy(true); setNotice('');
     try { await transitionCollaboration(item.id, action, input); setInput(''); setNotice('협업 상태를 변경했습니다.'); onChanged(); } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(false); }
   };
   const actions = useMemo(() => {
     const result: { action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete'; label: string; primary?: boolean }[] = [];
-    if (role === 'creator' && ['proposed', 'negotiating'].includes(item.status)) result.push({ action: 'accept', label: '조건 승인', primary: true });
-    if (role === 'store' && item.status === 'approved') result.push({ action: 'confirm', label: '매장 최종 확정', primary: true });
-    if (['proposed', 'negotiating', 'approved'].includes(item.status)) result.push({ action: 'counter', label: '조건 수정 요청' });
-    if (item.status === 'active') result.push({ action: 'complete', label: '전시 종료 처리', primary: true });
-    if (!['completed', 'cancelled'].includes(item.status)) result.push({ action: 'cancel', label: '협업 취소' });
+    if (role === 'creator' && ['proposed', 'negotiating'].includes(currentStatus)) result.push({ action: 'accept', label: '조건 승인', primary: true });
+    if (role === 'store' && currentStatus === 'approved') result.push({ action: 'confirm', label: '매장 최종 확정', primary: true });
+    if (['proposed', 'negotiating', 'approved'].includes(currentStatus)) result.push({ action: 'counter', label: '조건 수정 요청' });
+    if (currentStatus === 'active') result.push({ action: 'complete', label: '전시 종료 처리', primary: true });
+    if (!['completed', 'cancelled'].includes(currentStatus)) result.push({ action: 'cancel', label: '협업 취소' });
     return result;
-  }, [item.status, role]);
+  }, [currentStatus, role]);
   return <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Header title={item.counterpartName} subtitle={`${item.projectTitle} · ${statusLabel[item.status]}`} back={onBack} />
+    <Header title={item.counterpartName} subtitle={`${item.projectTitle} · ${statusLabel[currentStatus]}`} back={onBack} />
     <ScrollView style={c.flex} contentContainerStyle={c.detailScroll} keyboardShouldPersistTaps="handled">
-      <View style={c.termCard}><View style={c.between}><CuritText weight="bold" style={c.recommendationTitle}>{item.projectTitle}</CuritText><Chip label={statusLabel[item.status]} /></View><CuritText style={c.muted}>{item.storeName} × {item.creatorName}</CuritText><View style={c.termGrid}><Term label="기간" value={item.startsOn && item.endsOn ? `${item.startsOn} ~ ${item.endsOn}` : '협의 중'} /><Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} /></View><CuritText style={c.flowHint}>{item.terms.initiatedBy === 'creator' ? '크리에이터 제안 → 매장 최종 확정 → QR 발급·전시' : '매장 제안 → 크리에이터 승인 → 매장 최종 확정 → QR 발급·전시'}</CuritText></View>
+      <View style={c.termCard}><View style={c.between}><CuritText weight="bold" style={c.recommendationTitle}>{item.projectTitle}</CuritText><Chip label={statusLabel[currentStatus]} /></View><CuritText style={c.muted}>{item.storeName} × {item.creatorName}</CuritText><View style={c.termGrid}><Term label="기간" value={item.startsOn && item.endsOn ? `${item.startsOn} ~ ${item.endsOn}` : '협의 중'} /><Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} /></View><CuritText style={c.flowHint}>{item.terms.initiatedBy === 'creator' ? '크리에이터 제안 → 매장 최종 확정 → QR 발급·전시' : '매장 제안 → 크리에이터 승인 → 매장 최종 확정 → QR 발급·전시'}</CuritText></View>
       <CuritText weight="bold" style={c.section}>전시 작품 · 수량</CuritText>
       {termsBusy && !collaborationItems.length ? <ActivityIndicator color={colors.brand} /> : collaborationItems.map(value => <View key={value.projectItemId} style={c.itemCard}>{value.imageUrl ? <Image source={{ uri: value.imageUrl }} style={c.itemImage} /> : <View style={[c.itemImage, c.itemPlaceholder]}><Icon name="management" color={colors.brand} /></View>}<View style={c.flex}><CuritText weight="semibold">{value.name}</CuritText><CuritText style={c.muted}>{value.price.toLocaleString()}원 · 재고 {value.stock}개</CuritText><CuritText style={value.creatorConfirmed ? c.brandText : c.time}>{value.creatorConfirmed ? '크리에이터 확인 완료' : '확인 전'}</CuritText></View><View style={c.quantity}><Pressable accessibilityLabel="수량 줄이기" accessibilityRole="button" disabled={role === 'creator'} style={c.quantityTap} onPress={() => setCollaborationItems(current => current.map(candidate => candidate.projectItemId === value.projectItemId ? { ...candidate, quantity: Math.max(1, candidate.quantity - 1), creatorConfirmed: false } : candidate))}><CuritText style={c.quantityButton}>−</CuritText></Pressable><CuritText weight="bold">{value.quantity}</CuritText><Pressable accessibilityLabel="수량 늘리기" accessibilityRole="button" disabled={role === 'creator'} style={c.quantityTap} onPress={() => setCollaborationItems(current => current.map(candidate => candidate.projectItemId === value.projectItemId ? { ...candidate, quantity: Math.min(candidate.stock, candidate.quantity + 1), creatorConfirmed: false } : candidate))}><CuritText style={c.quantityButton}>＋</CuritText></Pressable></View></View>)}
       <CuritText weight="bold" style={c.section}>배치 · 운영 조건</CuritText>

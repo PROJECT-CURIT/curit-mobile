@@ -1,4 +1,4 @@
-import type { CreatorProfileData } from './fullPlatform';
+import type { CreatorProfileData, SocialPost } from './fullPlatform';
 import type { StoreOnboarding } from './platform';
 import { buildQrWebUrl } from './config';
 import type { CollaborationSummary, QrProduct, Role } from './types';
@@ -39,6 +39,49 @@ export function demoProposalCollaboration(role: Role): CollaborationSummary {
     },
   };
 }
+
+export function demoIncomingCollaboration(role: Role): CollaborationSummary {
+  const initiatedBy: Role = role === 'creator' ? 'store' : 'creator';
+  return {
+    ...demoCollaboration(role),
+    id: 'demo-incoming',
+    status: role === 'creator' ? 'proposed' : 'approved',
+    startsOn: '2026-11-07',
+    endsOn: '2027-02-05',
+    terms: {
+      initiatedBy,
+      message: role === 'creator'
+        ? '아늑한 서울이 작품 구성과 전시 조건을 확인해 달라고 요청했습니다.'
+        : '김서연 작가가 추천 결과를 확인하고 매장에 협업을 제안했습니다.',
+    },
+  };
+}
+
+export function nextDemoCollaborationStatus(
+  status: CollaborationSummary['status'],
+  action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete',
+  role: Role,
+): CollaborationSummary['status'] {
+  if (action === 'accept' && role === 'creator' && ['proposed', 'negotiating'].includes(status)) return 'approved';
+  if (action === 'confirm' && role === 'store' && status === 'approved') return 'active';
+  if (action === 'counter' && ['proposed', 'negotiating', 'approved'].includes(status)) return 'negotiating';
+  if (action === 'cancel' && !['completed', 'cancelled'].includes(status)) return 'cancelled';
+  if (action === 'complete' && status === 'active') return 'completed';
+  return status;
+}
+
+export const demoSocialPosts: SocialPost[] = [
+  {
+    id: 'demo-post-season', creatorId: 'demo-creator-season', creatorName: '김서연', handle: 'soyeon_craft', avatarUrl: '',
+    content: '10월 시즌 전시 준비를 마쳤어요. 우드톤 공간에 어울리는 따뜻한 생활 도예 작품을 소개합니다.', imageUrl: '',
+    likes: 64, comments: 12, liked: false, followed: true, own: false, createdAt: '2026-10-30T09:00:00.000Z',
+  },
+  {
+    id: 'demo-post-print', creatorId: 'demo-creator-print', creatorName: '이하늘', handle: 'haneul_print', avatarUrl: '',
+    content: '도시의 새벽빛을 담은 프린트 시리즈가 새로운 카페 공간에서 전시를 시작합니다.', imageUrl: '',
+    likes: 41, comments: 7, liked: false, followed: false, own: false, createdAt: '2026-10-28T12:30:00.000Z',
+  },
+];
 
 export const demoCreatorProfile: CreatorProfileData = {
   userId: 'demo-creator',
