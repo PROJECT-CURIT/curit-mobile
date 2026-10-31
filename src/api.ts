@@ -1,4 +1,4 @@
-import { buildQrApiUrl, config } from './config';
+import { buildQrApiUrl, buildQrWebUrl, config } from './config';
 import type { QrProduct } from './types';
 
 type JsonRecord = Record<string, unknown>;
@@ -19,6 +19,7 @@ export function normalizeQrProduct(token: string, payload: JsonRecord): QrProduc
     pickupMode: String(product.pickupMode ?? product.fulfillmentType ?? '매장 즉시 수령'),
     imageUrl: typeof product.image === 'string' ? product.image : typeof product.imageUrl === 'string' ? product.imageUrl : undefined,
     artistName: typeof product.artist === 'string' ? product.artist : typeof product.artistName === 'string' ? product.artistName : undefined,
+    qrUrl: buildQrWebUrl(token),
   };
 }
 
