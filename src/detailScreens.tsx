@@ -232,7 +232,7 @@ function ProductType({ active, title, caption, onPress }: { active: boolean; tit
   return <Pressable style={[d.typeCard, active && d.typeCardActive]} onPress={onPress}><CuritText weight="semibold" style={active ? d.status : undefined}>{title}</CuritText><CuritText style={d.hint}>{caption}</CuritText></Pressable>;
 }
 
-export function StoreSignupScreen({ initial, onBack, onComplete }: { initial?: StoreOnboarding | null; onBack: () => void; onComplete: (storeName: string) => void }) {
+export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }: { initial?: StoreOnboarding | null; onBack: () => void; onComplete: (storeName: string) => void; demo?: boolean }) {
   const [step, setStep] = useState(initial?.step ?? 1);
   const [introOpen, setIntroOpen] = useState(true);
   const [audienceOpen, setAudienceOpen] = useState(false);
@@ -281,10 +281,10 @@ export function StoreSignupScreen({ initial, onBack, onComplete }: { initial?: S
     setError('');
     try {
       if (step === 5) {
-        await saveStoreOnboarding(payload(5, true));
+        if (!demo) await saveStoreOnboarding(payload(5, true));
         onComplete(name.trim());
       } else {
-        await saveStoreOnboarding(payload(step + 1));
+        if (!demo) await saveStoreOnboarding(payload(step + 1));
         setStep(value => value + 1);
       }
     } catch (caught) {
@@ -302,7 +302,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete }: { initial?: S
     setBusy(true);
     setError('');
     try {
-      const path = await uploadMedia(asset.uri, 'store', asset.mimeType);
+      const path = demo ? asset.uri : await uploadMedia(asset.uri, 'store', asset.mimeType);
       setPhotos(current => [...current, { uri: asset.uri, path }]);
     } catch (caught) {
       setError(friendlyError(caught));

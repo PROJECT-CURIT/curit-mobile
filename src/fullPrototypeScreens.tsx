@@ -34,6 +34,7 @@ import {
 } from './platform';
 import type { QrProduct } from './types';
 import { registerNativePush } from './pushNotifications';
+import { demoCreatorProfile, demoStoreOnboarding } from './demoContent';
 
 const categoryOptions = ['도예·세라믹', '판화·프린트', '패브릭·섬유', '회화', '조각', '사진', '드로잉', '기타'];
 const regionOptions = ['서울', '경기', '인천', '강원', '대전·세종·충청', '광주·전라', '대구·경북', '부산·울산·경남', '제주', '전국 / 온라인'];
@@ -50,7 +51,7 @@ function LoadingScreen({ title, onBack }: { title: string; onBack: () => void })
   return <View style={f.flex}><Header title={title} back={onBack} /><ActivityIndicator color={colors.brand} style={f.loader} /></View>;
 }
 
-export function CreatorDnaScreen({ onBack, onNext }: { onBack: () => void; onNext?: () => void }) {
+export function CreatorDnaScreen({ onBack, onNext, demo = false }: { onBack: () => void; onNext?: () => void; demo?: boolean }) {
   const [profile, setProfile] = useState<CreatorProfileData | null>(null);
   const [moods, setMoods] = useState<string[]>([]);
   const [colorsValue, setColors] = useState<string[]>([]);
@@ -59,11 +60,11 @@ export function CreatorDnaScreen({ onBack, onNext }: { onBack: () => void; onNex
   const [conditions, setConditions] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { void loadCreatorProfile().then(value => { setProfile(value); setMoods(value.dnaMoods); setColors(value.dnaColors); setSpaces(value.preferredSpaces); setGoals(value.collaborationGoals); setConditions(value.installConditions); }).catch(error => setNotice(friendlyError(error))); }, []);
+  useEffect(() => { const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile(); void request.then(value => { setProfile(value); setMoods(value.dnaMoods); setColors(value.dnaColors); setSpaces(value.preferredSpaces); setGoals(value.collaborationGoals); setConditions(value.installConditions); }).catch(error => setNotice(friendlyError(error))); }, [demo]);
   const save = async () => {
     if (!moods.length || !colorsValue.length || !spaces.length || !goals.length) { setNotice('작품 취향과 협업 방향을 모두 선택해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { await saveCreatorDna({ dnaMoods: moods, dnaColors: colorsValue, preferredSpaces: spaces, collaborationGoals: goals, installConditions: conditions }); onNext?.(); if (!onNext) setNotice('크리에이터 DNA를 저장했습니다.'); }
+    try { if (!demo) await saveCreatorDna({ dnaMoods: moods, dnaColors: colorsValue, preferredSpaces: spaces, collaborationGoals: goals, installConditions: conditions }); onNext?.(); if (!onNext) setNotice(demo ? '심사용 샘플에서 변경 내용을 확인했습니다.' : '크리에이터 DNA를 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title="크리에이터 DNA" onBack={onBack} />;
@@ -84,12 +85,12 @@ export function CreatorDnaScreen({ onBack, onNext }: { onBack: () => void; onNex
   </KeyboardAvoidingView>;
 }
 
-export function CreatorProfileScreen({ mode, onBack, onEdit, onSaved }: { mode: 'view' | 'edit'; onBack: () => void; onEdit?: () => void; onSaved?: (profile: CreatorProfileData) => void }) {
+export function CreatorProfileScreen({ mode, onBack, onEdit, onSaved, demo = false }: { mode: 'view' | 'edit'; onBack: () => void; onEdit?: () => void; onSaved?: (profile: CreatorProfileData) => void; demo?: boolean }) {
   const [profile, setProfile] = useState<CreatorProfileData | null>(null);
   const [avatarUri, setAvatarUri] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { void loadCreatorProfile().then(setProfile).catch(error => setNotice(friendlyError(error))); }, []);
+  useEffect(() => { const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile(); void request.then(setProfile).catch(error => setNotice(friendlyError(error))); }, [demo]);
   const patch = <K extends keyof CreatorProfileData>(key: K, value: CreatorProfileData[K]) => setProfile(current => current ? { ...current, [key]: value } : current);
   const choosePhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
@@ -99,7 +100,7 @@ export function CreatorProfileScreen({ mode, onBack, onEdit, onSaved }: { mode: 
   const save = async () => {
     if (!profile?.displayName.trim() || !profile.regions.length || !profile.categories.length) { setNotice('활동명, 활동 지역, 작업 분야를 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { const saved = await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved); if (!onSaved) setNotice('프로필을 저장했습니다.'); }
+    try { const saved = demo ? { ...profile, avatarUrl: avatarUri || profile.avatarUrl, onboardingComplete: true } : await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved); if (!onSaved) setNotice(demo ? '심사용 샘플에서 변경 내용을 확인했습니다.' : '프로필을 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title={mode === 'edit' ? '크리에이터 프로필 수정' : '크리에이터 프로필'} onBack={onBack} />;
@@ -133,13 +134,13 @@ export function CreatorProfileScreen({ mode, onBack, onEdit, onSaved }: { mode: 
   </KeyboardAvoidingView>;
 }
 
-export function StoreProfileScreen({ userId, onBack, onEdit, onPreferences }: { userId: string; onBack: () => void; onEdit: () => void; onPreferences: () => void }) {
+export function StoreProfileScreen({ userId, onBack, onEdit, onPreferences, demo = false }: { userId: string; onBack: () => void; onEdit: () => void; onPreferences: () => void; demo?: boolean }) {
   const [store, setStore] = useState<StoreOnboarding | null>(null);
   const [notice, setNotice] = useState('');
-  useEffect(() => { void loadStoreOnboarding(userId).then(setStore).catch(error => setNotice(friendlyError(error))); }, [userId]);
+  useEffect(() => { const request = demo ? Promise.resolve(demoStoreOnboarding) : loadStoreOnboarding(userId); void request.then(setStore).catch(error => setNotice(friendlyError(error))); }, [demo, userId]);
   if (!store && !notice) return <LoadingScreen title="매장 프로필" onBack={onBack} />;
   if (!store) return <View style={f.flex}><Header title="매장 프로필" back={onBack} /><Notice text={notice} /></View>;
-  return <View style={f.flex}><Header title={store.name} back={onBack} action={<Pressable hitSlop={10} onPress={onEdit}><CuritText weight="semibold" style={f.brand}>수정</CuritText></Pressable>} /><ScrollView contentContainerStyle={f.scroll}>
+  return <View style={f.flex}><Header title={store.name} back={onBack} action={<Pressable accessibilityRole="button" style={f.headerTextAction} hitSlop={10} onPress={onEdit}><CuritText weight="semibold" style={f.brand}>수정</CuritText></Pressable>} /><ScrollView contentContainerStyle={f.scroll}>
     {store.photoPaths[0] ? <Image source={{ uri: store.photoPaths[0].startsWith('http') ? store.photoPaths[0] : mediaUrl(store.photoPaths[0]) }} style={f.storeCover} /> : <View style={[f.storeCover, f.placeholder]}><Icon name="store" size={36} color={colors.brand} /></View>}
     <CuritText weight="bold" style={f.pageTitle}>{store.name}</CuritText><CuritText style={f.description}>{store.category} · {store.address}</CuritText><CuritText style={f.longText}>{store.introduction}</CuritText>
     <View style={f.infoCard}><InfoRow label="주 고객층" value={store.targetAudience} /><InfoRow label="월 예산" value={`${(store.monthlyBudgetMin || 0).toLocaleString()}~${(store.monthlyBudgetMax || 0).toLocaleString()}원`} /><InfoRow label="전시 구역" value={store.exhibitionZones.map(zone => zone.type).join(' · ')} /></View>
@@ -147,15 +148,15 @@ export function StoreProfileScreen({ userId, onBack, onEdit, onPreferences }: { 
   </ScrollView></View>;
 }
 
-export function StorePreferencesScreen({ userId, onBack }: { userId: string; onBack: () => void }) {
+export function StorePreferencesScreen({ userId, onBack, demo = false }: { userId: string; onBack: () => void; demo?: boolean }) {
   const [store, setStore] = useState<StoreOnboarding | null>(null);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { void loadStoreOnboarding(userId).then(setStore).catch(error => setNotice(friendlyError(error))); }, [userId]);
+  useEffect(() => { const request = demo ? Promise.resolve(demoStoreOnboarding) : loadStoreOnboarding(userId); void request.then(setStore).catch(error => setNotice(friendlyError(error))); }, [demo, userId]);
   if (!store && !notice) return <LoadingScreen title="공간 취향 · 전시 구역" onBack={onBack} />;
   if (!store) return <View style={f.flex}><Header title="공간 취향 · 전시 구역" back={onBack} /><Notice text={notice} /></View>;
   const zones = store.exhibitionZones.map(zone => zone.type);
-  const save = async () => { setSaving(true); setNotice(''); try { await saveStoreOnboarding(store); setNotice('공간 취향과 전시 구역을 저장했습니다.'); } catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); } };
+  const save = async () => { setSaving(true); setNotice(''); try { if (!demo) await saveStoreOnboarding(store); setNotice(demo ? '심사용 샘플에서 변경 내용을 확인했습니다.' : '공간 취향과 전시 구역을 저장했습니다.'); } catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); } };
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="공간 취향 · 전시 구역" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     <ChoiceCard title="공간 분위기" options={moodOptions} selected={store.moodTags} onToggle={value => setStore({ ...store, moodTags: store.moodTags.includes(value) ? store.moodTags.filter(item => item !== value) : [...store.moodTags, value] })} />
     <ChoiceCard title="협업 목적" options={['분위기 전환', '공간 전시', '포토존 구성', '지역 크리에이터 소개', '상품 판매', '브랜드 표현']} selected={store.purposeTags} onToggle={value => setStore({ ...store, purposeTags: store.purposeTags.includes(value) ? store.purposeTags.filter(item => item !== value) : [...store.purposeTags, value] })} />
@@ -165,7 +166,7 @@ export function StorePreferencesScreen({ userId, onBack }: { userId: string; onB
   </ScrollView></KeyboardAvoidingView>;
 }
 
-export function QrProductEditorScreen({ item: initial, onBack, onSaved }: { item: QrProduct; onBack: () => void; onSaved: (item: QrProduct) => void }) {
+export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = false }: { item: QrProduct; onBack: () => void; onSaved: (item: QrProduct) => void; demo?: boolean }) {
   const [item, setItem] = useState(initial);
   const [price, setPrice] = useState(String(initial.price));
   const [stock, setStock] = useState(String(initial.stock));
@@ -177,7 +178,7 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved }: { item
   const save = async (saleStatus?: 'active' | 'preparing') => {
     if (!item.id || !valuesValid) { setNotice('판매가는 1원 이상, 구매 가능 수량은 0개 이상의 정수로 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { const saved = await updateQrListing(item.id, { price: Number(price), stock: Number(stock), pickupMode, saleStatus }); setItem(saved); onSaved(saved); setNotice('판매 설정을 저장했습니다.'); }
+    try { const saved = demo ? { ...item, price: Number(price), stock: Number(stock), pickupMode, status: saleStatus === 'active' ? 'ACTIVE' as const : 'PAUSED' as const } : await updateQrListing(item.id, { price: Number(price), stock: Number(stock), pickupMode, saleStatus }); setItem(saved); onSaved(saved); setNotice(demo ? '심사용 샘플 판매 설정을 반영했습니다.' : '판매 설정을 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   const share = async (message: string) => { if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(message); setNotice('클립보드에 복사했습니다.'); } else await Share.share({ message }); };
@@ -239,22 +240,23 @@ export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBac
   </ScrollView></View>;
 }
 
-export function NotificationsScreen({ onBack }: { onBack: () => void }) {
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+export function NotificationsScreen({ onBack, demo = false }: { onBack: () => void; demo?: boolean }) {
+  const [items, setItems] = useState<AppNotification[]>(demo ? [{ id: 'demo-notification', title: '흙의 기억 협업이 전시 중입니다', body: 'QR 판매와 현장 수령 현황을 확인해 주세요.', kind: 'collaboration', entityId: 'demo-collaboration', read: false, createdAt: new Date().toISOString() }] : []);
+  const [loading, setLoading] = useState(!demo);
   const [notice, setNotice] = useState('');
   const [pushSaving, setPushSaving] = useState(false);
   useEffect(() => {
+    if (demo) return;
     let active = true;
     void loadNotifications().then(value => { if (active) setItems(value); }).catch(error => { if (active) setNotice(friendlyError(error)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
-  const open = async (item: AppNotification) => { if (!item.read) { await markNotificationRead(item.id); setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value)); } };
+  }, [demo]);
+  const open = async (item: AppNotification) => { if (!item.read) { if (!demo) await markNotificationRead(item.id); setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value)); } };
   const connectPush = async () => {
     setPushSaving(true); setNotice('');
     try {
-      const result = await registerNativePush();
-      setNotice(result.status === 'registered' ? '이 기기에서 푸시 알림을 받을 수 있습니다.' : result.message);
+      if (demo) setNotice('실제 계정과 설치형 앱에서는 이 기기의 푸시 토큰을 서버에 등록합니다.');
+      else { const result = await registerNativePush(); setNotice(result.status === 'registered' ? '이 기기에서 푸시 알림을 받을 수 있습니다.' : result.message); }
     } catch (error) { setNotice(friendlyError(error)); }
     finally { setPushSaving(false); }
   };

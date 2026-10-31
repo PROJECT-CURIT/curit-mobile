@@ -22,6 +22,7 @@ async function fetchQrCatalog(demo?: boolean) {
 export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEnabled, configured }: { onLogin: (email: string, password: string) => Promise<void>; onSignUp: () => void; onDemo: (role: Role) => void; onResetPassword: (email: string) => Promise<void>; demoEnabled: boolean; configured: boolean }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async () => {
@@ -37,16 +38,20 @@ export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEn
   return (
     <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView contentContainerStyle={s.auth} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
-      <View style={s.logoWrap}><CuritText weight="extrabold" style={s.logo}>CURI:T</CuritText><CuritText style={s.logoCaption}>작품과 공간을 연결하는 전시 협업 플랫폼</CuritText></View>
+      <CuritText weight="extrabold" style={s.logo}>CURI:T</CuritText>
+      <View style={s.loginIntro}><CuritText weight="extrabold" style={s.loginTitle}>다시 만나 반가워요.</CuritText><CuritText style={s.logoCaption}>작품과 공간을 이어가는 나의 자리.</CuritText></View>
       <View style={s.form}>
-        <Field label="이메일" value={email} onChangeText={setEmail} placeholder="이메일을 입력해주세요" autoCapitalize="none" keyboardType="email-address" />
-        <Field label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호를 입력해주세요" secureTextEntry />
+        <Field label="이메일 *" value={email} onChangeText={setEmail} placeholder="이메일 주소" autoCapitalize="none" keyboardType="email-address" />
+        <Field label="비밀번호 *" value={password} onChangeText={setPassword} placeholder="비밀번호" secureTextEntry />
+        <View style={s.loginOptions}>
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }} hitSlop={8} style={s.rememberAction} onPress={() => setRemember(value => !value)}><View style={[s.checkbox, remember && s.checkboxChecked]}>{remember ? <CuritText weight="bold" style={s.checkmark}>✓</CuritText> : null}</View><CuritText style={s.muted}>로그인 유지</CuritText></Pressable>
+          <Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={() => { void resetPassword(); }}><CuritText style={s.muted}>비밀번호 재설정</CuritText></Pressable>
+        </View>
         {error ? <CuritText style={{ color: colors.danger }}>{error}</CuritText> : null}
         {!configured ? <CuritText style={s.demoNote}>서버 환경변수가 아직 연결되지 않았습니다. `.env`에 Supabase URL과 Publishable Key를 설정해 주세요.</CuritText> : null}
         <Button label={busy ? '로그인 중…' : '로그인'} disabled={!configured || !email.trim() || password.length < 8 || busy} onPress={() => { void submit(); }} />
-        <View style={s.authLinks}><CuritText style={s.muted}>아이디는 가입 이메일입니다</CuritText><View style={s.dividerV} /><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={() => { void resetPassword(); }}><CuritText style={s.muted}>비밀번호 찾기</CuritText></Pressable></View>
       </View>
-      <View style={s.signUpRow}><CuritText style={s.muted}>아직 회원이 아니신가요?</CuritText><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={onSignUp}><CuritText weight="semibold" style={s.brandText}>회원가입</CuritText></Pressable></View>
+      <View style={s.signUpRow}><CuritText style={s.muted}>CURI:T이 처음인가요?</CuritText><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={onSignUp}><CuritText weight="semibold" style={s.brandText}>회원가입</CuritText></Pressable></View>
       {demoEnabled ? <View style={s.demoBox}>
         <CuritText weight="semibold">프로토타입 바로 보기</CuritText>
         <CuritText style={s.demoNote}>심사·디자인 확인용 샘플 데이터입니다. 운영 데이터와 분리됩니다.</CuritText>
@@ -316,11 +321,11 @@ export function QrProductsScreen({ demo, onBack, onSelect }: { demo?: boolean; o
 
 const s = StyleSheet.create({
   flex: { flex: 1 }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  auth: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 40, justifyContent: 'center' },
-  logoWrap: { alignItems: 'center', marginBottom: 48 }, logo: { color: colors.brand, fontSize: 34, letterSpacing: -1 }, logoCaption: { color: colors.muted, marginTop: 8 },
-  form: { gap: 16 }, authLinks: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }, authTextAction: { minHeight: 44, justifyContent: 'center' }, dividerV: { width: 1, height: 12, backgroundColor: colors.border },
-  muted: { color: colors.muted }, brandText: { color: colors.brand }, signUpRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 28 },
-  demoBox: { marginTop: 30, padding: 16, backgroundColor: colors.brandPale, borderRadius: radius.md, gap: 10 }, demoNote: { color: colors.muted, fontSize: 12 }, twoButtons: { flexDirection: 'row', gap: 8 },
+  auth: { flexGrow: 1, paddingHorizontal: 35, paddingTop: 30, paddingBottom: 34 },
+  logo: { color: colors.brand, fontSize: 13, letterSpacing: 1.5 }, loginIntro: { marginTop: 38, marginBottom: 30 }, loginTitle: { fontSize: 26, lineHeight: 34, letterSpacing: -1 }, logoCaption: { color: colors.muted, marginTop: 10 },
+  form: { gap: 16 }, loginOptions: { minHeight: 44, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: -2 }, rememberAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }, checkbox: { width: 18, height: 18, borderWidth: 1, borderColor: colors.subtle, alignItems: 'center', justifyContent: 'center' }, checkboxChecked: { borderColor: colors.brand, backgroundColor: colors.brand }, checkmark: { color: colors.surface, fontSize: 13, lineHeight: 16 }, authTextAction: { minHeight: 44, justifyContent: 'center' },
+  muted: { color: colors.muted }, brandText: { color: colors.brand }, signUpRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 20, alignItems: 'center' },
+  demoBox: { marginTop: 24, padding: 16, backgroundColor: colors.brandPale, borderRadius: radius.md, gap: 10 }, demoNote: { color: colors.muted, fontSize: 12 }, twoButtons: { flexDirection: 'row', gap: 8 },
   roleBody: { flex: 1, padding: 24, gap: 16 }, pageTitle: { fontSize: 25, marginTop: 18 }, pageDescription: { color: colors.muted, marginTop: 8 },
   accountSignup: { flexGrow: 1, padding: 24, gap: 18 },
   confirmationBody: { flex: 1, padding: 24, justifyContent: 'center', gap: 18 },

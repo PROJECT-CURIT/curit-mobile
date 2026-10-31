@@ -24,7 +24,7 @@ export function ScreenFrame({ children, footer }: PropsWithChildren<{ footer?: R
 export function Header({ title, subtitle, back, action }: { title: string; subtitle?: string; back?: () => void; action?: ReactNode }) {
   return (
     <View style={styles.header}>
-      {back ? <Pressable onPress={back} hitSlop={12} style={styles.headerSide}><Icon name="back" /></Pressable> : <View style={styles.headerSide} />}
+      {back ? <Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={back} hitSlop={12} style={styles.headerSide}><Icon name="back" /></Pressable> : <View style={styles.headerSide} />}
       <View style={styles.headerTitleWrap}>
         <CuritText weight="bold" numberOfLines={1} style={styles.headerTitle}>{title}</CuritText>
         {subtitle ? <CuritText numberOfLines={1} style={styles.headerSubtitle}>{subtitle}</CuritText> : null}
@@ -79,10 +79,11 @@ export function Button({ label, onPress, variant = 'primary', disabled }: { labe
 }
 
 export function Field(props: TextInputProps & { label?: string }) {
+  const accessibilityLabel = props.accessibilityLabel ?? props.label;
   return (
     <View style={styles.fieldWrap}>
       {props.label ? <CuritText weight="semibold" style={styles.fieldLabel}>{props.label}</CuritText> : null}
-      <TextInput placeholderTextColor="#B7B7B7" {...props} style={[styles.field, props.style]} />
+      <TextInput placeholderTextColor="#B7B7B7" {...props} accessibilityLabel={accessibilityLabel} style={[styles.field, props.style]} />
     </View>
   );
 }
@@ -121,11 +122,11 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.surface, fontSize: 15 },
   fieldWrap: { gap: 8 }, fieldLabel: { fontSize: 13 },
   field: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 15, fontFamily: fonts.regular, color: colors.ink, backgroundColor: colors.surface },
-  chip: { borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: colors.surface },
+  chip: { minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: colors.surface },
   chipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipText: { fontSize: 12, lineHeight: 15 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  sectionAction: { minHeight: 44, justifyContent: 'center', paddingLeft: 12 },
+  sectionAction: { minWidth: 44, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center', paddingLeft: 12 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 36, gap: 10 },
   emptyIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' },
   emptyDescription: { color: colors.muted, textAlign: 'center' },

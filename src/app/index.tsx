@@ -13,6 +13,7 @@ import { isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
 import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, QrProduct, Role, Session, TabKey } from '../types';
+import { demoStoreOnboarding } from '../demoContent';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
 
@@ -32,6 +33,7 @@ export default function AppIndex() {
   const [creatorProject, setCreatorProject] = useState<CreatorProjectDetails>({ id: 'demo-project', title: '흙의 기억', story: '흙이 일상에 머무는 순간을 담았습니다.', concept: '따뜻한 생활 도예 컬렉션', region: '서울', purpose: '작품 전시 및 판매', status: 'recruiting', coverPath: '', coverUrl: '', creatorSharePercent: 80 });
   const [selectedQrProduct, setSelectedQrProduct] = useState<QrProduct | null>(null);
   const [storeOnboarding, setStoreOnboarding] = useState<StoreOnboarding | null>(null);
+  const [creatorOnboardingFlow, setCreatorOnboardingFlow] = useState(false);
 
   const hydrateCreator = useCallback(async () => {
     const result = await loadCreatorProject();
@@ -46,7 +48,7 @@ export default function AppIndex() {
     setSession(next); setTab('home'); setAuthView('login');
     if (next.role === 'creator') {
       await hydrateCreator();
-      if (!next.demo && !(await creatorOnboardingComplete(next.userId))) setSubview('creator-dna');
+      if (!next.demo && !(await creatorOnboardingComplete(next.userId))) { setCreatorOnboardingFlow(true); setSubview('creator-dna'); }
     } else if (!next.demo) await hydrateStore(next.userId);
   }, [hydrateCreator, hydrateStore]);
 
@@ -97,6 +99,7 @@ export default function AppIndex() {
 
   const demoLogin = (role: Role) => {
     const next = { userId: `demo-${role}`, email: `demo-${role}@curit.local`, role, displayName: role === 'creator' ? '김서연' : '아늑한 서울', demo: true } satisfies Session;
+    if (role === 'store') setStoreOnboarding(demoStoreOnboarding);
     setSession(next); setTab('home'); setAuthView('login');
   };
 
@@ -146,16 +149,28 @@ export default function AppIndex() {
   };
 
   const saveCreatorProductUpdate = async (id: string, product: Omit<ProjectProduct, 'id'>) => {
+    if (session?.demo) {
+      setCreatorProducts(current => current.map(item => item.id === id ? { ...product, id } : item));
+      return;
+    }
     const result = await updateProjectProduct(id, product);
     setCreatorProducts(result.products); setCreatorProject(result.project);
   };
 
   const removeCreatorProduct = async (id: string) => {
+    if (session?.demo) {
+      setCreatorProducts(current => current.filter(item => item.id !== id));
+      return;
+    }
     const result = await deleteProjectProduct(id);
     setCreatorProducts(result.products); setCreatorProject(result.project);
   };
 
   const saveProject = async (value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) => {
+    if (session?.demo) {
+      setCreatorProject(current => ({ ...current, ...value, coverUrl: value.coverUri || current.coverUrl }));
+      return;
+    }
     const result = await saveCreatorProject(creatorProjectId, value);
     setCreatorProject(result.project); setCreatorProducts(result.products);
   };
@@ -185,15 +200,15 @@ export default function AppIndex() {
         : authView === 'confirmation'
           ? <EmailConfirmationScreen email={confirmationEmail} onLogin={() => setAuthView('login')} />
           : <StoreSignupScreen initial={pendingStoreOnboarding} onBack={() => { void leaveStoreOnboarding(); }} onComplete={storeName => { if (pendingStoreSession) { setSession({ ...pendingStoreSession, displayName: storeName }); setPendingStoreSession(null); setPendingStoreOnboarding(null); setAuthView('login'); } }} />}</ScreenFrame>;
-  if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen onBack={() => setSubview(null)} onNext={() => setSubview('creator-profile-edit')} /></ScreenFrame>;
-  if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen mode="view" onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} /></ScreenFrame>;
-  if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen mode="edit" onBack={() => setSubview('creator-profile')} onSaved={() => setSubview('creator-profile')} /></ScreenFrame>;
-  if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen userId={session.userId} onBack={() => setSubview(null)} onEdit={() => setSubview('store-edit')} onPreferences={() => setSubview('store-preferences')} /></ScreenFrame>;
-  if (subview === 'store-edit') return <ScreenFrame><StoreSignupScreen initial={storeOnboarding ? { ...storeOnboarding, step: 1 } : null} onBack={() => setSubview('store-profile')} onComplete={storeName => { setSession(current => current ? { ...current, displayName: storeName } : current); void hydrateStore(session.userId).then(() => setSubview('store-profile')); }} /></ScreenFrame>;
-  if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen userId={session.userId} onBack={() => { void hydrateStore(session.userId); setSubview('store-profile'); }} /></ScreenFrame>;
-  if (subview === 'notifications') return <ScreenFrame><NotificationsScreen onBack={() => setSubview(null)} /></ScreenFrame>;
+  if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => { setCreatorOnboardingFlow(false); setSubview(null); }} onNext={creatorOnboardingFlow ? () => { setCreatorOnboardingFlow(false); setSubview('creator-profile-edit'); } : undefined} /></ScreenFrame>;
+  if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} /></ScreenFrame>;
+  if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={() => setSubview('creator-profile')} /></ScreenFrame>;
+  if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen demo={session.demo} userId={session.userId} onBack={() => setSubview(null)} onEdit={() => setSubview('store-edit')} onPreferences={() => setSubview('store-preferences')} /></ScreenFrame>;
+  if (subview === 'store-edit') return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={storeOnboarding ? { ...storeOnboarding, step: 1 } : null} onBack={() => setSubview('store-profile')} onComplete={storeName => { setSession(current => current ? { ...current, displayName: storeName } : current); if (session.demo) { setStoreOnboarding(current => current ? { ...current, name: storeName, complete: true, step: 5 } : demoStoreOnboarding); setSubview('store-profile'); } else void hydrateStore(session.userId).then(() => setSubview('store-profile')); }} /></ScreenFrame>;
+  if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen demo={session.demo} userId={session.userId} onBack={() => { if (!session.demo) void hydrateStore(session.userId); setSubview('store-profile'); }} /></ScreenFrame>;
+  if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'qr-products') return <ScreenFrame><QrProductsScreen demo={session.demo} onBack={() => setSubview(null)} onSelect={item => { setSelectedQrProduct(item); setSubview('qr-editor'); }} /></ScreenFrame>;
-  if (subview === 'qr-editor' && selectedQrProduct) return <ScreenFrame><QrProductEditorScreen item={selectedQrProduct} onBack={() => setSubview('qr-products')} onSaved={setSelectedQrProduct} /></ScreenFrame>;
+  if (subview === 'qr-editor' && selectedQrProduct) return <ScreenFrame><QrProductEditorScreen demo={session.demo} item={selectedQrProduct} onBack={() => setSubview('qr-products')} onSaved={setSelectedQrProduct} /></ScreenFrame>;
   if (subview === 'pickup') return <ScreenFrame><PickupScreen demo={session.demo} onBack={() => setSubview(null)} onOpenQr={() => setSubview('qr-products')} /></ScreenFrame>;
   if (subview === 'settlements') return <ScreenFrame><SettlementScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen project={creatorProject} products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
