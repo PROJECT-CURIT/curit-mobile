@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
 import { colors, fonts, radius } from './theme';
 import { Button, Chip, CuritText, Field, Header, Icon } from './ui';
+import { images } from './data';
 
 export type ProjectProduct = {
   id: string;
@@ -245,9 +246,10 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
   const [purposes, setPurposes] = useState<string[]>(initial?.purposeTags ?? []);
   const [budgetMin, setBudgetMin] = useState(initial?.monthlyBudgetMin?.toString() ?? '');
   const [budgetMax, setBudgetMax] = useState(initial?.monthlyBudgetMax?.toString() ?? '');
-  const [photos, setPhotos] = useState<{ uri: string; path: string }[]>(
-    (initial?.photoPaths ?? []).map(path => ({ uri: mediaUrl(path), path })),
-  );
+  const [photos, setPhotos] = useState<{ uri: string; path: string }[]>(() => {
+    const saved = (initial?.photoPaths ?? []).map(path => ({ uri: mediaUrl(path), path }));
+    return demo && saved.length === 0 ? [{ uri: '', path: 'demo-cafe' }] : saved;
+  });
   const [zones, setZones] = useState<string[]>((initial?.exhibitionZones ?? []).map(zone => zone.type));
   const [zoneWidth, setZoneWidth] = useState(initial?.exhibitionZones[0]?.widthCm?.toString() ?? '');
   const [zoneHeight, setZoneHeight] = useState(initial?.exhibitionZones[0]?.heightCm?.toString() ?? '');
@@ -342,7 +344,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
         {step === 3 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장 사진을 등록해 주세요</CuritText>
           <CuritText style={d.description}>전체 공간과 전시 후보 구역이 보이는 사진을 1장 이상 등록해 주세요.</CuritText>
-          <View style={d.photoGrid}>{photos.map((photo, index) => <View key={photo.path} style={d.storePhotoWrap}><Image source={{ uri: photo.uri }} style={d.storePhoto} contentFit="cover" /><Pressable accessibilityLabel={`${index + 1}번째 매장 사진 삭제`} accessibilityRole="button" style={d.photoDelete} onPress={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))}><View style={d.photoDeleteCircle}><CuritText style={d.photoDeleteText}>×</CuritText></View></Pressable></View>)}{photos.length < 5 ? <Pressable accessibilityRole="button" style={d.storePhotoAdd} onPress={() => { void pickStorePhoto(); }}><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>사진 추가</CuritText></Pressable> : null}</View>
+          <View style={d.photoGrid}>{photos.map((photo, index) => <View key={photo.path} style={d.storePhotoWrap}><Image source={photo.path === 'demo-cafe' ? images.cafe : { uri: photo.uri }} style={d.storePhoto} contentFit="cover" /><Pressable accessibilityLabel={`${index + 1}번째 매장 사진 삭제`} accessibilityRole="button" style={d.photoDelete} onPress={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))}><View style={d.photoDeleteCircle}><CuritText style={d.photoDeleteText}>×</CuritText></View></Pressable></View>)}{photos.length < 5 ? <Pressable accessibilityRole="button" style={d.storePhotoAdd} onPress={() => { void pickStorePhoto(); }}><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>사진 추가</CuritText></Pressable> : null}</View>
           <CuritText style={d.hint}>JPG · PNG · WEBP, 파일당 5MB 이하 · 최대 5장</CuritText>
         </> : null}
         {step === 4 ? <>

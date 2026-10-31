@@ -109,7 +109,7 @@ export const demoStoreOnboarding: StoreOnboarding = {
   name: '아늑한 서울',
   category: '카페',
   address: '서울 성동구 성수동',
-  introduction: '우드톤 가구와 따뜻한 조명이 있는 30석 규모의 개인 카페입니다.',
+  introduction: '우드톤 가구와 따뜻한 조명이 있는 30석 개인 카페입니다.',
   targetAudience: '20–30대 직장인, 예술과 공예에 관심 있는 방문객',
   moodTags: ['내추럴', '우드톤', '미니멀'],
   purposeTags: ['분위기 전환', '상품 판매', '지역 크리에이터 소개'],
