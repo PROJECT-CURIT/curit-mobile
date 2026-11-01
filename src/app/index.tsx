@@ -86,6 +86,7 @@ export default function AppIndex() {
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (subview) {
+        if (subview === 'creator-dna' && creatorOnboardingFlow) setCreatorOnboardingFlow(false);
         const parentSubview = subview === 'creator-profile-edit'
           ? 'creator-profile'
           : subview === 'creator-project-edit'
@@ -103,13 +104,18 @@ export default function AppIndex() {
         return true;
       }
       if (!session && authView !== 'login') {
-        setAuthView('login');
+        if (authView === 'store-signup') {
+          setPendingStoreSession(null);
+          setPendingStoreOnboarding(null);
+          if (isSupabaseConfigured) void signOut().catch(() => undefined);
+        }
+        setAuthView(authView === 'account-signup' ? 'role' : 'login');
         return true;
       }
       return false;
     });
     return () => subscription.remove();
-  }, [authView, session, subview, tab]);
+  }, [authView, creatorOnboardingFlow, session, subview, tab]);
 
   const login = async (email: string, password: string) => {
     try {
