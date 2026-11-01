@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, BackHandler, View } from 'react-native';
 import { BottomNav, ScreenFrame } from '../ui';
 import { AccountSettingsScreen, AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
 import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen } from '../curationScreens';
@@ -82,6 +82,34 @@ export default function AppIndex() {
     });
     return () => subscription.remove();
   }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (subview) {
+        const parentSubview = subview === 'creator-profile-edit'
+          ? 'creator-profile'
+          : subview === 'creator-project-edit'
+            ? 'creator-project'
+            : subview === 'qr-editor'
+              ? 'qr-products'
+              : subview === 'store-edit' || subview === 'store-preferences'
+                ? 'store-profile'
+                : null;
+        setSubview(parentSubview);
+        return true;
+      }
+      if (tab !== 'home') {
+        setTab('home');
+        return true;
+      }
+      if (!session && authView !== 'login') {
+        setAuthView('login');
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [authView, session, subview, tab]);
 
   const login = async (email: string, password: string) => {
     try {
