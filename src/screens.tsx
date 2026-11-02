@@ -87,8 +87,22 @@ export function AccountSignupScreen({ role, onBack, onSubmit }: { role: Role; on
   return <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="회원가입" subtitle={role === 'creator' ? '크리에이터' : '매장 운영자'} back={onBack} /><ScrollView contentContainerStyle={s.accountSignup} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled"><View><CuritText weight="bold" style={s.pageTitle}>계정을 만들어 주세요</CuritText><CuritText style={s.pageDescription}>이메일 인증 후 모든 기기에서 같은 프로젝트와 이미지를 사용할 수 있어요.</CuritText></View><Field label={role === 'creator' ? '활동명 *' : '담당자명 *'} value={displayName} onChangeText={setDisplayName} placeholder={role === 'creator' ? '예: 김서연 도예' : '예: 최선문'} /><Field label="이메일 *" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="name@example.com" /><Field label="비밀번호 *" value={password} onChangeText={setPassword} secureTextEntry placeholder="8자 이상" /><Field label="비밀번호 확인 *" value={passwordConfirm} onChangeText={setPasswordConfirm} secureTextEntry placeholder="한 번 더 입력" />{passwordConfirm && password !== passwordConfirm ? <CuritText style={{ color: colors.danger }}>비밀번호가 일치하지 않습니다.</CuritText> : null}{notice ? <CuritText style={{ color: colors.danger }}>{notice}</CuritText> : null}<Button label={busy ? '계정 생성 중…' : role === 'store' ? '계정 생성 후 매장 등록' : '크리에이터로 시작'} disabled={!valid || busy} onPress={() => { void submit(); }} /></ScrollView></KeyboardAvoidingView>;
 }
 
-export function EmailConfirmationScreen({ email, onLogin }: { email: string; onLogin: () => void }) {
-  return <View style={s.flex}><Header title="이메일 인증" /><View style={s.confirmationBody}><View style={s.roleIcon}><Icon name="chat" color={colors.brand} /></View><CuritText weight="bold" style={s.pageTitle}>인증 메일을 확인해 주세요</CuritText><CuritText style={s.pageDescription}>{email} 주소로 인증 링크를 보냈습니다. 링크를 연 뒤 로그인하면 프로젝트와 이미지가 계정에 안전하게 저장됩니다.</CuritText><Button label="로그인으로 돌아가기" onPress={onLogin} /></View></View>;
+export function EmailConfirmationScreen({ email, onLogin, onResend }: { email: string; onLogin: () => void; onResend: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const resend = async () => {
+    if (busy) return;
+    setBusy(true); setNotice('');
+    try {
+      await onResend();
+      setNotice('새 인증 메일을 보냈습니다. 가장 최근 메일의 링크를 열어 주세요.');
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : '인증 메일을 다시 보내지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <View style={s.flex}><Header title="이메일 인증" /><View style={s.confirmationBody}><View style={s.roleIcon}><Icon name="chat" color={colors.brand} /></View><CuritText weight="bold" style={s.pageTitle}>인증 메일을 확인해 주세요</CuritText><CuritText style={s.pageDescription}>{email} 주소로 인증 링크를 보냈습니다. 가장 최근 메일의 링크를 열면 CURI:T 앱으로 돌아와 인증이 완료됩니다.</CuritText>{notice ? <CuritText style={{ color: notice.startsWith('새 인증') ? colors.brand : colors.danger }}>{notice}</CuritText> : null}<Button label={busy ? '보내는 중…' : '인증 메일 다시 보내기'} disabled={busy} onPress={() => { void resend(); }} /><Button label="로그인으로 돌아가기" variant="secondary" onPress={onLogin} /></View></View>;
 }
 
 export function RoleSelectionScreen({ onSelect, onBack }: { onSelect: (role: Role) => void; onBack: () => void }) {

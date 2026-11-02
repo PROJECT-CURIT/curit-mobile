@@ -6,7 +6,7 @@ import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscov
 import { loadCollaborations } from '../curation';
 import { CreatorProjectEditScreen, CreatorProjectScreen, initialCreatorProducts, StoreSignupScreen, type ProjectProduct } from '../detailScreens';
 import { config } from '../config';
-import { addProjectProduct, currentSession, deleteProjectProduct, friendlyError, loadCreatorProject, loadStoreOnboarding, saveCreatorProject, signIn, signOut, signUp, storeOnboardingComplete, updateProjectProduct, type CreatorProjectDetails, type StoreOnboarding } from '../platform';
+import { addProjectProduct, currentSession, deleteProjectProduct, friendlyError, loadCreatorProject, loadStoreOnboarding, resendSignupConfirmation, saveCreatorProject, signIn, signOut, signUp, storeOnboardingComplete, updateProjectProduct, type CreatorProjectDetails, type StoreOnboarding } from '../platform';
 import { creatorOnboardingComplete, requestPasswordReset } from '../fullPlatform';
 import { CreatorDnaScreen, CreatorProfileScreen, NotificationsScreen, PickupScreen, QrProductEditorScreen, StorePreferencesScreen, StoreProfileScreen, VerificationScreen } from '../fullPrototypeScreens';
 import { isSupabaseConfigured } from '../supabase';
@@ -246,7 +246,7 @@ export default function AppIndex() {
       : authView === 'account-signup'
         ? <AccountSignupScreen role={signupRole} onBack={() => setAuthView('role')} onSubmit={createAccount} />
         : authView === 'confirmation'
-          ? <EmailConfirmationScreen email={confirmationEmail} onLogin={() => setAuthView('login')} />
+          ? <EmailConfirmationScreen email={confirmationEmail} onLogin={() => setAuthView('login')} onResend={() => resendSignupConfirmation(confirmationEmail)} />
           : <StoreSignupScreen initial={pendingStoreOnboarding} onBack={() => { void leaveStoreOnboarding(); }} onComplete={storeName => { if (pendingStoreSession) { setSession({ ...pendingStoreSession, displayName: storeName }); setPendingStoreSession(null); setPendingStoreOnboarding(null); setAuthView('login'); } }} />}</ScreenFrame>;
   if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => { setCreatorOnboardingFlow(false); setSubview(null); }} onNext={creatorOnboardingFlow ? () => { setCreatorOnboardingFlow(false); setSubview('creator-profile-edit'); } : undefined} /></ScreenFrame>;
   if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" project={creatorProject} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} onOpenProject={() => setSubview('creator-project')} /></ScreenFrame>;

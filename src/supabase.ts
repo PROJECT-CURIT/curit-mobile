@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { config } from './config';
+import { parseAuthRedirect } from './authRedirect';
 
 const CHUNK_SIZE = 1800;
 
@@ -65,4 +66,25 @@ export function getSupabase() {
     },
   });
   return singleton;
+}
+
+export async function applyAuthRedirect(url: string) {
+  const payload = parseAuthRedirect(url);
+  if (payload.error) throw new Error(payload.error);
+
+  const supabase = getSupabase();
+  if (payload.code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(payload.code);
+    if (error) throw new Error(error.message);
+    return true;
+  }
+  if (payload.accessToken && payload.refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: payload.accessToken,
+      refresh_token: payload.refreshToken,
+    });
+    if (error) throw new Error(error.message);
+    return true;
+  }
+  return false;
 }
