@@ -8,7 +8,7 @@ import { loadCollaborations, loadMatchRecommendations } from './curation';
 import { fetchQrProduct } from './api';
 import { friendlyError, issueQrListing, loadManagedQrProducts, loadSettlements, type SettlementEntry } from './platform';
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role } from './types';
-import { demoQrProducts } from './demoContent';
+import { demoCollaborationList, demoQrProducts } from './demoContent';
 
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const demoSettlements: SettlementEntry[] = [
@@ -62,8 +62,8 @@ export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEn
       </View>
       <View style={s.signUpRow}><CuritText style={s.muted}>CURI:T이 처음인가요?</CuritText><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={onSignUp}><CuritText weight="semibold" style={s.brandText}>회원가입</CuritText></Pressable></View>
       {demoEnabled ? <View style={s.demoBox}>
-        <CuritText weight="semibold">프로토타입 바로 보기</CuritText>
-        <CuritText style={s.demoNote}>심사·디자인 확인용 샘플 데이터입니다. 운영 데이터와 분리됩니다.</CuritText>
+        <CuritText weight="semibold">서비스 둘러보기</CuritText>
+        <CuritText style={s.demoNote}>가입 전에 역할별 주요 화면과 이용 흐름을 확인할 수 있어요.</CuritText>
         <View style={s.twoButtons}><View style={s.flex}><Button label="크리에이터" variant="secondary" onPress={() => onDemo('creator')} /></View><View style={s.flex}><Button label="매장 운영자" onPress={() => onDemo('store')} /></View></View>
       </View> : null}
     </ScrollView>
@@ -156,7 +156,7 @@ function useRecommendations(role: Role, demo?: boolean) {
 }
 
 function useCollaborationList(role: Role, demo?: boolean) {
-  const fallback: CollaborationSummary[] = demo ? [{ id: 'demo', projectId: 'demo-project', storeId: 'demo-store', creatorId: 'demo-creator', projectTitle: '흙의 기억', storeName: '아늑한 서울', creatorName: '김서연', counterpartName: role === 'creator' ? '아늑한 서울' : '김서연', status: 'active', startsOn: '2026-10-01', endsOn: '2026-12-31', creatorShare: 80, storeShare: 10, platformShare: 10, terms: {}, updatedAt: new Date().toISOString() }] : [];
+  const fallback: CollaborationSummary[] = demo ? demoCollaborationList(role) : [];
   const [items, setItems] = useState<CollaborationSummary[]>(fallback);
   const [loading, setLoading] = useState(!demo);
   useEffect(() => {
@@ -187,7 +187,7 @@ function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
       <View style={s.curationHero}>
         <View style={s.flex}><CuritText style={s.curationPrelude}>{displayName} 님의 다음 장면</CuritText><CuritText weight="bold" style={s.curationTitle}>내 작품을 위한{`\n`}오늘의 큐레이션</CuritText></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 보기" style={s.roundArrow} onPress={() => onMove('creator-dna')}><CuritText style={s.roundArrowText}>↗</CuritText></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 설정" style={s.preferenceLink} onPress={() => onMove('creator-dna')}><CuritText weight="semibold" style={s.preferenceLinkText}>작품 DNA</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
       <View style={s.curationSectionTop}><CuritText weight="semibold" style={s.curationSectionTitle}>내 작품과 어울리는 공간</CuritText><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
       <Pressable accessibilityRole="button" accessibilityLabel="작품 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('creator-dna')}><CuritText weight="semibold" style={s.dnaLabel}>ARTIST DNA</CuritText><CuritText style={s.dnaHint}>작품 취향을 등록해 보세요 →</CuritText></Pressable>
@@ -212,9 +212,9 @@ function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: 
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
       <View style={s.curationHero}>
         <View style={s.flex}><CuritText weight="bold" style={s.curationTitle}>{displayName}을 위한{`\n`}오늘의 큐레이션</CuritText></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 보기" style={s.roundArrow} onPress={() => onMove('store-preferences')}><CuritText style={s.roundArrowText}>↗</CuritText></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="공간 취향과 전시 구역 설정" style={s.preferenceLink} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.preferenceLinkText}>취향 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
-      <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품 ·</CuritText></View><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
+      <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품</CuritText></View><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
       <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.dnaLabel}>SPACE DNA</CuritText><View style={s.dnaPill}><CuritText style={s.dnaPillText}>미니멀</CuritText></View><CuritText style={s.dnaHint}>수정 →</CuritText></Pressable>
       <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 분위기와 작품 태그를 비교해 골랐어요.</CuritText>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
@@ -276,13 +276,13 @@ export function ChatScreen() {
   return <View style={s.flex}><Header title="협업 메시지" /><View style={s.searchPad}><Field placeholder="대화 검색" /></View>{chats.map(chat => <Pressable key={chat.name} style={s.chatRow}><View style={s.avatar}><CuritText weight="bold">{chat.name[0]}</CuritText></View><View style={s.flex}><View style={s.row}><CuritText weight="semibold">{chat.name}</CuritText><CuritText style={s.chatTime}>{chat.time}</CuritText></View><CuritText style={s.chatProject}>{chat.project}</CuritText><CuritText style={s.muted} numberOfLines={1}>{chat.message}</CuritText></View></Pressable>)}</View>;
 }
 
-export function ManagementScreen({ role, demo, onOpenQr, onOpenPickup, onOpenProject, onOpenDiscover, onOpenSettlements, onOpenCollaboration }: { role: Role; demo?: boolean; onOpenQr: () => void; onOpenPickup: () => void; onOpenProject: () => void; onOpenDiscover: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
+export function ManagementScreen({ role, demo, onOpenQr, onOpenPickup, onOpenProject, onOpenSettlements, onOpenCollaboration }: { role: Role; demo?: boolean; onOpenQr: () => void; onOpenPickup: () => void; onOpenProject: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
   return role === 'creator'
-    ? <CreatorManagement demo={demo} onOpenProject={onOpenProject} onOpenDiscover={onOpenDiscover} onOpenSettlements={onOpenSettlements} onOpenCollaboration={onOpenCollaboration} />
+    ? <CreatorManagement demo={demo} onOpenProject={onOpenProject} onOpenSettlements={onOpenSettlements} onOpenCollaboration={onOpenCollaboration} />
     : <StoreManagement demo={demo} onOpenQr={onOpenQr} onOpenPickup={onOpenPickup} onOpenSettlements={onOpenSettlements} onOpenCollaboration={onOpenCollaboration} />;
 }
 
-function CreatorManagement({ demo, onOpenProject, onOpenDiscover, onOpenSettlements, onOpenCollaboration }: { demo?: boolean; onOpenProject: () => void; onOpenDiscover: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
+function CreatorManagement({ demo, onOpenProject, onOpenSettlements, onOpenCollaboration }: { demo?: boolean; onOpenProject: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
   const summary = useCommerceSummary('creator', demo);
   const collaborations = useCollaborationList('creator', demo);
   const active = collaborations.items.filter(item => !['completed', 'cancelled'].includes(item.status));
@@ -291,7 +291,7 @@ function CreatorManagement({ demo, onOpenProject, onOpenDiscover, onOpenSettleme
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
   return <View style={s.flex}><Header title="협업 관리" /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 대기" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="출고 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
-    <View style={s.quickGrid}><QuickAction icon="qr" label="내 프로젝트" description="작품·재고·조건 관리" onPress={onOpenProject} /><QuickAction icon="discover" label="협업 공간 찾기" description="공간 탐색과 AI 추천" onPress={onOpenDiscover} /><QuickAction icon="management" label="판매·정산" description={summary.loading ? '정산 내역 확인' : `예상 ${money(summary.expectedSettlement)}`} onPress={onOpenSettlements} /></View>
+    <View style={s.quickGrid}><QuickAction icon="qr" label="내 프로젝트" description="작품·재고·조건 관리" onPress={onOpenProject} /><QuickAction icon="management" label="판매·정산" description={summary.loading ? '정산 내역 확인' : `예상 ${money(summary.expectedSettlement)}`} onPress={onOpenSettlements} /></View>
     <SectionTitle title="협업 제안 및 전시" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="creator" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 협업이 없습니다" description="AI 큐레이터의 추천에서 매장에 협업을 제안해 보세요." />}
   </ScrollView></View>;
 }
@@ -312,7 +312,10 @@ function StoreManagement({ demo, onOpenQr, onOpenPickup, onOpenSettlements, onOp
 
 function CollaborationCard({ item, role, onPress }: { item: CollaborationSummary; role: Role; onPress: () => void }) {
   const labels: Record<CollaborationSummary['status'], string> = { proposed: '승인 대기', negotiating: '조건 조율 중', approved: '최종 확인 필요', active: '전시·판매 중', completed: '완료', cancelled: '취소' };
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${item.projectTitle} 협업 상세 열기`} style={s.collabCard} onPress={onPress}><Image source={role === 'store' ? images.pottery : images.cafe} style={s.collabImage} /><View style={s.flex}><View style={s.row}><CuritText weight="bold">{item.projectTitle}</CuritText><Chip label={labels[item.status]} /></View><CuritText style={s.muted}>{item.counterpartName}{item.endsOn ? ` · 종료 ${item.endsOn}` : ''}</CuritText><CuritText style={s.gridMeta}>작가 {item.creatorShare}% · 매장 {item.storeShare}% · 플랫폼 {item.platformShare}%</CuritText></View></Pressable>;
+  const project = projects.find(value => value.id === item.projectId || value.title === item.projectTitle);
+  const store = stores.find(value => value.name === item.storeName);
+  const image = role === 'store' ? (project?.image ?? images.pottery) : (store?.image ?? images.cafe);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${item.projectTitle} 협업 상세 열기`} style={s.collabCard} onPress={onPress}><Image source={image} style={s.collabImage} contentFit="cover" /><View style={s.flex}><View style={s.row}><CuritText weight="bold" style={s.flex} numberOfLines={1}>{item.projectTitle}</CuritText><View style={s.compactStatus}><View style={s.compactStatusDot} /><CuritText style={s.compactStatusText}>{labels[item.status]}</CuritText></View></View><CuritText style={s.muted}>{item.counterpartName}{item.endsOn ? ` · 종료 ${item.endsOn}` : ''}</CuritText><CuritText style={s.gridMeta}>작가 {item.creatorShare}% · 매장 {item.storeShare}% · 플랫폼 {item.platformShare}%</CuritText></View></Pressable>;
 }
 
 function QuickAction({ icon, label, description, onPress }: { icon: 'qr' | 'management' | 'chat' | 'store' | 'discover'; label: string; description: string; onPress?: () => void }) { return <Pressable accessibilityRole="button" style={s.quickAction} onPress={onPress}><View style={s.quickIcon}><Icon name={icon} color={colors.brand} /></View><CuritText weight="semibold">{label}</CuritText><CuritText style={s.gridMeta}>{description}</CuritText></Pressable>; }
@@ -341,7 +344,7 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration }: { 
     || (filter === '정산 대기' && ['scheduled', 'ready'].includes(entry.status))
     || (filter === '정산 완료' && entry.status === 'paid')
     || (filter === '보류·취소' && ['held', 'cancelled'].includes(entry.status)));
-  return <View style={s.flex}><Header title="판매·정산" subtitle={demo ? '심사용 샘플 정산 원장' : '서버 정산 원장'} back={onBack} /><ScrollView contentContainerStyle={s.scroll}>
+  return <View style={s.flex}><Header title="판매·정산" subtitle="주문별 판매대금과 정산 일정" back={onBack} /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.settlementSummary}><CuritText style={s.muted}>예정·완료 정산 합계</CuritText><CuritText weight="bold" style={s.settlementTotal}>{money(total)}</CuritText><CuritText style={s.gridMeta}>구매 취소와 보류 건은 합계에서 제외됩니다.</CuritText></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.settlementFilters}>{(['전체', '정산 대기', '정산 완료', '보류·취소'] as SettlementFilter[]).map(value => <Chip key={value} label={value} active={filter === value} onPress={() => setFilter(value)} />)}</ScrollView>
     {loading ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}
@@ -359,16 +362,15 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration }: { 
 
 function SettlementLine({ label, value }: { label: string; value: string }) { return <View style={s.settlementLine}><CuritText style={s.muted}>{label}</CuritText><CuritText weight="semibold">{value}</CuritText></View>; }
 
-export function MyScreen({ role, displayName, demo, onLogout, onOpenProject, onOpenProfile, onOpenDna, onOpenStore, onOpenPreferences, onOpenCollaborations, onOpenVerification, onOpenNotifications, onOpenSettlements, onOpenAccount }: { role: Role; displayName: string; demo?: boolean; onLogout: () => void; onOpenProject?: () => void; onOpenProfile: () => void; onOpenDna: () => void; onOpenStore: () => void; onOpenPreferences: () => void; onOpenCollaborations: () => void; onOpenVerification: () => void; onOpenNotifications: () => void; onOpenSettlements: () => void; onOpenAccount: () => void }) {
+export function MyScreen({ role, displayName, demo, onLogout, onOpenProject, onOpenProfile, onOpenDna, onOpenStore, onOpenPreferences, onOpenVerification, onOpenNotifications, onOpenSettlements, onOpenAccount }: { role: Role; displayName: string; demo?: boolean; onLogout: () => void; onOpenProject?: () => void; onOpenProfile: () => void; onOpenDna: () => void; onOpenStore: () => void; onOpenPreferences: () => void; onOpenVerification: () => void; onOpenNotifications: () => void; onOpenSettlements: () => void; onOpenAccount: () => void }) {
   const summary = useCommerceSummary(role, demo);
   const rows = role === 'creator'
-    ? [{ icon: 'heart' as const, label: '활동 인증', onPress: onOpenVerification }, { icon: 'store' as const, label: '나의 작품 DNA', onPress: onOpenDna }, { icon: 'qr' as const, label: '내 전시 프로젝트', onPress: onOpenProject }, { icon: 'chat' as const, label: '협업 제안 내역', onPress: onOpenCollaborations }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }]
-    : [{ icon: 'store' as const, label: '매장 운영 인증', onPress: onOpenVerification }, { icon: 'chat' as const, label: '협업 요청 내역', onPress: onOpenCollaborations }, { icon: 'heart' as const, label: '공간 취향·전시 구역', onPress: onOpenPreferences }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }];
+    ? [{ icon: 'heart' as const, label: '활동 인증', onPress: onOpenVerification }, { icon: 'store' as const, label: '나의 작품 DNA', onPress: onOpenDna }, { icon: 'qr' as const, label: '내 전시 프로젝트', onPress: onOpenProject }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }]
+    : [{ icon: 'store' as const, label: '매장 운영 인증', onPress: onOpenVerification }, { icon: 'heart' as const, label: '공간 취향·전시 구역', onPress: onOpenPreferences }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }];
   const openProfile = role === 'creator' ? onOpenProfile : onOpenStore;
   return <View style={s.flex}><ScrollView contentContainerStyle={s.myScroll} showsVerticalScrollIndicator={false}>
     <CuritText style={s.eyebrow}>CURI:T</CuritText>
-    <Pressable accessibilityRole="button" style={s.myIdentity} onPress={openProfile}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 16 }}>{displayName.slice(0, 2) || 'CU'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.myName}>{displayName}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '도예·세라믹' : '카페'} / 서울</CuritText></View></Pressable>
-    <View style={s.myProfilePanel}><View style={s.myPanelTitle}><CuritText weight="semibold">{role === 'creator' ? '크리에이터 프로필' : '매장 프로필'}</CuritText><CuritText style={s.settingsValue}>공개 중</CuritText></View><View style={s.myPanelButtons}><View style={s.flex}><Button label={role === 'creator' ? '프로필 수정' : '매장 정보 수정'} onPress={openProfile} /></View><View style={s.flex}><Button label={role === 'creator' ? '프로필 보기' : '매장 프로필 보기'} variant="secondary" onPress={openProfile} /></View></View></View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${role === 'creator' ? '크리에이터' : '매장'} 프로필 보기 및 수정`} style={s.myIdentity} onPress={openProfile}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 16 }}>{displayName.slice(0, 2) || 'CU'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.myName}>{displayName}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '패브릭·드로잉' : '카페'} / 서울</CuritText></View><View style={s.profileOpen}><CuritText weight="semibold" style={s.profileOpenText}>프로필</CuritText><Icon name="chevron" size={14} color={colors.brand} /></View></Pressable>
     {role === 'store' ? <Pressable accessibilityRole="button" style={s.myPerformanceCard} onPress={onOpenSettlements}><View style={s.myPanelTitle}><View><CuritText weight="semibold">판매 현황</CuritText><CuritText style={s.gridMeta}>QR 조회와 승인된 주문 기준</CuritText></View><CuritText style={s.curationLink}>판매·정산 보기</CuritText></View><View style={s.myPerformanceMetrics}><Metric value={summary.loading ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View></Pressable> : null}
     <View style={s.myMenuBox}>{rows.map(row => <Pressable accessibilityRole="button" key={row.label} style={s.myMenuRow} onPress={row.onPress}><Icon name={row.icon} size={17} color={colors.muted} /><CuritText style={s.flex}>{row.label}</CuritText><Icon name="chevron" size={14} color={colors.subtle} /></Pressable>)}</View>
     <Pressable accessibilityRole="button" style={s.accountAction} onPress={onOpenAccount}><CuritText style={s.muted}>계정 정보 · 개인정보 관리</CuritText><CuritText style={s.muted}>→</CuritText></Pressable>
@@ -380,16 +382,16 @@ export function AccountSettingsScreen({ email, role, demo, onBack, onOpenNotific
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const resetPassword = async () => {
-    if (demo) { setNotice('심사용 샘플 계정에는 비밀번호 재설정 메일을 보내지 않습니다.'); return; }
+    if (demo) { setNotice('둘러보기 계정에서는 비밀번호를 변경할 수 없습니다.'); return; }
     setBusy(true); setNotice('');
     try { await onResetPassword(); setNotice('가입한 이메일로 비밀번호 재설정 링크를 보냈습니다.'); }
     catch (error) { setNotice(friendlyError(error)); }
     finally { setBusy(false); }
   };
   return <View style={s.flex}><Header title="계정 정보" back={onBack} /><ScrollView contentContainerStyle={s.scroll}>
-    <View style={s.accountInfoCard}><CuritText weight="bold" style={s.cardTitle}>내 계정</CuritText><View style={s.accountInfoRow}><CuritText style={s.muted}>이메일</CuritText><CuritText weight="semibold" style={s.accountInfoValue}>{email}</CuritText></View><View style={s.accountInfoRow}><CuritText style={s.muted}>계정 유형</CuritText><CuritText weight="semibold">{role === 'creator' ? '크리에이터' : '매장 운영자'}</CuritText></View><View style={s.accountInfoRow}><CuritText style={s.muted}>저장 방식</CuritText><CuritText weight="semibold">{demo ? '기기 내 심사용 샘플' : '암호화 인증 · 서버 저장'}</CuritText></View></View>
+    <View style={s.accountInfoCard}><CuritText weight="bold" style={s.cardTitle}>내 계정</CuritText><View style={s.accountInfoRow}><CuritText style={s.muted}>이메일</CuritText><CuritText weight="semibold" style={s.accountInfoValue}>{email}</CuritText></View><View style={s.accountInfoRow}><CuritText style={s.muted}>계정 유형</CuritText><CuritText weight="semibold">{role === 'creator' ? '크리에이터' : '매장 운영자'}</CuritText></View></View>
     <View style={s.privacyCard}><CuritText weight="semibold">개인정보 표시 범위</CuritText><CuritText style={s.accountDescription}>이메일과 역할, 등록한 작품·공간·협업 정보는 계정 기능 제공에 사용됩니다. 매장 직원에게는 고객의 전체 전화번호 대신 주문번호와 뒤 4자리만 표시합니다.</CuritText></View>
-    <View style={s.accountButtons}><Button label="푸시 알림·내 소식 관리" variant="secondary" onPress={onOpenNotifications} /><Button label={busy ? '메일 전송 중…' : '비밀번호 재설정 메일 받기'} variant="secondary" disabled={busy} onPress={() => { void resetPassword(); }} /><Button label="로그아웃" variant="ghost" onPress={() => { void onLogout(); }} /></View>
+    <View style={s.accountButtons}><Button label="내 소식 보기" variant="secondary" onPress={onOpenNotifications} /><Button label={busy ? '메일 전송 중…' : '비밀번호 재설정 메일 받기'} variant="secondary" disabled={busy} onPress={() => { void resetPassword(); }} /><Button label="로그아웃" variant="ghost" onPress={() => { void onLogout(); }} /></View>
     {notice ? <View style={s.noticeCard}><CuritText style={s.muted}>{notice}</CuritText></View> : null}
   </ScrollView></View>;
 }
@@ -437,7 +439,7 @@ export function QrProductsScreen({ demo, onBack, onSelect }: { demo?: boolean; o
   const totalStock = useMemo(() => items.reduce((sum, item) => sum + item.stock, 0), [items]);
   const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
   const visibleItems = useMemo(() => items.filter(item => `${item.name} ${item.artistName || ''} ${item.token || ''}`.toLocaleLowerCase('ko-KR').includes(normalizedQuery)), [items, normalizedQuery]);
-  return <View style={s.flex}><Header title="QR 상품 관리" subtitle={demo ? '심사용 샘플 전시' : '승인된 협업의 상품별 QR'} back={onBack} /><ScrollView contentContainerStyle={s.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}><View style={s.storeInfo}><View style={s.quickIcon}><Icon name="store" color={colors.brand} /></View><View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>전시 상품 {items.length}종 · 판매 가능 {totalStock}개</CuritText></View><Chip label={demo ? '샘플' : '서버 연결'} /></View><Field placeholder="상품명 또는 QR 토큰 검색" value={query} onChangeText={setQuery} returnKeyType="search" />{loading && items.length === 0 ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}{error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}{!loading && items.length === 0 ? <Empty title="발급 가능한 QR 상품이 없습니다" description="양측 승인이 완료된 협업에서 전시·판매 상품의 QR을 발급할 수 있습니다." /> : !loading && visibleItems.length === 0 ? <Empty title="검색 결과가 없습니다" description="상품명, 작가명 또는 QR 토큰을 다시 확인해 주세요." /> : visibleItems.map((item, index) => <Pressable accessibilityRole="button" key={item.id || item.token} disabled={Boolean(issuing)} style={s.qrRow} onPress={() => { void openOrIssue(item); }}><Image source={item.imageUrl ? { uri: item.imageUrl } : [projects[0]?.image, projects[1]?.image, projects[3]?.image][index % 3]} style={s.qrImage} /><View style={s.flex}><CuritText weight="semibold">{item.name}</CuritText><CuritText style={s.muted}>{money(item.price)} · 재고 {item.stock}개 · {item.issuable ? '발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : '판매 전'}</CuritText><CuritText style={s.tokenText} numberOfLines={1}>{item.issuable ? '눌러서 상품 전용 QR 발급' : `QR 조회 ${(item.viewCount || 0).toLocaleString('ko-KR')}회 · ${item.token}`}</CuritText></View><View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="qr" size={21} color={colors.brand} />}</View></Pressable>)}</ScrollView></View>;
+  return <View style={s.flex}><Header title="QR 상품 관리" subtitle="승인된 협업의 상품별 QR" back={onBack} /><ScrollView contentContainerStyle={s.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}><View style={s.storeInfo}><View style={s.quickIcon}><Icon name="store" color={colors.brand} /></View><View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>전시 상품 {items.length}종 · 판매 가능 {totalStock}개</CuritText></View><Chip label={`${items.length}종`} /></View><Field placeholder="상품명 또는 QR 토큰 검색" value={query} onChangeText={setQuery} returnKeyType="search" />{loading && items.length === 0 ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}{error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}{!loading && items.length === 0 ? <Empty title="발급 가능한 QR 상품이 없습니다" description="양측 승인이 완료된 협업에서 전시·판매 상품의 QR을 발급할 수 있습니다." /> : !loading && visibleItems.length === 0 ? <Empty title="검색 결과가 없습니다" description="상품명, 작가명 또는 QR 토큰을 다시 확인해 주세요." /> : visibleItems.map((item, index) => <Pressable accessibilityRole="button" key={item.id || item.token} disabled={Boolean(issuing)} style={s.qrRow} onPress={() => { void openOrIssue(item); }}><Image source={item.imageUrl ? { uri: item.imageUrl } : [projects[0]?.image, projects[1]?.image, projects[3]?.image][index % 3]} style={s.qrImage} /><View style={s.flex}><CuritText weight="semibold">{item.name}</CuritText><CuritText style={s.muted}>{money(item.price)} · 재고 {item.stock}개 · {item.issuable ? '발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : '판매 전'}</CuritText><CuritText style={s.tokenText} numberOfLines={1}>{item.issuable ? '눌러서 상품 전용 QR 발급' : `QR 조회 ${(item.viewCount || 0).toLocaleString('ko-KR')}회 · ${item.token}`}</CuritText></View><View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="qr" size={21} color={colors.brand} />}</View></Pressable>)}</ScrollView></View>;
 }
 
 const s = StyleSheet.create({
@@ -456,8 +458,8 @@ const s = StyleSheet.create({
   curationHero: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginTop: 24, marginBottom: 38 },
   curationPrelude: { color: colors.muted, fontSize: 12, marginBottom: 7 },
   curationTitle: { color: colors.ink, fontSize: 28, lineHeight: 37, letterSpacing: -1.1 },
-  roundArrow: { width: 46, height: 46, borderRadius: 23, marginTop: 8, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  roundArrowText: { color: colors.surface, fontSize: 21, lineHeight: 24 },
+  preferenceLink: { minHeight: 40, marginTop: 8, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.brandSoft, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  preferenceLinkText: { color: colors.brand, fontSize: 11 },
   curationSectionTop: { minHeight: 48, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 14, marginBottom: 14 },
   curationSectionTitle: { color: colors.ink, fontSize: 17, lineHeight: 24, letterSpacing: -.3 },
   curationLinkAction: { minWidth: 72, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
@@ -492,12 +494,14 @@ const s = StyleSheet.create({
   exploreTabs: { flexDirection: 'row', minHeight: 54, alignItems: 'flex-end', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 4, marginBottom: 20 }, exploreTab: { color: colors.muted, paddingBottom: 12 }, exploreTabActive: { color: colors.brand, paddingBottom: 11, borderBottomWidth: 2, borderBottomColor: colors.brand },
   dnaFilter: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: 18, overflow: 'hidden' }, dnaFilterHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }, dnaFilterSummary: { flex: 1, minWidth: 0, marginLeft: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }, dnaSummaryText: { color: colors.muted, fontSize: 11, flexShrink: 1, textAlign: 'right' }, dnaFilterBody: { borderTopWidth: 1, borderTopColor: colors.border, padding: 14, gap: 10 }, dnaFilterLabel: { color: colors.muted, fontSize: 11 }, dnaChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   searchPad: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, chatRow: { flexDirection: 'row', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, chatTime: { color: colors.subtle, fontSize: 10 }, chatProject: { color: colors.brand, fontSize: 11, marginVertical: 2 },
-  collabCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, flexDirection: 'row', gap: 12, marginBottom: 12 }, collabImage: { width: 74, height: 74, borderRadius: radius.sm }, progressTrack: { height: 5, backgroundColor: colors.border, borderRadius: 3, marginVertical: 10 }, progress: { height: 5, backgroundColor: colors.brand, borderRadius: 3 },
+  collabCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, flexDirection: 'row', gap: 12, marginBottom: 12 }, collabImage: { width: 74, height: 74, borderRadius: radius.sm }, compactStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.brandSoft }, compactStatusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.brand }, compactStatusText: { color: colors.brand, fontSize: 9 }, progressTrack: { height: 5, backgroundColor: colors.border, borderRadius: 3, marginVertical: 10 }, progress: { height: 5, backgroundColor: colors.brand, borderRadius: 3 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 }, quickAction: { width: '48.5%', minHeight: 112, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, justifyContent: 'center' }, quickIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingBottom: 22, borderBottomWidth: 1, borderBottomColor: colors.border }, profileAvatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, settingsRow: { minHeight: 54, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' },
   myScroll: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 40 },
-  myIdentity: { minHeight: 92, marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  myIdentity: { minHeight: 92, marginTop: 20, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 14 },
   myName: { fontSize: 20, lineHeight: 27, letterSpacing: -.4, marginBottom: 3 },
+  profileOpen: { minHeight: 40, paddingLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  profileOpenText: { color: colors.brand, fontSize: 11 },
   myProfilePanel: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: 17, gap: 14, backgroundColor: colors.surface, marginBottom: 14 },
   myPanelTitle: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   myPanelButtons: { flexDirection: 'row', gap: 8 },

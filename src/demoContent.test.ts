@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demoCollaboration, demoIncomingCollaboration, demoProposalCollaboration, demoQrProducts, demoSocialPosts, nextDemoCollaborationStatus } from './demoContent';
+import { demoCollaboration, demoCollaborationList, demoIncomingCollaboration, demoProposalCollaboration, demoQrProducts, demoSocialPosts, nextDemoCollaborationStatus } from './demoContent';
 
 describe('demo QR catalog', () => {
   it('keeps every presentation product independently purchasable without an API response', () => {
@@ -10,8 +10,9 @@ describe('demo QR catalog', () => {
 
   it('keeps a navigable collaboration for both presentation roles', () => {
     expect(demoCollaboration('creator').counterpartName).toBe('아늑한 서울');
-    expect(demoCollaboration('store').counterpartName).toBe('김서연');
+    expect(demoCollaboration('store').counterpartName).toBe('최선문');
     expect(demoCollaboration('store').status).toBe('active');
+    expect(new Set(demoCollaborationList('store').map(item => item.projectTitle)).size).toBe(4);
   });
 
   it('skips self-approval when a creator starts a proposal', () => {
@@ -35,7 +36,7 @@ describe('demo QR catalog', () => {
   });
 
   it('ships a populated community feed for offline judging', () => {
-    expect(demoSocialPosts).toHaveLength(2);
+    expect(demoSocialPosts).toHaveLength(4);
     expect(demoSocialPosts.every(post => post.content.length > 10)).toBe(true);
   });
 });

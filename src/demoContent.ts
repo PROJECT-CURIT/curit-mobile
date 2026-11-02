@@ -6,13 +6,13 @@ import type { CollaborationSummary, QrProduct, Role } from './types';
 export function demoCollaboration(role: Role): CollaborationSummary {
   return {
     id: 'demo-collaboration',
-    projectId: 'demo-project',
+    projectId: 'demo-project-paper',
     storeId: 'demo-store',
-    creatorId: 'demo-creator',
-    projectTitle: '흙의 기억',
+    creatorId: 'demo-creator-seonmun',
+    projectTitle: '종이 위의 산책',
     storeName: '아늑한 서울',
-    creatorName: '김서연',
-    counterpartName: role === 'creator' ? '아늑한 서울' : '김서연',
+    creatorName: '최선문',
+    counterpartName: role === 'creator' ? '아늑한 서울' : '최선문',
     status: 'active',
     startsOn: '2026-10-01',
     endsOn: '2026-12-31',
@@ -28,6 +28,13 @@ export function demoProposalCollaboration(role: Role): CollaborationSummary {
   return {
     ...demoCollaboration(role),
     id: 'demo-proposal',
+    projectId: 'demo-project-blue',
+    creatorId: 'demo-creator-haereum',
+    projectTitle: '파란 식탁',
+    creatorName: '김해름',
+    counterpartName: role === 'creator' ? '성수 독립서점' : '김해름',
+    storeId: 'demo-store-book',
+    storeName: '성수 독립서점',
     status: role === 'creator' ? 'approved' : 'proposed',
     startsOn: '2026-11-07',
     endsOn: '2027-02-05',
@@ -45,16 +52,48 @@ export function demoIncomingCollaboration(role: Role): CollaborationSummary {
   return {
     ...demoCollaboration(role),
     id: 'demo-incoming',
+    projectId: 'demo-project-glass',
+    creatorId: 'demo-creator-ayeong',
+    projectTitle: '유리 정원의 오후',
+    creatorName: '권아영',
+    counterpartName: role === 'creator' ? '리프 쇼룸' : '권아영',
+    storeId: 'demo-store-leaf',
+    storeName: '리프 쇼룸',
     status: role === 'creator' ? 'proposed' : 'approved',
     startsOn: '2026-11-07',
     endsOn: '2027-02-05',
     terms: {
       initiatedBy,
       message: role === 'creator'
-        ? '아늑한 서울이 작품 구성과 전시 조건을 확인해 달라고 요청했습니다.'
-        : '김서연 작가가 추천 결과를 확인하고 매장에 협업을 제안했습니다.',
+        ? '리프 쇼룸이 작품 구성과 전시 조건을 확인해 달라고 요청했습니다.'
+        : '권아영 작가가 추천 결과를 확인하고 매장에 협업을 제안했습니다.',
     },
   };
+}
+
+export function demoCollaborationList(role: Role): CollaborationSummary[] {
+  const completed: CollaborationSummary = {
+    ...demoCollaboration(role),
+    id: 'demo-completed',
+    projectId: 'demo-project-earth',
+    creatorId: 'demo-creator-soyeon',
+    projectTitle: '흙의 기억',
+    creatorName: '김서연',
+    counterpartName: role === 'creator' ? '오후의 기록' : '김서연',
+    storeId: 'demo-store-afternoon',
+    storeName: '오후의 기록',
+    status: 'completed',
+    startsOn: '2026-07-01',
+    endsOn: '2026-09-30',
+    terms: { message: '전시 종료 후 판매대금 정산까지 완료되었습니다.' },
+    updatedAt: '2026-10-03T07:30:00.000Z',
+  };
+  return [
+    { ...demoIncomingCollaboration(role), updatedAt: '2026-11-02T02:20:00.000Z' },
+    { ...demoProposalCollaboration(role), updatedAt: '2026-11-01T08:40:00.000Z' },
+    { ...demoCollaboration(role), updatedAt: '2026-10-31T05:10:00.000Z' },
+    completed,
+  ];
 }
 
 export function nextDemoCollaborationStatus(
@@ -72,29 +111,39 @@ export function nextDemoCollaborationStatus(
 
 export const demoSocialPosts: SocialPost[] = [
   {
-    id: 'demo-post-season', creatorId: 'demo-creator-season', creatorName: '김서연', handle: 'soyeon_craft', avatarUrl: '',
-    content: '10월 시즌 전시 준비를 마쳤어요. 우드톤 공간에 어울리는 따뜻한 생활 도예 작품을 소개합니다.', imageUrl: '',
-    likes: 64, comments: 12, liked: false, followed: true, own: false, createdAt: '2026-10-30T09:00:00.000Z',
+    id: 'demo-post-glass', creatorId: 'demo-creator-ayeong', creatorName: '권아영', handle: 'ayeong.green', avatarUrl: '',
+    content: '연남동 쇼룸 전시를 준비하고 있어요. 빛과 식물에서 가져온 색을 작은 패브릭 소품에 담았습니다.', imageUrl: '',
+    likes: 128, comments: 19, liked: false, followed: true, own: false, createdAt: '2026-11-01T09:00:00.000Z',
   },
   {
-    id: 'demo-post-print', creatorId: 'demo-creator-print', creatorName: '이하늘', handle: 'haneul_print', avatarUrl: '',
-    content: '도시의 새벽빛을 담은 프린트 시리즈가 새로운 카페 공간에서 전시를 시작합니다.', imageUrl: '',
-    likes: 41, comments: 7, liked: false, followed: false, own: false, createdAt: '2026-10-28T12:30:00.000Z',
+    id: 'demo-post-paper', creatorId: 'demo-creator-seonmun', creatorName: '최선문', handle: 'moon.archive', avatarUrl: '',
+    content: '종이 위의 산책 시리즈가 성수 카페에서 전시를 시작했습니다. 커피를 기다리는 동안 천천히 봐 주세요.', imageUrl: '',
+    likes: 96, comments: 11, liked: true, followed: true, own: false, createdAt: '2026-10-31T12:30:00.000Z',
+  },
+  {
+    id: 'demo-post-blue', creatorId: 'demo-creator-haereum', creatorName: '김해름', handle: 'haereum.blue', avatarUrl: '',
+    content: '푸른 유약의 농도를 달리한 작은 볼과 접시를 완성했습니다. 서점과 식탁이 있는 공간을 찾고 있어요.', imageUrl: '',
+    likes: 73, comments: 8, liked: false, followed: false, own: false, createdAt: '2026-10-29T04:20:00.000Z',
+  },
+  {
+    id: 'demo-post-linen', creatorId: 'demo-creator-sua', creatorName: '박수아', handle: 'sua.textile', avatarUrl: '',
+    content: '겨울 시즌을 위한 린넨 오브제 샘플이 나왔어요. 밝은 선반과 창가 공간에 잘 어울립니다.', imageUrl: '',
+    likes: 52, comments: 6, liked: false, followed: false, own: false, createdAt: '2026-10-27T07:15:00.000Z',
   },
 ];
 
 export const demoCreatorProfile: CreatorProfileData = {
   userId: 'demo-creator',
-  displayName: '김서연',
-  handle: 'soyeon_craft',
+  displayName: '권아영',
+  handle: 'ayeong_green',
   avatarPath: '',
   avatarUrl: '',
-  headline: '제주 자연에서 영감을 받은 도예 작가',
-  introduction: '흙의 질감과 계절의 색을 일상에서 오래 사용할 수 있는 그릇에 담습니다.',
-  categories: ['도예·세라믹', '회화'],
+  headline: '빛과 식물의 색을 담는 패브릭 작가',
+  introduction: '일상의 초록과 오후의 빛을 오래 곁에 둘 수 있는 패브릭 소품으로 만듭니다.',
+  categories: ['패브릭·섬유', '드로잉'],
   regions: ['서울', '경기'],
-  portfolioUrl: 'https://example.com/soyeon-craft',
-  snsUrl: 'https://instagram.com/soyeon_craft',
+  portfolioUrl: 'https://example.com/ayeong-green',
+  snsUrl: 'https://instagram.com/ayeong_green',
   dnaMoods: ['내추럴', '우드톤', '미니멀'],
   dnaColors: ['아이보리', '베이지'],
   preferredSpaces: ['카페', '서점'],
@@ -136,7 +185,7 @@ export const demoQrProducts: QrProduct[] = [
     viewCount: 203,
     status: 'ACTIVE',
     pickupMode: 'immediate',
-    artistName: '김서연',
+    artistName: '최선문',
     qrUrl: buildQrWebUrl('demo-mug-white-gray'),
   },
   {
@@ -149,7 +198,7 @@ export const demoQrProducts: QrProduct[] = [
     viewCount: 158,
     status: 'ACTIVE',
     pickupMode: 'immediate',
-    artistName: '김서연',
+    artistName: '김해름',
     qrUrl: buildQrWebUrl('demo-bowl-set-2026'),
   },
   {
@@ -162,7 +211,7 @@ export const demoQrProducts: QrProduct[] = [
     viewCount: 61,
     status: 'ACTIVE',
     pickupMode: 'immediate',
-    artistName: '김서연',
+    artistName: '권아영',
     qrUrl: buildQrWebUrl('demo-dessert-plate'),
   },
 ];

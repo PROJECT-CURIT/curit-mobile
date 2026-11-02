@@ -89,11 +89,15 @@ function priceLabel(items: ProjectItemRow[]) {
 
 function demoRecommendations(role: Role): MatchRecommendation[] {
   return role === 'store' ? [
-    { targetId: '20000000-0000-4000-8000-000000000001', targetType: 'project', title: '흙의 기억', subtitle: '김서연 · 서울·제주', description: '우드톤 공간과 잘 어울리는 따뜻한 세라믹 생활 공예', score: 94, reasons: ['매장 우드톤과 작품의 자연 소재가 일치해요', '2만~5만원대 방문객 구매 범위에 들어와요', '선반 전시가 가능한 소형 굿즈예요'], tags: ['우드톤', '세라믹', 'QR 판매'], priceRange: '28,000~150,000원' },
-    { targetId: 'demo-project-green', targetType: 'project', title: '고요한 초록', subtitle: '박수아 · 서울·인천', description: '식물과 린넨을 활용한 편안한 패브릭 컬렉션', score: 87, reasons: ['따뜻한 매장 분위기와 색감이 가까워요', '카운터 선반에 셀프 설치할 수 있어요'], tags: ['식물', '패브릭', '포근함'], priceRange: '18,000~45,000원' },
+    { targetId: 'demo-project-glass', targetType: 'project', title: '유리 정원의 오후', subtitle: '권아영 · 서울·경기', description: '빛과 식물의 색을 담은 패브릭 소품 컬렉션', score: 94, reasons: ['매장의 초록 식물과 작품 색감이 자연스럽게 이어져요', '2만~5만원대 방문객 구매 범위에 들어와요', '선반에 셀프 설치할 수 있는 소형 작품이에요'], tags: ['식물', '패브릭', '파스텔'], priceRange: '18,000~48,000원' },
+    { targetId: 'demo-project-paper', targetType: 'project', title: '종이 위의 산책', subtitle: '최선문 · 서울 전역', description: '도시의 산책 장면을 기록한 드로잉과 아트 프린트', score: 91, reasons: ['우드톤 벽면에 차분한 드로잉이 잘 어울려요', '가벼운 액자라 기존 벽면을 그대로 활용할 수 있어요'], tags: ['드로잉', '프린트', '모던'], priceRange: '15,000~65,000원' },
+    { targetId: 'demo-project-blue', targetType: 'project', title: '파란 식탁', subtitle: '김해름 · 서울·인천', description: '푸른 유약의 농도를 달리한 작은 그릇과 오브제', score: 88, reasons: ['카운터의 밝은 조명과 세라믹 표면이 잘 맞아요', '현장 수령이 쉬운 생활 소품 구성이에요'], tags: ['세라믹', '블루', '미니멀'], priceRange: '28,000~120,000원' },
+    { targetId: 'demo-project-earth', targetType: 'project', title: '흙의 기억', subtitle: '김서연 · 서울·제주', description: '흙의 질감을 살린 따뜻한 생활 도예 컬렉션', score: 86, reasons: ['매장 우드톤과 자연 소재가 일치해요', '카운터와 선반을 함께 활용할 수 있어요'], tags: ['우드톤', '도예', '자연'], priceRange: '35,000~180,000원' },
   ] : [
     { targetId: '10000000-0000-4000-8000-000000000001', targetType: 'store', title: '아늑한 서울', subtitle: '카페 · 서울 성동구 성수동', description: '우드톤 공간에서 독립 창작자의 작품을 소개하는 30석 카페', score: 94, reasons: ['도예 작품과 우드톤 선반의 소재가 잘 맞아요', '예술·공예에 관심 있는 방문객이 많아요', 'QR 판매 목적과 전시 조건이 일치해요'], tags: ['우드톤', '미니멀', '카운터 선반'] },
     { targetId: 'demo-store-book', targetType: 'store', title: '성수 독립서점', subtitle: '서점 · 서울 성동구', description: '조용한 관람과 벽면 전시가 가능한 독립서점', score: 86, reasons: ['작품을 천천히 보는 방문 환경이에요', '서울 활동 지역과 일치해요'], tags: ['조용함', '전시벽', '독립서점'] },
+    { targetId: 'demo-store-leaf', targetType: 'store', title: '리프 쇼룸', subtitle: '쇼룸 · 서울 마포구 연남동', description: '밝은 자연광과 낮은 진열대를 갖춘 소형 쇼룸', score: 83, reasons: ['밝은 색 작품의 촬영과 전시에 적합해요', '선반과 테이블 구역을 함께 사용할 수 있어요'], tags: ['밝음', '선반', '쇼룸'] },
+    { targetId: 'demo-store-afternoon', targetType: 'store', title: '오후의 기록', subtitle: '카페 · 서울 마포구 망원동', description: '창가 좌석과 조용한 벽면이 있는 동네 카페', score: 79, reasons: ['차분한 작품을 오래 감상하기 좋은 공간이에요', '작은 굿즈를 계산대 옆에 배치할 수 있어요'], tags: ['차분함', '창가', '벽면'] },
   ];
 }
 

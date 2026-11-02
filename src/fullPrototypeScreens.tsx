@@ -38,7 +38,6 @@ import {
   type StoreOnboarding,
 } from './platform';
 import type { QrProduct } from './types';
-import { registerNativePush } from './pushNotifications';
 import { demoCreatorProfile, demoSocialPosts, demoStoreOnboarding } from './demoContent';
 import { images } from './data';
 
@@ -70,7 +69,7 @@ export function CreatorDnaScreen({ onBack, onNext, demo = false }: { onBack: () 
   const save = async () => {
     if (!moods.length || !colorsValue.length || !spaces.length || !goals.length) { setNotice('작품 취향과 협업 방향을 모두 선택해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { if (!demo) await saveCreatorDna({ dnaMoods: moods, dnaColors: colorsValue, preferredSpaces: spaces, collaborationGoals: goals, installConditions: conditions }); onNext?.(); if (!onNext) setNotice(demo ? '심사용 샘플에서 변경 내용을 확인했습니다.' : '크리에이터 DNA를 저장했습니다.'); }
+    try { if (!demo) await saveCreatorDna({ dnaMoods: moods, dnaColors: colorsValue, preferredSpaces: spaces, collaborationGoals: goals, installConditions: conditions }); onNext?.(); if (!onNext) setNotice('크리에이터 DNA를 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title="크리에이터 DNA" onBack={onBack} />;
@@ -106,7 +105,7 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
   const save = async () => {
     if (!profile?.displayName.trim() || !profile.regions.length || !profile.categories.length) { setNotice('활동명, 활동 지역, 작업 분야를 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { const saved = demo ? { ...profile, avatarUrl: avatarUri || profile.avatarUrl, onboardingComplete: true } : await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved); if (!onSaved) setNotice(demo ? '심사용 샘플에서 변경 내용을 확인했습니다.' : '프로필을 저장했습니다.'); }
+    try { const saved = demo ? { ...profile, avatarUrl: avatarUri || profile.avatarUrl, onboardingComplete: true } : await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved); if (!onSaved) setNotice('프로필을 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title={mode === 'edit' ? '크리에이터 프로필 수정' : '크리에이터 프로필'} onBack={onBack} />;
@@ -163,7 +162,7 @@ export function StorePreferencesScreen({ userId, onBack, demo = false }: { userI
   if (!store && !notice) return <LoadingScreen title="공간 취향 · 전시 구역" onBack={onBack} />;
   if (!store) return <View style={f.flex}><Header title="공간 취향 · 전시 구역" back={onBack} /><Notice text={notice} /></View>;
   const zones = store.exhibitionZones.map(zone => zone.type);
-  const save = async () => { setSaving(true); setNotice(''); try { if (!demo) await saveStoreOnboarding(store); setNotice(demo ? '심사용 샘플에서 변경 내용을 확인했습니다.' : '공간 취향과 전시 구역을 저장했습니다.'); } catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); } };
+  const save = async () => { setSaving(true); setNotice(''); try { if (!demo) await saveStoreOnboarding(store); setNotice('공간 취향과 전시 구역을 저장했습니다.'); } catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); } };
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="공간 취향 · 전시 구역" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     <ChoiceCard title="공간 분위기" options={moodOptions} selected={store.moodTags} onToggle={value => setStore({ ...store, moodTags: store.moodTags.includes(value) ? store.moodTags.filter(item => item !== value) : [...store.moodTags, value] })} />
     <ChoiceCard title="협업 목적" options={['분위기 전환', '공간 전시', '포토존 구성', '지역 크리에이터 소개', '상품 판매', '브랜드 표현']} selected={store.purposeTags} onToggle={value => setStore({ ...store, purposeTags: store.purposeTags.includes(value) ? store.purposeTags.filter(item => item !== value) : [...store.purposeTags, value] })} />
@@ -185,7 +184,7 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   const save = async (saleStatus?: 'active' | 'preparing') => {
     if (!item.id || !valuesValid) { setNotice('판매가는 1원 이상, 구매 가능 수량은 0개 이상의 정수로 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { const saved = demo ? { ...item, price: Number(price), stock: Number(stock), pickupMode, status: saleStatus === 'active' ? 'ACTIVE' as const : 'PAUSED' as const } : await updateQrListing(item.id, { price: Number(price), stock: Number(stock), pickupMode, saleStatus }); setItem(saved); onSaved(saved); setNotice(demo ? '심사용 샘플 판매 설정을 반영했습니다.' : '판매 설정을 저장했습니다.'); }
+    try { const saved = demo ? { ...item, price: Number(price), stock: Number(stock), pickupMode, status: saleStatus === 'active' ? 'ACTIVE' as const : 'PAUSED' as const } : await updateQrListing(item.id, { price: Number(price), stock: Number(stock), pickupMode, saleStatus }); setItem(saved); onSaved(saved); setNotice('판매 설정을 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   const share = async (message: string) => { if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(message); setNotice('클립보드에 복사했습니다.'); } else await Share.share({ message }); };
@@ -276,7 +275,7 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
     try {
       if (demo) {
         setRequest({ id: 'demo-verification', kind, status: 'pending', evidencePath: imageUri, evidenceUrl: imageUri, note: note.trim(), reviewNote: '', submittedAt: new Date().toISOString(), reviewedAt: '' });
-        setNotice('심사용 데모에서 검토 요청 상태를 반영했습니다.');
+        setNotice('검토 요청을 접수했습니다.');
       } else {
         setRequest(await submitVerificationRequest(kind, imageUri, note, mimeType));
         setNotice('증빙을 안전하게 저장하고 검토 요청을 접수했습니다.');
@@ -306,10 +305,13 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
 }
 
 export function NotificationsScreen({ onBack, demo = false }: { onBack: () => void; demo?: boolean }) {
-  const [items, setItems] = useState<AppNotification[]>(demo ? [{ id: 'demo-notification', title: '흙의 기억 협업이 전시 중입니다', body: 'QR 판매와 현장 수령 현황을 확인해 주세요.', kind: 'collaboration', entityId: 'demo-collaboration', read: false, createdAt: new Date().toISOString() }] : []);
+  const [items, setItems] = useState<AppNotification[]>(demo ? [
+    { id: 'demo-notification-1', title: '유리 정원의 오후 제안이 도착했습니다', body: '권아영 작가가 전시 기간과 작품 구성을 제안했습니다.', kind: 'collaboration', entityId: 'demo-incoming', read: false, createdAt: '2026-11-02T02:20:00.000Z' },
+    { id: 'demo-notification-2', title: '종이 위의 산책 판매가 승인되었습니다', body: '현장 수령 주문 1건의 상품 전달을 확인해 주세요.', kind: 'order', entityId: 'demo-order-paper', read: false, createdAt: '2026-11-01T08:40:00.000Z' },
+    { id: 'demo-notification-3', title: '파란 식탁의 배치 조건이 변경되었습니다', body: '성수 독립서점이 선반 전시 수량을 수정했습니다.', kind: 'collaboration', entityId: 'demo-proposal', read: true, createdAt: '2026-10-31T05:10:00.000Z' },
+  ] : []);
   const [loading, setLoading] = useState(!demo);
   const [notice, setNotice] = useState('');
-  const [pushSaving, setPushSaving] = useState(false);
   useEffect(() => {
     if (demo) return;
     let active = true;
@@ -317,15 +319,7 @@ export function NotificationsScreen({ onBack, demo = false }: { onBack: () => vo
     return () => { active = false; };
   }, [demo]);
   const open = async (item: AppNotification) => { if (!item.read) { if (!demo) await markNotificationRead(item.id); setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value)); } };
-  const connectPush = async () => {
-    setPushSaving(true); setNotice('');
-    try {
-      if (demo) setNotice('실제 계정과 설치형 앱에서는 이 기기의 푸시 토큰을 서버에 등록합니다.');
-      else { const result = await registerNativePush(); setNotice(result.status === 'registered' ? '이 기기에서 푸시 알림을 받을 수 있습니다.' : result.message); }
-    } catch (error) { setNotice(friendlyError(error)); }
-    finally { setPushSaving(false); }
-  };
-  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.scroll}><View style={f.infoBanner}><CuritText weight="semibold">중요한 협업·주문 소식을 놓치지 마세요.</CuritText><CuritText style={f.description}>앱이 닫혀 있어도 새 협업 상태와 QR 주문·취소 결과를 알려드립니다.</CuritText><Button label={pushSaving ? '연결 중…' : '이 기기 푸시 알림 연결'} variant="secondary" disabled={pushSaving} onPress={() => { void connectPush(); }} /></View>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
+  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.notificationList}>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
 }
 
 export function SocialFeedSection({ canPost = false, demo = false }: { canPost?: boolean; demo?: boolean }) {
@@ -347,8 +341,8 @@ export function SocialFeedSection({ canPost = false, demo = false }: { canPost?:
   const create = async () => {
     if (!compose.trim()) return;
     if (demo) {
-      setItems(current => [{ id: `demo-own-${Date.now()}`, creatorId: 'demo-creator', creatorName: '김서연', handle: 'soyeon_craft', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
-      setCompose(''); setPostImage(''); setNotice('심사용 데모 피드에 소식을 등록했습니다.'); return;
+      setItems(current => [{ id: `demo-own-${Date.now()}`, creatorId: 'demo-creator', creatorName: '권아영', handle: 'ayeong_green', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
+      setCompose(''); setPostImage(''); setNotice(''); return;
     }
     try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); } catch (error) { setNotice(friendlyError(error)); }
   };
@@ -362,7 +356,7 @@ export function SocialFeedSection({ canPost = false, demo = false }: { canPost?:
   };
   const addComment = async (item: SocialPost) => {
     if (!comment.trim()) return;
-    if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, comments: value.comments + 1 } : value)); setComment(''); setCommentFor(''); setNotice('심사용 데모에 댓글 반응을 반영했습니다.'); return; }
+    if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, comments: value.comments + 1 } : value)); setComment(''); setCommentFor(''); setNotice(''); return; }
     await addPostComment(item.id, comment); setComment(''); setCommentFor(''); await load();
   };
   if (loading) return <ActivityIndicator color={colors.brand} style={f.loader} />;
@@ -372,14 +366,14 @@ export function SocialFeedSection({ canPost = false, demo = false }: { canPost?:
       {postImage ? <Image source={{ uri: postImage }} style={f.postImage} /> : null}
       <View style={f.two}><View style={f.flex}><Button label={postImage ? '사진 변경' : '사진 추가'} variant="secondary" onPress={() => { void choosePostImage(); }} /></View><View style={f.flex}><Button label="소식 올리기" disabled={!compose.trim()} onPress={() => { void create(); }} /></View></View>
     </View> : null}
-    {items.length ? items.map(item => <View key={item.id} style={f.post}>
+    {items.length ? items.map((item, index) => <View key={item.id} style={f.post}>
       <View style={f.row}>
         {item.avatarUrl ? <Image source={{ uri: item.avatarUrl }} style={f.avatarSmall} /> : <View style={f.avatarSmall}><CuritText weight="bold">{item.creatorName[0]}</CuritText></View>}
         <View style={f.flex}><CuritText weight="semibold">{item.creatorName}</CuritText><CuritText style={f.hint}>@{item.handle || 'creator'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</CuritText></View>
         {!item.own ? <Chip label={item.followed ? '팔로잉' : '팔로우'} active={item.followed} onPress={() => { void toggleFollow(item).catch(error => setNotice(friendlyError(error))); }} /> : <Chip label="내 소식" />}
       </View>
       <CuritText style={f.longText}>{item.content}</CuritText>
-      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.postImage} /> : null}
+      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.postImage} contentFit="cover" /> : demo ? <Image source={[images.pouch, images.print, images.bowls, images.linen][index % 4]} style={f.postImage} contentFit="cover" /> : null}
       <View style={f.socialActions}>
         <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void toggleLike(item).catch(error => setNotice(friendlyError(error))); }}><CuritText style={item.liked ? f.brand : f.muted}>♥ {item.likes}</CuritText></Pressable>
         <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => setCommentFor(commentFor === item.id ? '' : item.id)}><CuritText style={f.muted}>댓글 {item.comments}</CuritText></Pressable>
@@ -411,7 +405,7 @@ const f = StyleSheet.create({
   storeCover: { width: '100%', height: 210, borderRadius: radius.lg }, placeholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, infoCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14 }, infoRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, infoRowMultiline: { alignItems: 'flex-start', flexDirection: 'column', gap: 5, paddingVertical: 12 }, infoValue: { flex: 1, textAlign: 'right' }, infoValueMultiline: { flex: 0, width: '100%', textAlign: 'left', lineHeight: 21 },
   two: { flexDirection: 'row', gap: 10 }, infoBanner: { backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: 16, gap: 5 }, qrProductImage: { width: '100%', height: 180, borderRadius: radius.md }, preview: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 18, alignItems: 'center', gap: 9 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border }, tab: { flex: 1, paddingVertical: 13, alignItems: 'center' }, tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, orderCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 15 }, row: { flexDirection: 'row', alignItems: 'center', gap: 10 }, accordion: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
-  notification: { flexDirection: 'row', gap: 12, padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border }, notificationUnread: { backgroundColor: colors.brandPale }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 7 }, dotRead: { backgroundColor: colors.border },
+  notificationList: { flexGrow: 1, paddingVertical: 8, paddingBottom: 36 }, notification: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, notificationUnread: { backgroundColor: colors.brandPale }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 7 }, dotRead: { backgroundColor: colors.border },
   verificationStatus: { minHeight: 92, flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16 }, evidenceImage: { width: '100%', height: 220, borderRadius: radius.md, backgroundColor: colors.brandPale }, evidencePlaceholder: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.brand, borderRadius: radius.md, backgroundColor: colors.brandPale },
   headerTextAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },

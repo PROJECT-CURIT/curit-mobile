@@ -13,7 +13,7 @@ import { isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
 import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, QrProduct, Role, Session, TabKey } from '../types';
-import { demoCollaboration, demoIncomingCollaboration, demoProposalCollaboration, demoStoreOnboarding } from '../demoContent';
+import { demoCollaboration, demoCollaborationList, demoProposalCollaboration, demoStoreOnboarding } from '../demoContent';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
 
@@ -136,9 +136,9 @@ export default function AppIndex() {
   };
 
   const demoLogin = (role: Role) => {
-    const next = { userId: `demo-${role}`, email: `demo-${role}@curit.local`, role, displayName: role === 'creator' ? '김서연' : '아늑한 서울', demo: true } satisfies Session;
+    const next = { userId: `demo-${role}`, email: `demo-${role}@curit.local`, role, displayName: role === 'creator' ? '권아영' : '아늑한 서울', demo: true } satisfies Session;
     if (role === 'store') setStoreOnboarding(demoStoreOnboarding);
-    setDemoCollaborations([demoIncomingCollaboration(role), demoCollaboration(role)]);
+    setDemoCollaborations(demoCollaborationList(role));
     setSession(next); setTab('home'); setAuthView('login');
   };
 
@@ -279,8 +279,8 @@ export default function AppIndex() {
   const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onMove={moveFromHome} />
     : tab === 'discover' ? <MatchingDiscoverScreen role={session.role} demo={session.demo} onOpenCurator={() => setSubview('curator')} onProposalCreated={id => { void openCollaboration(id); }} />
     : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} demoItems={session.demo ? demoCollaborations : undefined} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
-    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenPickup={() => setSubview('pickup')} onOpenProject={() => setSubview('creator-project')} onOpenDiscover={() => setTab('discover')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
-    : <MyScreen role={session.role} displayName={session.displayName} demo={session.demo} onLogout={logout} onOpenProject={() => setSubview('creator-project')} onOpenProfile={() => setSubview('creator-profile')} onOpenDna={() => setSubview('creator-dna')} onOpenStore={() => setSubview('store-profile')} onOpenPreferences={() => { setStorePreferencesParent('home'); setSubview('store-preferences'); }} onOpenCollaborations={() => setTab('chat')} onOpenVerification={() => setSubview('verification')} onOpenNotifications={() => setSubview('notifications')} onOpenSettlements={() => setSubview('settlements')} onOpenAccount={() => setSubview('account')} />;
+    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenPickup={() => setSubview('pickup')} onOpenProject={() => setSubview('creator-project')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={item => { setSelectedCollaboration(item); setSubview('collaboration'); }} />
+    : <MyScreen role={session.role} displayName={session.displayName} demo={session.demo} onLogout={logout} onOpenProject={() => setSubview('creator-project')} onOpenProfile={() => setSubview('creator-profile')} onOpenDna={() => setSubview('creator-dna')} onOpenStore={() => setSubview('store-profile')} onOpenPreferences={() => { setStorePreferencesParent('home'); setSubview('store-preferences'); }} onOpenVerification={() => setSubview('verification')} onOpenNotifications={() => setSubview('notifications')} onOpenSettlements={() => setSubview('settlements')} onOpenAccount={() => setSubview('account')} />;
 
   return <ScreenFrame footer={<BottomNav role={session.role} active={tab} onChange={setTab} />}>{content}</ScreenFrame>;
 }
