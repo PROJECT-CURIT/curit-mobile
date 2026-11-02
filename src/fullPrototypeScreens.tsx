@@ -33,6 +33,7 @@ import {
   saveStoreOnboarding,
   updateManagedOrder,
   updateQrListing,
+  type CreatorProjectDetails,
   type ManagedOrder,
   type StoreOnboarding,
 } from './platform';
@@ -90,7 +91,7 @@ export function CreatorDnaScreen({ onBack, onNext, demo = false }: { onBack: () 
   </KeyboardAvoidingView>;
 }
 
-export function CreatorProfileScreen({ mode, onBack, onEdit, onSaved, demo = false }: { mode: 'view' | 'edit'; onBack: () => void; onEdit?: () => void; onSaved?: (profile: CreatorProfileData) => void; demo?: boolean }) {
+export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProject, onSaved, demo = false }: { mode: 'view' | 'edit'; project?: CreatorProjectDetails; onBack: () => void; onEdit?: () => void; onOpenProject?: () => void; onSaved?: (profile: CreatorProfileData) => void; demo?: boolean }) {
   const [profile, setProfile] = useState<CreatorProfileData | null>(null);
   const [avatarUri, setAvatarUri] = useState('');
   const [notice, setNotice] = useState('');
@@ -118,6 +119,7 @@ export function CreatorProfileScreen({ mode, onBack, onEdit, onSaved, demo = fal
       <SectionTitle title="활동 지역" /><View style={f.wrap}>{profile.regions.map(value => <Chip key={value} label={value} />)}</View>
       <SectionTitle title="작업 분야" /><View style={f.wrap}>{profile.categories.map(value => <Chip key={value} label={value} active />)}</View>
       <SectionTitle title="작품 DNA" /><View style={f.wrap}>{[...profile.dnaMoods, ...profile.dnaColors, ...profile.preferredSpaces].map(value => <Chip key={value} label={value} />)}</View>
+      {project ? <><SectionTitle title="등록 프로젝트" /><Pressable accessibilityRole="button" accessibilityLabel={`${project.title || '전시 프로젝트'} 열기`} style={f.profileProject} onPress={onOpenProject}><View style={f.profileProjectIndex}><CuritText weight="bold" style={f.profileProjectIndexText}>01</CuritText></View><View style={f.flex}><CuritText style={f.profileProjectStatus}>{project.status === 'recruiting' ? '매칭 모집 중' : project.status === 'matched' ? '매칭 완료' : project.status === 'archived' ? '비공개' : '작성 중'}</CuritText><CuritText weight="bold">{project.title || '제목 없는 프로젝트'}</CuritText><CuritText numberOfLines={2} style={f.muted}>{project.concept || project.story || '프로젝트 이야기를 등록해 주세요.'}</CuritText></View><Icon name="chevron" size={16} color={colors.brand} /></Pressable></> : null}
     </ScrollView>
   </View>;
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -405,6 +407,7 @@ const f = StyleSheet.create({
   sticky: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, padding: 14 }, stepBars: { flexDirection: 'row', gap: 8 }, stepLine: { height: 4, backgroundColor: colors.border, borderRadius: 2, marginBottom: 7 }, stepLineActive: { backgroundColor: colors.brand },
   choiceCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 14 }, wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, textarea: { minHeight: 96, textAlignVertical: 'top', paddingTop: 13 }, notice: { padding: 13, borderRadius: radius.sm, backgroundColor: colors.brandSoft },
   profileHero: { alignItems: 'center', gap: 8, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: colors.border }, avatarLarge: { width: 86, height: 86, borderRadius: 43, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, avatarLetter: { fontSize: 28, color: colors.brand }, handle: { color: colors.brand }, photoRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  profileProject: { minHeight: 104, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface }, profileProjectIndex: { width: 58, height: 70, borderRadius: radius.sm, backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center' }, profileProjectIndexText: { color: colors.brand, fontSize: 18 }, profileProjectStatus: { color: colors.brand, fontSize: 11, marginBottom: 4 },
   storeCover: { width: '100%', height: 210, borderRadius: radius.lg }, placeholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, infoCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14 }, infoRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, infoRowMultiline: { alignItems: 'flex-start', flexDirection: 'column', gap: 5, paddingVertical: 12 }, infoValue: { flex: 1, textAlign: 'right' }, infoValueMultiline: { flex: 0, width: '100%', textAlign: 'left', lineHeight: 21 },
   two: { flexDirection: 'row', gap: 10 }, infoBanner: { backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: 16, gap: 5 }, qrProductImage: { width: '100%', height: 180, borderRadius: radius.md }, preview: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 18, alignItems: 'center', gap: 9 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border }, tab: { flex: 1, paddingVertical: 13, alignItems: 'center' }, tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, orderCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 15 }, row: { flexDirection: 'row', alignItems: 'center', gap: 10 }, accordion: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },

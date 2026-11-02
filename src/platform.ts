@@ -447,6 +447,7 @@ export async function deleteProjectProduct(productId: string) {
 export type SettlementEntry = {
   id: string;
   orderId: string;
+  collaborationId: string | null;
   grossAmount: number;
   creatorAmount: number;
   storeAmount: number;
@@ -459,12 +460,13 @@ export type SettlementEntry = {
 export async function loadSettlements(): Promise<SettlementEntry[]> {
   const { data, error } = await getSupabase()
     .from('settlement_entries')
-    .select('id, order_id, gross_amount, creator_amount, store_amount, platform_amount, status, scheduled_for, created_at')
+    .select('id, order_id, collaboration_id, gross_amount, creator_amount, store_amount, platform_amount, status, scheduled_for, created_at')
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
     id: String(row.id),
     orderId: String(row.order_id),
+    collaborationId: row.collaboration_id ? String(row.collaboration_id) : null,
     grossAmount: Number(row.gross_amount),
     creatorAmount: Number(row.creator_amount),
     storeAmount: Number(row.store_amount),

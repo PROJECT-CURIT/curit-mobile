@@ -28,6 +28,7 @@ type ProductDraft = Pick<ProjectProduct, 'name' | 'image' | 'imagePath' | 'mode'
 
 export const initialCreatorProducts: ProjectProduct[] = [
   { id: 'mug-black', name: '검정 머그', price: 15000, stock: 6, image: '', mode: '전시·판매', type: 'goods' },
+  { id: 'landscape-print', name: '초록 풍경 판화', price: 90000, stock: 3, image: '', mode: '전시·판매', type: 'artwork', description: '공간에 잔잔한 초록빛을 더하는 소형 판화입니다.', material: '종이·잉크', widthMm: 297, heightMm: 420, pickupMode: 'exhibition' },
 ];
 
 const ordinal = (index: number) => ['첫 번째', '두 번째', '세 번째', '네 번째'][index] ?? `${index + 1}번째`;
