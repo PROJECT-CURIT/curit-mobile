@@ -231,6 +231,7 @@ export async function markNotificationRead(id: string) {
 }
 
 export async function requestPasswordReset(email: string) {
-  const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim(), { redirectTo: typeof window === 'undefined' ? undefined : window.location.origin });
+  const { authRedirectUrl } = await import('./authRedirect');
+  const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim(), { redirectTo: authRedirectUrl('recovery') });
   if (error) throw new Error(error.message);
 }

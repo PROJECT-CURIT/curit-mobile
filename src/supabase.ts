@@ -88,3 +88,12 @@ export async function applyAuthRedirect(url: string) {
   }
   return false;
 }
+
+export async function completePasswordReset(password: string) {
+  if (password.length < 8) throw new Error('비밀번호는 8자 이상 입력해 주세요.');
+  const supabase = getSupabase();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw new Error(error.message);
+  const { error: signOutError } = await supabase.auth.signOut();
+  if (signOutError) throw new Error(signOutError.message);
+}

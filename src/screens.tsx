@@ -31,7 +31,6 @@ async function fetchQrCatalog(demo?: boolean) {
 export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEnabled, configured }: { onLogin: (email: string, password: string) => Promise<void>; onSignUp: () => void; onDemo: (role: Role) => void; onResetPassword: (email: string) => Promise<void>; demoEnabled: boolean; configured: boolean }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async () => {
@@ -52,8 +51,7 @@ export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEn
       <View style={s.form}>
         <Field label="이메일 *" value={email} onChangeText={setEmail} placeholder="이메일 주소" autoCapitalize="none" keyboardType="email-address" />
         <Field label="비밀번호 *" value={password} onChangeText={setPassword} placeholder="비밀번호" secureTextEntry />
-        <View style={s.loginOptions}>
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }} hitSlop={8} style={s.rememberAction} onPress={() => setRemember(value => !value)}><View style={[s.checkbox, remember && s.checkboxChecked]}>{remember ? <CuritText weight="bold" style={s.checkmark}>✓</CuritText> : null}</View><CuritText style={s.muted}>로그인 유지</CuritText></Pressable>
+        <View style={[s.loginOptions, { justifyContent: 'flex-end' }]}>
           <Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={() => { void resetPassword(); }}><CuritText style={s.muted}>비밀번호 재설정</CuritText></Pressable>
         </View>
         {error ? <CuritText style={{ color: colors.danger }}>{error}</CuritText> : null}

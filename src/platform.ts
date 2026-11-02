@@ -2,7 +2,7 @@ import type { QrProduct, Role, Session } from './types';
 import { getSupabase } from './supabase';
 import type { ProjectProduct } from './detailScreens';
 import { buildCommerceApiUrl } from './config';
-import { AUTH_REDIRECT_URL } from './authRedirect';
+import { authRedirectUrl } from './authRedirect';
 
 type ProfileRow = { id: string; role: Role; display_name: string };
 
@@ -75,7 +75,7 @@ export async function signUp(email: string, password: string, displayName: strin
     email: email.trim(),
     password,
     options: {
-      emailRedirectTo: AUTH_REDIRECT_URL,
+      emailRedirectTo: authRedirectUrl('signup'),
       data: { role, display_name: displayName.trim() },
     },
   });
@@ -94,7 +94,7 @@ export async function resendSignupConfirmation(email: string) {
   const { error } = await getSupabase().auth.resend({
     type: 'signup',
     email: email.trim(),
-    options: { emailRedirectTo: AUTH_REDIRECT_URL },
+    options: { emailRedirectTo: authRedirectUrl('signup') },
   });
   if (error) throw new Error(error.message);
 }
