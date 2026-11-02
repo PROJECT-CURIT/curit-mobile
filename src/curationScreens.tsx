@@ -43,7 +43,7 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
   return <View style={c.flex}>
     <Header title="채팅" />
     <ScrollView contentContainerStyle={c.hubScroll}>
-      <Pressable style={c.curatorPin} onPress={onOpenCurator} accessibilityLabel="AI 큐레이터 대화 열기">
+      <Pressable accessibilityRole="button" style={c.curatorPin} onPress={onOpenCurator} accessibilityLabel="AI 큐레이터 대화 열기">
         <View style={c.curatorAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View>
         <View style={c.flex}><CuritText weight="semibold" style={c.brandText}>{role === 'creator' ? '나만의 AI 콘셉트 큐레이터' : '나만의 CURI:T AI 큐레이터'}</CuritText><CuritText style={c.pinCaption}>{role === 'creator' ? '작품과 어울리는 공간을 데이터로 찾아요.' : '공간과 운영 조건에 맞는 작품을 찾아요.'}</CuritText></View>
         <CuritText weight="semibold" style={c.pinAction}>상담하기</CuritText>
@@ -51,7 +51,7 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
       <View style={c.listHeading}><CuritText weight="bold">함께하는 대화</CuritText><CuritText style={c.muted}>{items.length}</CuritText></View>
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : null}
       {error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText></View> : null}
-      {!loading && !error && !items.length ? <Empty title="아직 협업 대화가 없어요" description="AI 큐레이터의 추천에서 협업을 제안하면 상대방과 대화를 시작할 수 있어요." /> : items.map(item => <Pressable key={item.id} style={c.chatRow} onPress={() => onOpenCollaboration(item)}>
+      {!loading && !error && !items.length ? <Empty title="아직 협업 대화가 없어요" description="AI 큐레이터의 추천에서 협업을 제안하면 상대방과 대화를 시작할 수 있어요." /> : items.map(item => <Pressable accessibilityRole="button" accessibilityLabel={`${item.counterpartName} ${item.projectTitle} 협업 대화 열기`} key={item.id} style={c.chatRow} onPress={() => onOpenCollaboration(item)}>
         <View style={c.contactAvatar}><CuritText weight="bold">{item.counterpartName[0] || 'C'}</CuritText></View>
         <View style={c.flex}><View style={c.between}><CuritText weight="semibold" style={c.chatName}>{item.counterpartName}</CuritText><CuritText style={c.time}>{new Date(item.updatedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</CuritText></View><CuritText style={c.project}>{item.projectTitle}</CuritText><CuritText style={c.muted} numberOfLines={1}>{String(item.terms.message || `${statusLabel[item.status]} · 조건과 일정을 확인해 주세요.`)}</CuritText></View>
         <Chip label={statusLabel[item.status]} />
@@ -103,10 +103,10 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(''); }
   };
   return <View style={c.flex}>
-    <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
+    <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable accessibilityRole="button" accessibilityLabel="AI 큐레이터 열기" hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
     <ScrollView contentContainerStyle={c.discoverScroll} keyboardShouldPersistTaps="handled">
       <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
-      <View style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
+      <View accessibilityRole="tablist" style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: section === value }} key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
       {section === 'news' || section === 'creators' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} /> : <>
       {role === 'creator' ? <>
         <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
@@ -128,7 +128,7 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
           </View> : null}
         </View>
       </> : null}
-      <Pressable style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">추천 점수는 이렇게 계산해요</CuritText><CuritText style={c.pinCaption}>취향뿐 아니라 지역·예산·설치 구역·판매 재고를 함께 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">추천 점수는 이렇게 계산해요</CuritText><CuritText style={c.pinCaption}>취향뿐 아니라 지역·예산·설치 구역·판매 재고를 함께 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={() => { void propose(item); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
       {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
@@ -223,7 +223,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
     </ScrollView>
     <View style={c.composerWrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.topicRow}>{topics.map(topic => <Chip key={topic} label={topic.replace('해 주세요', '')} onPress={() => setInput(topic)} />)}</ScrollView>
-      <View style={c.composer}><TextInput value={input} onChangeText={setInput} onSubmitEditing={() => { void submit(); }} editable={!sending} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable disabled={!input.trim() || sending} style={[c.send, (!input.trim() || sending) && c.sendDisabled]} onPress={() => { void submit(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
+      <View style={c.composer}><TextInput value={input} onChangeText={setInput} onSubmitEditing={() => { void submit(); }} editable={!sending} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="메시지 보내기" disabled={!input.trim() || sending} style={[c.send, (!input.trim() || sending) && c.sendDisabled]} onPress={() => { void submit(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
     </View>
   </KeyboardAvoidingView>;
 }
@@ -333,7 +333,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, onBack, on
       {notice ? <View style={c.notice}><CuritText style={c.brandText}>{notice}</CuritText></View> : null}
       {actions.length ? <View style={c.actionButtons}>{actions.map(action => <View key={action.action} style={c.actionButton}><Button label={action.label} variant={action.primary ? 'primary' : 'secondary'} disabled={busy} onPress={() => { void transition(action.action); }} /></View>)}</View> : null}
     </ScrollView>
-    <View style={c.composer}><TextInput value={input} onChangeText={setInput} placeholder="조건과 일정을 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable disabled={!input.trim() || busy} style={[c.send, (!input.trim() || busy) && c.sendDisabled]} onPress={() => { void send(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
+    <View style={c.composer}><TextInput value={input} onChangeText={setInput} placeholder="조건과 일정을 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="협업 메시지 보내기" disabled={!input.trim() || busy} style={[c.send, (!input.trim() || busy) && c.sendDisabled]} onPress={() => { void send(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
   </KeyboardAvoidingView>;
 }
 

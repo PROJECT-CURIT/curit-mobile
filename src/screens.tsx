@@ -170,14 +170,14 @@ function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
       <View style={s.curationHero}>
         <View style={s.flex}><CuritText style={s.curationPrelude}>{displayName} 님의 다음 장면</CuritText><CuritText weight="bold" style={s.curationTitle}>내 작품을 위한{`\n`}오늘의 큐레이션</CuritText></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 보기" style={s.roundArrow} onPress={() => onMove('my')}><CuritText style={s.roundArrowText}>↗</CuritText></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 보기" style={s.roundArrow} onPress={() => onMove('creator-dna')}><CuritText style={s.roundArrowText}>↗</CuritText></Pressable>
       </View>
       <View style={s.curationSectionTop}><CuritText weight="semibold" style={s.curationSectionTitle}>내 작품과 어울리는 공간</CuritText><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
-      <View style={s.dnaIntro}><CuritText weight="semibold" style={s.dnaLabel}>ARTIST DNA</CuritText><CuritText style={s.dnaHint}>작품 취향을 등록해 보세요 →</CuritText></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="작품 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('creator-dna')}><CuritText weight="semibold" style={s.dnaLabel}>ARTIST DNA</CuritText><CuritText style={s.dnaHint}>작품 취향을 등록해 보세요 →</CuritText></Pressable>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
       <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onMove('discover')} />)}</View>
       {!recommended.loading && !items.length ? <Empty title="추천할 공간을 찾고 있어요" description="작품 DNA와 활동 지역을 저장하면 맞는 매장을 비교해 드립니다." /> : null}
-      {current ? <Pressable style={s.compactCollaboration} onPress={() => onMove('management')}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `${summary.salesCount}건 판매 · ${money(summary.expectedSettlement)} 예상 정산`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
+      {current ? <Pressable accessibilityRole="button" accessibilityLabel="진행 중인 협업 관리 열기" style={s.compactCollaboration} onPress={() => onMove('management')}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `${summary.salesCount}건 판매 · ${money(summary.expectedSettlement)} 예상 정산`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
 }
@@ -195,15 +195,15 @@ function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: 
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
       <View style={s.curationHero}>
         <View style={s.flex}><CuritText weight="bold" style={s.curationTitle}>{displayName}을 위한{`\n`}오늘의 큐레이션</CuritText></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 보기" style={s.roundArrow} onPress={() => onMove('my')}><CuritText style={s.roundArrowText}>↗</CuritText></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 보기" style={s.roundArrow} onPress={() => onMove('store-preferences')}><CuritText style={s.roundArrowText}>↗</CuritText></Pressable>
       </View>
       <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품 ·</CuritText></View><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
-      <View style={s.dnaIntro}><CuritText weight="semibold" style={s.dnaLabel}>SPACE DNA</CuritText><View style={s.dnaPill}><CuritText style={s.dnaPillText}>미니멀</CuritText></View></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.dnaLabel}>SPACE DNA</CuritText><View style={s.dnaPill}><CuritText style={s.dnaPillText}>미니멀</CuritText></View><CuritText style={s.dnaHint}>수정 →</CuritText></Pressable>
       <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 분위기와 작품 태그를 비교해 골랐어요.</CuritText>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
       <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onMove('discover')} />)}</View>
       {!recommended.loading && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 예산을 저장하면 전시 가능한 작품을 비교해 드립니다." /> : null}
-      {current ? <Pressable style={s.compactCollaboration} onPress={() => onMove('management')}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
+      {current ? <Pressable accessibilityRole="button" accessibilityLabel="현재 협업 관리 열기" style={s.compactCollaboration} onPress={() => onMove('management')}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
 }
@@ -279,7 +279,7 @@ function StoreManagement({ demo, onOpenQr, onOpenPickup, onOpenSettlements, onOp
 
 function CollaborationCard({ item, role, onPress }: { item: CollaborationSummary; role: Role; onPress: () => void }) {
   const labels: Record<CollaborationSummary['status'], string> = { proposed: '승인 대기', negotiating: '조건 조율 중', approved: '최종 확인 필요', active: '전시·판매 중', completed: '완료', cancelled: '취소' };
-  return <Pressable style={s.collabCard} onPress={onPress}><Image source={role === 'store' ? images.pottery : images.cafe} style={s.collabImage} /><View style={s.flex}><View style={s.row}><CuritText weight="bold">{item.projectTitle}</CuritText><Chip label={labels[item.status]} /></View><CuritText style={s.muted}>{item.counterpartName}{item.endsOn ? ` · 종료 ${item.endsOn}` : ''}</CuritText><CuritText style={s.gridMeta}>작가 {item.creatorShare}% · 매장 {item.storeShare}% · 플랫폼 {item.platformShare}%</CuritText></View></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${item.projectTitle} 협업 상세 열기`} style={s.collabCard} onPress={onPress}><Image source={role === 'store' ? images.pottery : images.cafe} style={s.collabImage} /><View style={s.flex}><View style={s.row}><CuritText weight="bold">{item.projectTitle}</CuritText><Chip label={labels[item.status]} /></View><CuritText style={s.muted}>{item.counterpartName}{item.endsOn ? ` · 종료 ${item.endsOn}` : ''}</CuritText><CuritText style={s.gridMeta}>작가 {item.creatorShare}% · 매장 {item.storeShare}% · 플랫폼 {item.platformShare}%</CuritText></View></Pressable>;
 }
 
 function QuickAction({ icon, label, description, onPress }: { icon: 'qr' | 'management' | 'chat' | 'store'; label: string; description: string; onPress?: () => void }) { return <Pressable accessibilityRole="button" style={s.quickAction} onPress={onPress}><View style={s.quickIcon}><Icon name={icon} color={colors.brand} /></View><CuritText weight="semibold">{label}</CuritText><CuritText style={s.gridMeta}>{description}</CuritText></Pressable>; }
@@ -399,7 +399,7 @@ const s = StyleSheet.create({
   curationSectionTitle: { color: colors.ink, fontSize: 17, lineHeight: 24, letterSpacing: -.3 },
   curationLinkAction: { minWidth: 72, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
   curationLink: { color: colors.brand, fontSize: 11 },
-  dnaIntro: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 7 },
+  dnaIntro: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 0 },
   dnaLabel: { color: colors.brand, fontSize: 10, letterSpacing: 1.2 },
   dnaHint: { color: colors.muted, fontSize: 11, lineHeight: 16 },
   dnaPill: { paddingHorizontal: 9, paddingVertical: 4, backgroundColor: colors.brandSoft, borderRadius: radius.pill },

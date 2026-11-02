@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
@@ -33,6 +33,7 @@ export const initialCreatorProducts: ProjectProduct[] = [
 const ordinal = (index: number) => ['첫 번째', '두 번째', '세 번째', '네 번째'][index] ?? `${index + 1}번째`;
 
 export function CreatorProjectScreen({ project, products, onBack, onEdit }: { project: CreatorProjectDetails; products: ProjectProduct[]; onBack: () => void; onEdit: () => void }) {
+  const [openProductId, setOpenProductId] = useState<string | null>(null);
   return (
     <View style={d.flex}>
       <Header title="내 전시 프로젝트" back={onBack} />
@@ -50,23 +51,44 @@ export function CreatorProjectScreen({ project, products, onBack, onEdit }: { pr
         </View>
         <View style={d.productStack}>
           {products.map((item, index) => (
-            <View key={item.id} style={d.detailProductCard}>
-              {item.image ? <Image source={{ uri: item.image }} style={d.detailThumb} contentFit="cover" /> : <View style={d.ordinalBox}><CuritText weight="bold" style={d.ordinalText}>{String(index + 1).padStart(2, '0')}</CuritText></View>}
-              <View style={d.flex}>
-                <CuritText weight="semibold" style={d.productName}>{item.name}</CuritText>
-                <CuritText style={d.productMeta}>{item.mode === '전시만' ? '전시 전용' : `${item.price.toLocaleString()}원`} · 재고 {item.stock}개</CuritText>
-                <CuritText style={d.pickup}>{item.type === 'goods' ? '결제 후 현장 수령' : '구매 예약 · 전시 종료 후 수령'}</CuritText>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name} 상세 ${openProductId === item.id ? '접기' : '펼치기'}`}
+              accessibilityState={{ expanded: openProductId === item.id }}
+              key={item.id}
+              style={d.detailProductCard}
+              onPress={() => setOpenProductId(current => current === item.id ? null : item.id)}
+            >
+              <View style={d.detailProductMain}>
+                {item.image ? <Image source={{ uri: item.image }} style={d.detailThumb} contentFit="cover" /> : <View style={d.ordinalBox}><CuritText weight="bold" style={d.ordinalText}>{String(index + 1).padStart(2, '0')}</CuritText></View>}
+                <View style={d.flex}>
+                  <CuritText weight="semibold" style={d.productName}>{item.name}</CuritText>
+                  <CuritText style={d.productMeta}>{item.mode === '전시만' ? '전시 전용' : `${item.price.toLocaleString()}원`} · 재고 {item.stock}개</CuritText>
+                  <CuritText style={d.pickup}>{item.type === 'goods' ? '결제 후 현장 수령' : '구매 예약 · 전시 종료 후 수령'}</CuritText>
+                </View>
+                <CuritText weight="bold" style={d.plus}>{openProductId === item.id ? '−' : '＋'}</CuritText>
               </View>
-              <CuritText weight="bold" style={d.plus}>＋</CuritText>
-            </View>
+              {openProductId === item.id ? <View style={d.productDetailBody}>
+                <ProductDetailRow label="상품 유형" value={item.type === 'goods' ? '소형 굿즈' : '원화 · 전시 작품'} />
+                <ProductDetailRow label="판매 방식" value={item.mode} />
+                {item.description ? <ProductDetailRow label="작품 설명" value={item.description} /> : null}
+                {item.material ? <ProductDetailRow label="소재" value={item.material} /> : null}
+                {item.widthMm || item.heightMm ? <ProductDetailRow label="크기" value={`${item.widthMm || '—'} × ${item.heightMm || '—'} mm`} /> : null}
+                {item.care ? <ProductDetailRow label="관리 안내" value={item.care} /> : null}
+              </View> : null}
+            </Pressable>
           ))}
         </View>
-        <View style={d.conditionCard}><CuritText weight="bold">판매 · 위탁 조건</CuritText><View style={d.row}><CuritText style={d.muted}>작가 배분 {project.creatorSharePercent}%</CuritText><Icon name="chevron" size={16} color={colors.brand} /></View></View>
-        <View style={d.publishRow}><CuritText>프로젝트 공개</CuritText><CuritText weight="semibold" style={d.status}>{project.status === 'draft' || project.status === 'archived' ? '비공개' : '공개 중'} →</CuritText></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="판매 위탁 조건 수정" style={d.conditionCard} onPress={onEdit}><CuritText weight="bold">판매 · 위탁 조건</CuritText><View style={d.row}><CuritText style={d.muted}>작가 배분 {project.creatorSharePercent}%</CuritText><Icon name="chevron" size={16} color={colors.brand} /></View></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 공개 상태 수정" style={d.publishRow} onPress={onEdit}><CuritText>프로젝트 공개</CuritText><CuritText weight="semibold" style={d.status}>{project.status === 'draft' || project.status === 'archived' ? '비공개' : '공개 중'} →</CuritText></Pressable>
       </ScrollView>
       <View style={d.stickyFooter}><Button label="프로젝트 수정" onPress={onEdit} /></View>
     </View>
   );
+}
+
+function ProductDetailRow({ label, value }: { label: string; value: string }) {
+  return <View style={d.productDetailRow}><CuritText style={d.productDetailLabel}>{label}</CuritText><CuritText style={d.productDetailValue}>{value}</CuritText></View>;
 }
 
 export function CreatorProjectEditScreen({ project, products, onSaveProject, onSaveProduct, onUpdateProduct, onDeleteProduct, onBack }: { project: CreatorProjectDetails; products: ProjectProduct[]; onSaveProject: (value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) => Promise<void>; onSaveProduct: (item: Omit<ProjectProduct, 'id'>) => Promise<void>; onUpdateProduct: (id: string, item: Omit<ProjectProduct, 'id'>) => Promise<void>; onDeleteProduct: (id: string) => Promise<void>; onBack: () => void }) {
@@ -135,6 +157,17 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
     setFormOpen(true); setNotice('');
   };
 
+  const confirmProductDelete = (item: ProjectProduct) => {
+    Alert.alert(
+      '상품을 삭제할까요?',
+      `'${item.name}' 상품 정보와 이후 추천 노출이 함께 제거됩니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => { void onDeleteProduct(item.id).catch(error => setNotice(friendlyError(error))); } },
+      ],
+    );
+  };
+
   const saveProduct = async () => {
     const price = Number(draft.price);
     const stock = Number(draft.stock);
@@ -162,7 +195,7 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
         <StepProgress current={step} labels={['1 기본', '2 상품', '3 확인']} />
         {step === 1 ? <>
           <View><CuritText weight="bold" style={d.projectTitle}>프로젝트를 소개해 주세요</CuritText><CuritText style={d.description}>공간 운영자가 협업 여부를 판단할 핵심 정보입니다.</CuritText></View>
-          <Pressable style={d.coverPicker} onPress={() => { void pickCover(); }}>{coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>대표 이미지 선택</CuritText></>}</Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 대표 이미지 선택" style={d.coverPicker} onPress={() => { void pickCover(); }}>{coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>대표 이미지 선택</CuritText></>}</Pressable>
           <Field label="프로젝트명 *" value={title} onChangeText={setTitle} placeholder="예: 흙의 기억" />
           <Field label="한 줄 콘셉트 *" value={concept} onChangeText={setConcept} placeholder="공간에 전달할 분위기를 적어주세요" />
           <Field label="프로젝트 이야기" value={story} onChangeText={setStory} multiline style={d.textarea} />
@@ -179,19 +212,19 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
             <View key={item.id} style={d.editProductCard}>
               {item.image ? <Image source={{ uri: item.image }} style={d.editThumb} contentFit="cover" /> : <View style={d.smallOrdinal}><CuritText weight="bold" style={d.ordinalText}>{String(index + 1).padStart(2, '0')}</CuritText></View>}
               <View style={d.flex}><CuritText style={d.ordinalLabel}>{ordinal(index)} 상품</CuritText><CuritText weight="semibold">{item.name}</CuritText><CuritText style={d.productMeta}>{item.price.toLocaleString()}원 · 재고 {item.stock}개</CuritText></View>
-              <View style={d.row}><Pressable style={d.miniButton} onPress={() => editProduct(item)}><CuritText weight="semibold" style={d.status}>수정</CuritText></Pressable><Pressable style={d.miniButton} onPress={() => { void onDeleteProduct(item.id).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={d.removePhoto}>삭제</CuritText></Pressable></View>
+              <View style={d.row}><Pressable accessibilityRole="button" accessibilityLabel={`${item.name} 수정`} style={d.miniButton} onPress={() => editProduct(item)}><CuritText weight="semibold" style={d.status}>수정</CuritText></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`${item.name} 삭제`} style={d.miniButton} onPress={() => confirmProductDelete(item)}><CuritText weight="semibold" style={d.removePhoto}>삭제</CuritText></Pressable></View>
             </View>
           ))}
         </View>
 
         {!formOpen ? (
-          <Pressable style={d.addProductButton} onPress={() => setFormOpen(true)}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${ordinal(products.length)} 상품 추가`} style={d.addProductButton} onPress={() => setFormOpen(true)}>
             <CuritText weight="semibold" style={d.status}>＋ {ordinal(products.length)} 상품 추가하기</CuritText>
           </Pressable>
         ) : (
           <View style={d.productForm}>
-            <View style={d.formHeader}><CuritText weight="bold" style={d.formTitle}>{editingId ? '상품 수정' : `${ordinal(products.length)} 상품 추가`}</CuritText><Pressable hitSlop={12} onPress={reset}><CuritText style={d.close}>×</CuritText></Pressable></View>
-            <Pressable style={d.photoPicker} onPress={() => { void pickImage(); }}>
+            <View style={d.formHeader}><CuritText weight="bold" style={d.formTitle}>{editingId ? '상품 수정' : `${ordinal(products.length)} 상품 추가`}</CuritText><Pressable accessibilityRole="button" accessibilityLabel="상품 입력 닫기" hitSlop={12} onPress={reset}><CuritText style={d.close}>×</CuritText></Pressable></View>
+            <Pressable accessibilityRole="button" accessibilityLabel={draft.image ? '상품 사진 변경' : '상품 사진 추가'} style={d.photoPicker} onPress={() => { void pickImage(); }}>
               <View style={d.photoSlot}>
                 {draft.image ? <Image source={{ uri: draft.image }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <Icon name="discover" color={colors.brand} />}
               </View>
@@ -230,7 +263,7 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
 }
 
 function ProductType({ active, title, caption, onPress }: { active: boolean; title: string; caption: string; onPress: () => void }) {
-  return <Pressable style={[d.typeCard, active && d.typeCardActive]} onPress={onPress}><CuritText weight="semibold" style={active ? d.status : undefined}>{title}</CuritText><CuritText style={d.hint}>{caption}</CuritText></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[d.typeCard, active && d.typeCardActive]} onPress={onPress}><CuritText weight="semibold" style={active ? d.status : undefined}>{title}</CuritText><CuritText style={d.hint}>{caption}</CuritText></Pressable>;
 }
 
 export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }: { initial?: StoreOnboarding | null; onBack: () => void; onComplete: (storeName: string) => void; demo?: boolean }) {
@@ -375,7 +408,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 function RequiredAccordion({ title, open, complete, onPress, children }: { title: string; open: boolean; complete: boolean; onPress: () => void; children: ReactNode }) {
-  return <View style={d.accordion}><Pressable style={d.accordionHeader} onPress={onPress}><View style={d.requiredTitle}><CuritText weight="bold">{title}</CuritText><CuritText weight="bold" style={d.requiredStar}>*</CuritText></View><View style={d.accordionRight}><CuritText style={d.hint}>{complete ? '작성 완료' : '필수'}</CuritText><View style={{ transform: [{ rotate: open ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={16} color={colors.brand} /></View></View></Pressable>{open ? <View style={d.accordionBody}>{children}</View> : null}</View>;
+  return <View style={d.accordion}><Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} style={d.accordionHeader} onPress={onPress}><View style={d.requiredTitle}><CuritText weight="bold">{title}</CuritText><CuritText weight="bold" style={d.requiredStar}>*</CuritText></View><View style={d.accordionRight}><CuritText style={d.hint}>{complete ? '작성 완료' : '필수'}</CuritText><View style={{ transform: [{ rotate: open ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={16} color={colors.brand} /></View></View></Pressable>{open ? <View style={d.accordionBody}>{children}</View> : null}</View>;
 }
 
 function StepProgress({ current, labels = ['1 정보', '2 취향', '3 사진', '4 구역', '5 확인'] }: { current: number; labels?: string[] }) {
@@ -387,8 +420,9 @@ const d = StyleSheet.create({
   detailScroll: { paddingHorizontal: 20, paddingTop: 30, paddingBottom: 24 }, editScroll: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 28, gap: 22 }, signupScroll: { padding: 20, paddingBottom: 28, gap: 20 },
   projectTitle: { fontSize: 24, lineHeight: 31, marginTop: 8 }, description: { color: colors.muted, marginTop: 12 }, meta: { color: colors.muted, fontSize: 12, marginTop: 14 }, projectCover: { width: '100%', height: 210, borderRadius: radius.lg, marginBottom: 18 }, coverPicker: { width: '100%', height: 190, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: '#C8D3BF', backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden' },
   productHeading: { marginTop: 28, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, sectionTitle: { fontSize: 17 }, hint: { color: colors.muted, fontSize: 11, lineHeight: 17 }, productStack: { gap: 12 },
-  detailProductCard: { minHeight: 96, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: '#F8F8F8', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  detailProductCard: { minHeight: 96, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: '#F8F8F8', padding: 14 }, detailProductMain: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12 },
   ordinalBox: { width: 44, height: 58, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }, smallOrdinal: { width: 46, height: 46, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }, ordinalText: { color: colors.brand, fontSize: 17 }, detailThumb: { width: 58, height: 58, borderRadius: 12 }, editThumb: { width: 48, height: 48, borderRadius: 10 }, productName: { fontSize: 15 }, productMeta: { color: colors.muted, fontSize: 11, marginTop: 5 }, pickup: { color: colors.brand, fontSize: 10, marginTop: 5 }, plus: { color: colors.brand, fontSize: 18 },
+  productDetailBody: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 12, paddingTop: 10, gap: 8 }, productDetailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 }, productDetailLabel: { width: 64, color: colors.muted, fontSize: 11 }, productDetailValue: { flex: 1, fontSize: 11, lineHeight: 17 },
   conditionCard: { minHeight: 78, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }, publishRow: { minHeight: 56, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
   stickyFooter: { flexShrink: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16, backgroundColor: colors.surface },
   editProductCard: { minHeight: 76, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: '#F8F8F8', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }, ordinalLabel: { color: colors.muted, fontSize: 10, marginBottom: 3 }, miniButton: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderRadius: 9, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
