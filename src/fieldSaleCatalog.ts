@@ -5,16 +5,16 @@ const catalogUrl = buildQrWebAssetUrl('field-sale/catalog.json');
 const productIds = ['kendama', 'dango-keyring', 'octopus-keyring', 'poetry-postcards'] as const;
 
 type FieldProductId = typeof productIds[number];
-type FieldCatalogEntry = { name: string; image: string; price: number; quantity: number | null };
+type FieldCatalogEntry = { name: string; image: string; price: number; quantity: number | null; status: QrProduct['status'] };
 type FieldCatalog = { version: number; products: Partial<Record<FieldProductId, FieldCatalogEntry>> };
 
 const fallbackCatalog: FieldCatalog = {
   version: 1,
   products: {
-    kendama: { name: '켄다마', image: 'kendama.png', price: 8000, quantity: null },
-    'dango-keyring': { name: '고양이 당고 키링', image: 'dango-keyring.png', price: 5000, quantity: null },
-    'octopus-keyring': { name: '양면 문어 키링', image: 'octopus-keyring-photo.jpg', price: 2000, quantity: 8 },
-    'poetry-postcards': { name: '나태주 시 엽서', image: 'poetry-postcards-photo.jpg', price: 1000, quantity: 6 },
+    kendama: { name: '켄다마', image: 'kendama.png', price: 8000, quantity: null, status: 'PAUSED' },
+    'dango-keyring': { name: '고양이 당고 키링', image: 'dango-keyring.png', price: 5000, quantity: null, status: 'PAUSED' },
+    'octopus-keyring': { name: '양면 문어 키링', image: 'octopus-keyring-photo.jpg', price: 2000, quantity: 8, status: 'PAUSED' },
+    'poetry-postcards': { name: '나태주 시 엽서', image: 'poetry-postcards-photo.jpg', price: 1000, quantity: 6, status: 'PAUSED' },
   },
 };
 
@@ -25,10 +25,13 @@ function safeEntry(id: FieldProductId, value: unknown): FieldCatalogEntry {
   const image = typeof row.image === 'string' ? row.image.trim() : '';
   const price = Number(row.price);
   const quantity = row.quantity === null ? null : Number(row.quantity);
+  const status = row.status;
   if (!name || name.length > 100 || !/^[\w.-]+\.(?:png|jpe?g|webp)$/i.test(image)) throw new Error('등록 상품의 이름 또는 이미지를 확인할 수 없습니다.');
   if (!Number.isSafeInteger(price) || price < 1) throw new Error('등록 상품의 판매가를 확인할 수 없습니다.');
   if (quantity !== null && (!Number.isSafeInteger(quantity) || quantity < 0)) throw new Error('등록 상품의 재고 정보를 확인할 수 없습니다.');
-  return { name, image, price, quantity };
+  if (status !== 'ACTIVE' && status !== 'PAUSED' && status !== 'SOLD_OUT') throw new Error('등록 상품의 판매 상태를 확인할 수 없습니다.');
+  if (quantity === 0 && status !== 'SOLD_OUT') throw new Error('품절 상품의 상태가 일치하지 않습니다.');
+  return { name, image, price, quantity, status };
 }
 
 function toProduct(id: FieldProductId, entry: FieldCatalogEntry): QrProduct {
@@ -40,10 +43,10 @@ function toProduct(id: FieldProductId, entry: FieldCatalogEntry): QrProduct {
     price: entry.price,
     stock: entry.quantity ?? 0,
     inventoryTracked: entry.quantity !== null,
-    status: entry.quantity === 0 ? 'SOLD_OUT' : 'ACTIVE',
+    status: entry.status,
     pickupMode: 'immediate',
     imageUrl: buildQrWebAssetUrl(`field-sale/${entry.image}`),
-    artistName: '전시 매장',
+    artistName: undefined,
     qrUrl: buildFieldSaleUrl(id),
     source: 'field-sale',
   };

@@ -231,7 +231,7 @@ function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () 
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} contentFit="cover" /> : null}
       <Chip label="현장 등록 상품" active />
       <CuritText weight="bold" style={{ fontSize: 22, marginTop: 10 }}>{item.name}</CuritText>
-      <CuritText style={f.hint}>전시 매장 · {item.status === 'SOLD_OUT' ? '품절' : '판매 페이지 운영 중'}</CuritText>
+      <CuritText style={f.hint}>현장 판매 상품 · {item.status === 'SOLD_OUT' ? '품절' : item.status === 'ACTIVE' ? '구매 가능' : '구매 안내 준비 중'}</CuritText>
       <CuritText weight="bold" style={{ fontSize: 20, marginTop: 10 }}>{item.price.toLocaleString('ko-KR')}원</CuritText>
       <CuritText style={f.description}>{item.inventoryTracked === false ? '수량은 매장 재고를 확인해 주세요.' : `등록 수량 ${item.stock}개`}</CuritText>
       <View style={f.preview}>

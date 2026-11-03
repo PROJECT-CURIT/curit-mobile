@@ -4,10 +4,10 @@ import { loadFieldSaleProducts } from './fieldSaleCatalog';
 const catalog = {
   version: 1,
   products: {
-    kendama: { name: '켄다마', image: 'kendama.png', price: 8000, quantity: null },
-    'dango-keyring': { name: '고양이 당고 키링', image: 'dango-keyring.png', price: 5000, quantity: null },
-    'octopus-keyring': { name: '양면 문어 키링', image: 'octopus-keyring-photo.jpg', price: 2000, quantity: 8 },
-    'poetry-postcards': { name: '나태주 시 엽서', image: 'poetry-postcards-photo.jpg', price: 1000, quantity: 6 },
+    kendama: { name: '켄다마', image: 'kendama.png', price: 8000, quantity: null, status: 'PAUSED' },
+    'dango-keyring': { name: '고양이 당고 키링', image: 'dango-keyring.png', price: 5000, quantity: null, status: 'PAUSED' },
+    'octopus-keyring': { name: '양면 문어 키링', image: 'octopus-keyring-photo.jpg', price: 2000, quantity: 8, status: 'PAUSED' },
+    'poetry-postcards': { name: '나태주 시 엽서', image: 'poetry-postcards-photo.jpg', price: 1000, quantity: 6, status: 'PAUSED' },
   },
 };
 
@@ -34,6 +34,7 @@ describe('registered field-sale catalog', () => {
     ]);
     expect(result.items[0]?.inventoryTracked).toBe(false);
     expect(result.items[2]?.stock).toBe(8);
+    expect(result.items.every(item => item.status === 'PAUSED')).toBe(true);
   });
 
   it('uses the known catalog with a visible freshness warning when the published catalog is unreachable', async () => {

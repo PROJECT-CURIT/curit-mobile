@@ -456,7 +456,7 @@ export function QrProductsScreen({ demo, onBack, onSelect }: { demo?: boolean; o
         {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={s.qrImage} contentFit="cover" /> : <View style={[s.qrImage, s.qrImagePlaceholder]}><Icon name="qr" size={20} color={colors.brand} /></View>}
         <View style={s.flex}>
           <View style={s.qrProductHeading}><CuritText weight="semibold" numberOfLines={1}>{item.name}</CuritText><Chip label={item.source === 'field-sale' ? '현장 QR' : '협업 QR'} /></View>
-          <CuritText style={s.muted}>{money(item.price)} · {item.inventoryTracked === false ? '수량 별도 관리' : `재고 ${item.stock}개`} · {item.issuable ? 'QR 발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : '판매 전'}</CuritText>
+          <CuritText style={s.muted}>{money(item.price)} · {item.inventoryTracked === false ? '수량 별도 관리' : `재고 ${item.stock}개`} · {item.issuable ? 'QR 발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : item.source === 'field-sale' ? '구매 안내 준비 중' : '판매 전'}</CuritText>
           <CuritText style={s.tokenText} numberOfLines={1}>{item.issuable ? '눌러서 상품 전용 QR 발급' : item.token}</CuritText>
         </View>
         <View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="qr" size={21} color={colors.brand} />}</View>
