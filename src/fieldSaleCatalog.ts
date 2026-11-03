@@ -9,7 +9,7 @@ type FieldCatalogEntry = { name: string; image: string; price: number; quantity:
 type FieldCatalog = { version: number; products: Partial<Record<FieldProductId, FieldCatalogEntry>> };
 
 const fallbackCatalog: FieldCatalog = {
-  version: 1,
+  version: 2,
   products: {
     kendama: { name: '켄다마', image: 'kendama.png', price: 8000, quantity: null, status: 'PAUSED' },
     'dango-keyring': { name: '고양이 당고 키링', image: 'dango-keyring.png', price: 5000, quantity: null, status: 'PAUSED' },
@@ -58,14 +58,16 @@ export function isFieldSaleProductId(value: string) {
 
 export async function loadFieldSaleProducts(): Promise<{ items: QrProduct[]; warning: string }> {
   try {
-    const response = await fetch(catalogUrl, { cache: 'no-store' });
+    const url = new URL(catalogUrl);
+    url.searchParams.set('refresh', String(Date.now()));
+    const response = await fetch(url.toString(), { cache: 'no-store' });
     if (!response.ok) throw new Error(`상품 카탈로그 요청 실패 (${response.status})`);
     const data = await response.json() as FieldCatalog;
     const items = productIds.flatMap(id => {
       const raw = data?.products?.[id];
       return raw ? [toProduct(id, safeEntry(id, raw))] : [];
     });
-    if (data?.version !== 1 || items.length !== productIds.length) throw new Error('상품 카탈로그가 완전하지 않습니다.');
+    if (data?.version !== 2 || items.length !== productIds.length) throw new Error('상품 카탈로그가 완전하지 않습니다.');
     return { items, warning: '' };
   } catch {
     const items = productIds.map(id => toProduct(id, safeEntry(id, fallbackCatalog.products[id])));
