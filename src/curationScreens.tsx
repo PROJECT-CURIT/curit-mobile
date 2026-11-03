@@ -6,6 +6,7 @@ import {
   loadCollaborationMessages,
   loadCollaborations,
   loadCollaborationItems,
+  loadCreatorDirectory,
   loadCuratorMessages,
   loadMatchRecommendations,
   sendCollaborationMessage,
@@ -14,11 +15,12 @@ import {
   transitionCollaboration,
 } from './curation';
 import { SocialFeedSection } from './fullPrototypeScreens';
-import { images, projects } from './data';
+import { projects } from './data';
 import { demoCollaborationList, nextDemoCollaborationStatus } from './demoContent';
 import { friendlyError } from './platform';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
+import type { CreatorDirectoryEntry } from './curation';
 import { Button, Chip, CuritText, Empty, Header, Icon } from './ui';
 
 const statusLabel: Record<CollaborationSummary['status'], string> = {
@@ -30,6 +32,8 @@ const dnaFilterGroups = [
   ['분위기', ['미니멀', '우드톤', '조용함']],
   ['전시 위치', ['벽면', '선반', '테이블', '창가', '카운터']],
 ] as const;
+
+type CreatorDirectoryCard = CreatorDirectoryEntry & { imageSource?: number | { uri: string } };
 
 export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenCollaboration }: { role: Role; demo?: boolean; demoItems?: CollaborationSummary[]; onOpenCurator: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
   const [loadedItems, setLoadedItems] = useState<CollaborationSummary[]>([]);
@@ -59,7 +63,7 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
   </View>;
 }
 
-export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; onOpenCurator: () => void; onProposalCreated: (id: string) => void }) {
+export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string) => void }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -69,9 +73,19 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [section, setSection] = useState<'matches' | 'creators' | 'news'>('matches');
+  const [directoryProjects, setDirectoryProjects] = useState<CreatorDirectoryCard[]>(demo ? projects.map(item => ({ id: item.id, title: item.title, artist: item.artist, region: item.region, tags: item.tags, priceRange: item.priceRange, status: item.status, imageSource: item.image })) : []);
+  const [directoryLoading, setDirectoryLoading] = useState(!demo);
+  const [directoryError, setDirectoryError] = useState('');
   useEffect(() => {
     void loadMatchRecommendations(role, demo).then(setItems).catch(caught => setNotice(friendlyError(caught))).finally(() => setLoading(false));
   }, [demo, role]);
+  useEffect(() => {
+    if (demo) { setDirectoryProjects(projects.map(item => ({ id: item.id, title: item.title, artist: item.artist, region: item.region, tags: item.tags, priceRange: item.priceRange, status: item.status, imageSource: item.image }))); setDirectoryLoading(false); return; }
+    let active = true;
+    setDirectoryLoading(true);
+    void loadCreatorDirectory().then(value => { if (active) { setDirectoryProjects(value); setDirectoryError(''); } }).catch(caught => { if (active) setDirectoryError(friendlyError(caught)); }).finally(() => { if (active) setDirectoryLoading(false); });
+    return () => { active = false; };
+  }, [demo]);
   const visible = items.filter(item => {
     const text = [item.title, item.subtitle, item.description, ...item.tags].join(' ').toLocaleLowerCase('ko-KR');
     const queryMatches = text.includes(query.trim().toLocaleLowerCase('ko-KR'));
@@ -83,7 +97,7 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
     });
     return queryMatches && regionMatches && dnaMatches;
   });
-  const directoryProjects = projects.filter(item => [item.title, item.artist, item.region, ...item.tags].join(' ').toLocaleLowerCase('ko-KR').includes(query.trim().toLocaleLowerCase('ko-KR')));
+  const visibleDirectoryProjects = directoryProjects.filter(item => [item.title, item.artist, item.region, ...item.tags].join(' ').toLocaleLowerCase('ko-KR').includes(query.trim().toLocaleLowerCase('ko-KR')));
   const toggleDna = (value: string) => setDnaFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
   const resetFilters = () => { setRegion('전체'); setDnaFilters([]); };
   const propose = async (item: MatchRecommendation) => {
@@ -106,7 +120,7 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
     <ScrollView contentContainerStyle={c.discoverScroll} keyboardShouldPersistTaps="handled">
       <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
       <View accessibilityRole="tablist" style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: section === value }} key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
-      {section === 'news' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} /> : section === 'creators' ? <CreatorDirectory items={directoryProjects} /> : <>
+      {section === 'news' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /> : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects} loading={directoryLoading} error={directoryError} /> : <>
       {role === 'creator' ? <>
         <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
         <View style={c.filterCard}>
@@ -121,7 +135,7 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
           </View> : null}
         </View>
       </> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">추천 점수는 이렇게 계산해요</CuritText><CuritText style={c.pinCaption}>취향뿐 아니라 지역·예산·설치 구역·판매 재고를 함께 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">조건 일치도는 등록 정보 기준 참고 점수예요</CuritText><CuritText style={c.pinCaption}>취향 키워드·지역·판매 재고·전시 구역을 반영하며, 판매가는 예산과 따로 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={() => { void propose(item); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
       {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
@@ -130,13 +144,13 @@ export function MatchingDiscoverScreen({ role, demo, onOpenCurator, onProposalCr
   </View>;
 }
 
-function CreatorDirectory({ items }: { items: typeof projects }) {
+function CreatorDirectory({ items, loading, error }: { items: CreatorDirectoryCard[]; loading: boolean; error: string }) {
   return <View style={c.creatorDirectory}>
     <View><CuritText weight="bold" style={c.directoryTitle}>작품과 작가</CuritText><CuritText style={c.muted}>다른 크리에이터의 작품 세계와 활동을 살펴보세요.</CuritText></View>
-    {items.length ? items.map(item => <View key={item.id} style={c.creatorCard}>
-      <Image source={item.image} style={c.creatorCardImage} contentFit="cover" />
+    {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText></View> : items.length ? items.map(item => <View key={item.id} style={c.creatorCard}>
+      {item.imageSource ? <Image source={item.imageSource} style={c.creatorCardImage} contentFit="cover" /> : item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.creatorCardImage} contentFit="cover" /> : <View style={[c.creatorCardImage, c.cardImagePlaceholder]}><Icon name="discover" color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
       <View style={c.creatorCardBody}><View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.creatorCardTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.artist} · {item.region}</CuritText></View><View style={c.creatorAvatar}><CuritText weight="bold" style={c.brandText}>{item.artist[0]}</CuritText></View></View><View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View><CuritText style={c.pinCaption}>{item.priceRange} · {item.status}</CuritText></View>
-    </View>) : <Empty title="검색 결과가 없습니다" description="작품명, 작가명 또는 태그를 다시 입력해 주세요." />}
+    </View>) : <Empty title="공개된 작품이 없습니다" description="크리에이터가 협업 모집을 시작하면 이곳에서 확인할 수 있어요." />}
   </View>;
 }
 
@@ -180,7 +194,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
         const now = new Date().toISOString();
         setMessages(current => [...current,
           { id: `du-${Date.now()}`, sender: 'user', content: value, recommendations: [], actions: [], createdAt: now },
-          { id: `da-${Date.now()}`, sender: 'assistant', content: recs.length ? `${recs[0]?.title}이(가) ${recs[0]?.score}%로 가장 잘 맞아요. 아래 이유와 조건을 확인한 뒤 협업을 제안해 보세요.` : '협업은 제안, 크리에이터 승인, 매장 최종 확정 순서로 진행됩니다.', recommendations: recs.slice(0, 3), actions: recs.length ? ['다른 후보도 비교해 주세요'] : [role === 'store' ? '우리 공간에 어울리는 작품을 추천해 주세요' : '내 작품과 어울리는 매장을 추천해 주세요'], createdAt: now },
+          { id: `da-${Date.now()}`, sender: 'assistant', content: recs.length ? `${recs[0]?.title}이(가) 조건 일치도 ${recs[0]?.score}점으로 가장 높아요. 추천 이유와 실제 협업 조건을 확인해 보세요.` : '협업은 제안, 크리에이터 승인, 매장 최종 확정 순서로 진행됩니다.', recommendations: recs.slice(0, 3), actions: recs.length ? ['다른 후보도 비교해 주세요'] : [role === 'store' ? '우리 공간에 어울리는 작품을 추천해 주세요' : '내 작품과 어울리는 매장을 추천해 주세요'], createdAt: now },
         ]);
       } else {
         const appended = await sendCuratorMessage(role, value);
@@ -203,7 +217,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
         onProposalCreated(item.collaborationId);
         return;
       }
-      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다. 추천 적합도 ${item.score}%와 조건을 확인했습니다.`);
+      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다. 조건 일치도 ${item.score}점과 추천 이유를 확인했습니다.`);
       setNotice('협업 제안을 보냈습니다. 상대방 승인 후 다음 단계가 열립니다.');
       if (id) onProposalCreated(id);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setProposalTarget(''); }
@@ -233,9 +247,9 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
 
 function RecommendationCard({ item, busy, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; onPropose: () => void; inset?: boolean }) {
   return <View style={[c.recommendation, !inset && c.recommendationWide]}>
-    <Image source={item.imageUrl ? { uri: item.imageUrl } : item.targetType === 'project' ? images.pottery : images.cafe} style={c.recommendationImage} contentFit="cover" />
+    {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
     <View style={c.recommendationBody}>
-      <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.recommendationTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}%</CuritText></View></View>
+      <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.recommendationTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}점</CuritText></View></View>
       <CuritText style={c.description}>{item.description}</CuritText>
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
@@ -366,7 +380,7 @@ const c = StyleSheet.create({
   hubScroll: { flexGrow: 1, padding: 20, paddingBottom: 36 }, curatorPin: { minHeight: 82, borderRadius: radius.lg, backgroundColor: colors.brandSoft, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }, curatorAvatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }, smallAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, pinCaption: { color: colors.muted, fontSize: 11, marginTop: 3 }, pinAction: { color: colors.brand, fontSize: 11 }, listHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 6 }, chatRow: { minHeight: 88, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }, contactAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, chatName: { fontSize: 16 }, chatProjectRow: { minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 }, project: { flexShrink: 1, color: colors.brand, fontSize: 11, marginVertical: 3 }, chatStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.brandSoft }, chatStatusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.brand }, chatStatusText: { color: colors.brand, fontSize: 9 }, time: { color: colors.subtle, fontSize: 9 }, loader: { marginVertical: 40 }, error: { padding: 14, borderRadius: radius.sm, backgroundColor: '#FFF2EF', marginVertical: 16 }, errorText: { color: colors.danger },
   chatScroll: { padding: 16, paddingBottom: 28, gap: 12 }, messageBlock: { gap: 10 }, bubbleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 }, bubbleRowUser: { justifyContent: 'flex-end' }, bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11 }, aiBubble: { backgroundColor: colors.brandPale, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: colors.brand, borderTopRightRadius: 4 }, userText: { color: colors.surface }, actionRow: { gap: 7, paddingLeft: 42, paddingBottom: 4 }, typing: { flexDirection: 'row', gap: 9, alignItems: 'center', marginLeft: 42 }, notice: { padding: 12, backgroundColor: colors.brandSoft, borderRadius: radius.sm },
   composerWrap: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, paddingTop: 8 }, topicRow: { gap: 7, paddingHorizontal: 12, paddingBottom: 8 }, composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }, composerMore: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, composerMoreText: { color: colors.brand, fontSize: 20, lineHeight: 22 }, input: { flex: 1, minHeight: 46, borderRadius: 23, backgroundColor: '#F7F7F7', borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, fontFamily: fonts.regular, color: colors.ink }, send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }, sendDisabled: { backgroundColor: colors.border }, sendText: { color: colors.surface, fontSize: 20 },
-  recommendation: { marginLeft: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface }, recommendationWide: { marginLeft: 0 }, recommendationImage: { width: '100%', height: 148 }, recommendationBody: { padding: 14, gap: 10 }, recommendationTitle: { fontSize: 17 }, score: { minWidth: 48, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft, alignItems: 'center' }, description: { color: colors.muted, lineHeight: 21 }, reasonBox: { borderRadius: radius.sm, padding: 10, backgroundColor: colors.brandPale, gap: 6 }, reasonRow: { flexDirection: 'row', gap: 7 }, check: { color: colors.brand }, reasonText: { flex: 1, fontSize: 12, color: colors.muted }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { fontSize: 10, color: colors.brand, backgroundColor: colors.brandSoft, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
+  recommendation: { marginLeft: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface }, recommendationWide: { marginLeft: 0 }, recommendationImage: { width: '100%', height: 148 }, recommendationBody: { padding: 14, gap: 10 }, recommendationTitle: { fontSize: 17 }, score: { minWidth: 48, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft, alignItems: 'center' }, description: { color: colors.muted, lineHeight: 21 }, reasonBox: { borderRadius: radius.sm, padding: 10, backgroundColor: colors.brandPale, gap: 6 }, reasonRow: { flexDirection: 'row', gap: 7 }, check: { color: colors.brand }, reasonText: { flex: 1, fontSize: 12, color: colors.muted }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { fontSize: 10, color: colors.brand, backgroundColor: colors.brandSoft, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 }, cardImagePlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 7, padding: 12 },
   detailScroll: { flexGrow: 1, padding: 16, paddingBottom: 24 }, compactSummary: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, overflow: 'hidden', marginBottom: 12 }, summaryHeader: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 9 }, summaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, inlineStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 }, summaryTitle: { flexShrink: 1, fontSize: 14 }, summaryMeta: { color: colors.muted, fontSize: 10, marginTop: 3 }, summaryToggle: { color: colors.brand, fontSize: 10 }, summaryBody: { borderTopWidth: 1, borderTopColor: colors.border, padding: 14, gap: 12 }, conditionToggle: { minHeight: 46, borderRadius: radius.sm, backgroundColor: colors.brandSoft, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, conditionBody: { gap: 10, paddingTop: 2 }, conditionLabel: { fontSize: 13, marginTop: 2 }, termRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 18 }, termLabel: { color: colors.muted, fontSize: 12 }, termValue: { flex: 1, textAlign: 'right', fontSize: 12 }, flowHint: { color: colors.brand, fontSize: 11, backgroundColor: colors.brandSoft, padding: 10, borderRadius: radius.sm }, itemCard: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 10 }, itemImage: { width: 52, height: 52, borderRadius: radius.sm }, itemPlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center' }, quantity: { flexDirection: 'row', alignItems: 'center', gap: 2 }, quantityTap: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }, quantityButton: { fontSize: 20, color: colors.brand }, termInput: { minHeight: 76, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, quickReply: { height: 36, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: 12, backgroundColor: colors.surface }, quickReplyText: { color: colors.muted, fontSize: 11 }, collabBubble: { maxWidth: '82%', borderRadius: 15, padding: 12, marginBottom: 8 }, ownCollabBubble: { backgroundColor: colors.brand, alignSelf: 'flex-end', borderTopRightRadius: 4 }, otherCollabBubble: { backgroundColor: colors.brandPale, alignSelf: 'flex-start', borderTopLeftRadius: 4 }, actionButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }, actionButton: { minWidth: '47%', flexGrow: 1 },
   headerAi: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, discoverScroll: { padding: 18, paddingBottom: 36 }, exploreTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 8, marginBottom: 18 }, exploreTab: { flex: 1, alignItems: 'center', paddingVertical: 13 }, exploreTabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, searchBox: { minHeight: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#F8F8F8', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 }, searchInput: { flex: 1, minHeight: 46, color: colors.ink, fontFamily: fonts.regular }, directoryTitle: { fontSize: 19, lineHeight: 28, marginBottom: 6 }, filterCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', marginBottom: 10, backgroundColor: colors.surface }, filterHeader: { minHeight: 56, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, filterHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 9 }, filterCount: { minWidth: 20, height: 20, borderRadius: 10, textAlign: 'center', lineHeight: 20, color: colors.surface, backgroundColor: colors.brand, fontSize: 10 }, filterEyebrow: { color: colors.muted, fontSize: 11, lineHeight: 17 }, filterBody: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 12, gap: 12 }, filterGroup: { gap: 7 }, filterOptionsHorizontal: { gap: 7, paddingHorizontal: 14 }, resetFilter: { minHeight: 36, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 14 }, explainBanner: { borderRadius: radius.md, backgroundColor: colors.brandSoft, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }, discoverCard: { marginBottom: 14 }, creatorDirectory: { gap: 14 }, creatorCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface }, creatorCardImage: { width: '100%', height: 150 }, creatorCardBody: { padding: 14, gap: 9 }, creatorCardTitle: { fontSize: 17 }, creatorAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft },
 });

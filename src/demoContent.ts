@@ -1,7 +1,6 @@
-import type { CreatorProfileData, SocialPost } from './fullPlatform';
+import type { CreatorProfileData, SocialComment, SocialPost } from './fullPlatform';
 import type { StoreOnboarding } from './platform';
-import { buildQrWebUrl } from './config';
-import type { CollaborationSummary, QrProduct, Role } from './types';
+import type { CollaborationSummary, Role } from './types';
 
 export function demoCollaboration(role: Role): CollaborationSummary {
   return {
@@ -109,26 +108,45 @@ export function nextDemoCollaborationStatus(
   return status;
 }
 
+export const demoSocialComments: Record<string, SocialComment[]> = {
+  'demo-post-glass': [
+    { id: 'demo-comment-glass-1', postId: 'demo-post-glass', userId: 'demo-user-seonmun', displayName: '최선문', avatarUrl: '', content: '패브릭 색감이 매장 초록 식물과 잘 어울릴 것 같아요.', createdAt: '2026-11-01T09:18:00.000Z' },
+    { id: 'demo-comment-glass-2', postId: 'demo-post-glass', userId: 'demo-user-haereum', displayName: '김해름', avatarUrl: '', content: '연남 전시는 언제부터 볼 수 있나요?', createdAt: '2026-11-01T10:05:00.000Z' },
+    { id: 'demo-comment-glass-3', postId: 'demo-post-glass', userId: 'demo-user-sua', displayName: '박수아', avatarUrl: '', content: '창가에 두면 오후 빛이 예쁘게 들겠어요.', createdAt: '2026-11-01T11:42:00.000Z' },
+  ],
+  'demo-post-paper': [
+    { id: 'demo-comment-paper-1', postId: 'demo-post-paper', userId: 'demo-user-ayeong', displayName: '권아영', avatarUrl: '', content: '커피 기다리면서 천천히 둘러보기 좋은 전시네요.', createdAt: '2026-10-31T13:02:00.000Z' },
+    { id: 'demo-comment-paper-2', postId: 'demo-post-paper', userId: 'demo-user-haereum', displayName: '김해름', avatarUrl: '', content: '작품 옆 QR로 엽서도 볼 수 있나요?', createdAt: '2026-10-31T13:28:00.000Z' },
+  ],
+  'demo-post-blue': [
+    { id: 'demo-comment-blue-1', postId: 'demo-post-blue', userId: 'demo-user-ayeong', displayName: '권아영', avatarUrl: '', content: '유약의 푸른색이 참 차분해 보여요.', createdAt: '2026-10-29T05:11:00.000Z' },
+    { id: 'demo-comment-blue-2', postId: 'demo-post-blue', userId: 'demo-user-seonmun', displayName: '최선문', avatarUrl: '', content: '서점 식탁에 놓인 모습도 궁금합니다.', createdAt: '2026-10-29T06:25:00.000Z' },
+  ],
+  'demo-post-linen': [
+    { id: 'demo-comment-linen-1', postId: 'demo-post-linen', userId: 'demo-user-ayeong', displayName: '권아영', avatarUrl: '', content: '아이보리 톤 선반과 잘 어울리겠어요.', createdAt: '2026-10-27T08:04:00.000Z' },
+  ],
+};
+
 export const demoSocialPosts: SocialPost[] = [
   {
     id: 'demo-post-glass', creatorId: 'demo-creator-ayeong', creatorName: '권아영', handle: 'ayeong.green', avatarUrl: '',
     content: '연남동 쇼룸 전시를 준비하고 있어요. 빛과 식물에서 가져온 색을 작은 패브릭 소품에 담았습니다.', imageUrl: '',
-    likes: 128, comments: 19, liked: false, followed: true, own: false, createdAt: '2026-11-01T09:00:00.000Z',
+    likes: 128, comments: demoSocialComments['demo-post-glass']?.length ?? 0, liked: false, followed: true, own: false, createdAt: '2026-11-01T09:00:00.000Z',
   },
   {
     id: 'demo-post-paper', creatorId: 'demo-creator-seonmun', creatorName: '최선문', handle: 'moon.archive', avatarUrl: '',
     content: '종이 위의 산책 시리즈가 성수 카페에서 전시를 시작했습니다. 커피를 기다리는 동안 천천히 봐 주세요.', imageUrl: '',
-    likes: 96, comments: 11, liked: true, followed: true, own: false, createdAt: '2026-10-31T12:30:00.000Z',
+    likes: 96, comments: demoSocialComments['demo-post-paper']?.length ?? 0, liked: true, followed: true, own: false, createdAt: '2026-10-31T12:30:00.000Z',
   },
   {
     id: 'demo-post-blue', creatorId: 'demo-creator-haereum', creatorName: '김해름', handle: 'haereum.blue', avatarUrl: '',
     content: '푸른 유약의 농도를 달리한 작은 볼과 접시를 완성했습니다. 서점과 식탁이 있는 공간을 찾고 있어요.', imageUrl: '',
-    likes: 73, comments: 8, liked: false, followed: false, own: false, createdAt: '2026-10-29T04:20:00.000Z',
+    likes: 73, comments: demoSocialComments['demo-post-blue']?.length ?? 0, liked: false, followed: false, own: false, createdAt: '2026-10-29T04:20:00.000Z',
   },
   {
     id: 'demo-post-linen', creatorId: 'demo-creator-sua', creatorName: '박수아', handle: 'sua.textile', avatarUrl: '',
     content: '겨울 시즌을 위한 린넨 오브제 샘플이 나왔어요. 밝은 선반과 창가 공간에 잘 어울립니다.', imageUrl: '',
-    likes: 52, comments: 6, liked: false, followed: false, own: false, createdAt: '2026-10-27T07:15:00.000Z',
+    likes: 52, comments: demoSocialComments['demo-post-linen']?.length ?? 0, liked: false, followed: false, own: false, createdAt: '2026-10-27T07:15:00.000Z',
   },
 ];
 
@@ -173,45 +191,3 @@ export const demoStoreOnboarding: StoreOnboarding = {
   step: 5,
   complete: true,
 };
-
-export const demoQrProducts: QrProduct[] = [
-  {
-    id: 'demo-mug-white-gray',
-    token: 'demo-mug-white-gray',
-    productId: 'demo-mug-white-gray',
-    name: '머그컵 (화이트·그레이)',
-    price: 35000,
-    stock: 12,
-    viewCount: 203,
-    status: 'ACTIVE',
-    pickupMode: 'immediate',
-    artistName: '최선문',
-    qrUrl: buildQrWebUrl('demo-mug-white-gray'),
-  },
-  {
-    id: 'demo-bowl-set-2026',
-    token: 'demo-bowl-set-2026',
-    productId: 'demo-bowl-set-2026',
-    name: '볼 세트 (2개)',
-    price: 82000,
-    stock: 6,
-    viewCount: 158,
-    status: 'ACTIVE',
-    pickupMode: 'immediate',
-    artistName: '김해름',
-    qrUrl: buildQrWebUrl('demo-bowl-set-2026'),
-  },
-  {
-    id: 'demo-dessert-plate',
-    token: 'demo-dessert-plate',
-    productId: 'demo-dessert-plate',
-    name: '디저트 플레이트',
-    price: 55000,
-    stock: 8,
-    viewCount: 61,
-    status: 'ACTIVE',
-    pickupMode: 'immediate',
-    artistName: '권아영',
-    qrUrl: buildQrWebUrl('demo-dessert-plate'),
-  },
-];

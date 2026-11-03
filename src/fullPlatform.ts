@@ -158,6 +158,16 @@ export type SocialPost = {
   createdAt: string;
 };
 
+export type SocialComment = {
+  id: string;
+  postId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string;
+  content: string;
+  createdAt: string;
+};
+
 export async function loadSocialFeed(): Promise<SocialPost[]> {
   const supabase = getSupabase();
   const userId = await currentUserId();
@@ -212,9 +222,45 @@ export async function toggleCreatorFollow(creatorId: string, followed: boolean) 
 }
 
 export async function addPostComment(postId: string, content: string) {
+  const text = content.trim();
+  if (!text) throw new Error('댓글 내용을 입력해 주세요.');
+  if (text.length > 500) throw new Error('댓글은 500자 이내로 작성해 주세요.');
   const userId = await currentUserId();
-  const { error } = await getSupabase().from('post_comments').insert({ post_id: postId, user_id: userId, content: content.trim() });
+  const { error } = await getSupabase().from('post_comments').insert({ post_id: postId, user_id: userId, content: text });
   if (error) throw new Error(error.message);
+}
+
+export async function loadPostComments(postId: string): Promise<SocialComment[]> {
+  const supabase = getSupabase();
+  const result = await supabase
+    .from('post_comments')
+    .select('id, post_id, user_id, content, created_at')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true })
+    .limit(100);
+  if (result.error) throw new Error(result.error.message);
+  const rows = result.data || [];
+  if (!rows.length) return [];
+  const userIds = [...new Set(rows.map(row => String(row.user_id)))];
+  const profilesResult = await supabase
+    .from('profiles')
+    .select('id, display_name, avatar_path')
+    .in('id', userIds);
+  if (profilesResult.error) throw new Error(profilesResult.error.message);
+  const profiles = new Map((profilesResult.data || []).map(row => [String(row.id), row]));
+  return rows.map(row => {
+    const userId = String(row.user_id);
+    const profile = profiles.get(userId);
+    return {
+      id: String(row.id),
+      postId: String(row.post_id),
+      userId,
+      displayName: String(profile?.display_name || 'CURI:T 이용자'),
+      avatarUrl: profile?.avatar_path ? mediaUrl(String(profile.avatar_path)) : '',
+      content: String(row.content || ''),
+      createdAt: String(row.created_at),
+    };
+  });
 }
 
 export type AppNotification = { id: string; title: string; body: string; kind: string; entityId: string; read: boolean; createdAt: string };

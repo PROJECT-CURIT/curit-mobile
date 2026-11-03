@@ -41,5 +41,3 @@ export const stores = [
   { name: '리프 쇼룸', area: '연남동', mood: '밝음 · 2개 구역', image: images.showroom, match: 86 },
   { name: '오후의 기록', area: '망원동', mood: '차분함 · 창가 선반', image: images.lounge, match: 82 },
 ];
-
-export const qrTokens = ['demo-mug-white-gray', 'demo-bowl-set-2026', 'demo-dessert-plate'] as const;

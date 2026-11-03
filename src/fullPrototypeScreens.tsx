@@ -10,6 +10,7 @@ import {
   createSocialPost,
   loadCreatorProfile,
   loadNotifications,
+  loadPostComments,
   loadSocialFeed,
   loadVerificationRequest,
   markNotificationRead,
@@ -20,6 +21,7 @@ import {
   togglePostLike,
   type AppNotification,
   type CreatorProfileData,
+  type SocialComment,
   type SocialPost,
   type VerificationKind,
   type VerificationRequest,
@@ -38,7 +40,7 @@ import {
   type StoreOnboarding,
 } from './platform';
 import type { QrProduct } from './types';
-import { demoCreatorProfile, demoSocialPosts, demoStoreOnboarding } from './demoContent';
+import { demoCreatorProfile, demoSocialComments, demoSocialPosts, demoStoreOnboarding } from './demoContent';
 import { images } from './data';
 
 const categoryOptions = ['도예·세라믹', '판화·프린트', '패브릭·섬유', '회화', '조각', '사진', '드로잉', '기타'];
@@ -180,6 +182,7 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  if (item.source === 'field-sale') return <FieldSaleProductScreen item={item} onBack={onBack} />;
   const valuesValid = Number(price) > 0 && Number.isInteger(Number(stock)) && Number(stock) >= 0;
   const save = async (saleStatus?: 'active' | 'preparing') => {
     if (!item.id || !valuesValid) { setNotice('판매가는 1원 이상, 구매 가능 수량은 0개 이상의 정수로 입력해 주세요.'); return; }
@@ -202,6 +205,46 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
     <Button label="QR 주소 복사" variant="secondary" disabled={!item.qrUrl} onPress={() => { void share(item.qrUrl || ''); }} />
     {notice ? <Notice text={notice} /> : null}
   </ScrollView></KeyboardAvoidingView>;
+}
+
+function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () => void }) {
+  const url = item.qrUrl || '';
+  const [notice, setNotice] = useState('');
+  const open = async () => {
+    if (!url) return;
+    try { await Linking.openURL(url); } catch { setNotice('상품 페이지를 열지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
+  };
+  const shareLink = async () => {
+    if (!url) return;
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        setNotice('QR 주소를 복사했습니다.');
+      } else {
+        await Share.share({ message: `${item.name} 상품 페이지\n${url}` });
+      }
+    } catch { setNotice('QR 주소를 공유하지 못했습니다.'); }
+  };
+  return <View style={f.flex}>
+    <Header title="QR 상품 정보" back={onBack} />
+    <ScrollView contentContainerStyle={f.scroll}>
+      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} contentFit="cover" /> : null}
+      <Chip label="현장 등록 상품" active />
+      <CuritText weight="bold" style={{ fontSize: 22, marginTop: 10 }}>{item.name}</CuritText>
+      <CuritText style={f.hint}>전시 매장 · {item.status === 'SOLD_OUT' ? '품절' : '판매 페이지 운영 중'}</CuritText>
+      <CuritText weight="bold" style={{ fontSize: 20, marginTop: 10 }}>{item.price.toLocaleString('ko-KR')}원</CuritText>
+      <CuritText style={f.description}>{item.inventoryTracked === false ? '수량은 매장 재고를 확인해 주세요.' : `등록 수량 ${item.stock}개`}</CuritText>
+      <View style={f.preview}>
+        {url ? <QRCode value={url} size={180} color={colors.ink} backgroundColor={colors.surface} /> : null}
+        <CuritText weight="semibold" style={{ marginTop: 14 }}>상품 전용 QR</CuritText>
+        <CuritText style={f.hint} numberOfLines={2}>{url}</CuritText>
+      </View>
+      <CuritText style={f.description}>QR을 열면 현재 상품의 소개와 매장 수령·결제 안내 페이지로 이동합니다.</CuritText>
+      <Button label="상품 페이지 열기" onPress={() => { void open(); }} />
+      <Button label="QR 주소 공유" variant="secondary" onPress={() => { void shareLink(); }} />
+      {notice ? <Notice text={notice} /> : null}
+    </ScrollView>
+  </View>;
 }
 
 export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBack: () => void; onOpenQr: () => void }) {
@@ -322,13 +365,15 @@ export function NotificationsScreen({ onBack, demo = false }: { onBack: () => vo
   return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.notificationList}>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
 }
 
-export function SocialFeedSection({ canPost = false, demo = false }: { canPost?: boolean; demo?: boolean }) {
+export function SocialFeedSection({ canPost = false, demo = false, currentUserName = '권아영' }: { canPost?: boolean; demo?: boolean; currentUserName?: string }) {
   const [items, setItems] = useState<SocialPost[]>(demo ? demoSocialPosts : []);
   const [loading, setLoading] = useState(!demo);
   const [compose, setCompose] = useState('');
   const [postImage, setPostImage] = useState('');
   const [commentFor, setCommentFor] = useState('');
   const [comment, setComment] = useState('');
+  const [commentsByPost, setCommentsByPost] = useState<Record<string, SocialComment[]>>(demo ? demoSocialComments : {});
+  const [commentsLoadingFor, setCommentsLoadingFor] = useState('');
   const [notice, setNotice] = useState('');
   const load = async () => { if (demo) return; setLoading(true); try { setItems(await loadSocialFeed()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
   useEffect(() => {
@@ -341,7 +386,9 @@ export function SocialFeedSection({ canPost = false, demo = false }: { canPost?:
   const create = async () => {
     if (!compose.trim()) return;
     if (demo) {
-      setItems(current => [{ id: `demo-own-${Date.now()}`, creatorId: 'demo-creator', creatorName: '권아영', handle: 'ayeong_green', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
+      const id = `local-post-${Date.now()}`;
+      setItems(current => [{ id, creatorId: 'demo-current-user', creatorName: currentUserName, handle: 'curit_user', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
+      setCommentsByPost(current => ({ ...current, [id]: [] }));
       setCompose(''); setPostImage(''); setNotice(''); return;
     }
     try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); } catch (error) { setNotice(friendlyError(error)); }
@@ -354,10 +401,36 @@ export function SocialFeedSection({ canPost = false, demo = false }: { canPost?:
     if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, liked: !item.liked, likes: Math.max(0, item.likes + (item.liked ? -1 : 1)) } : value)); return; }
     await togglePostLike(item.id, item.liked); await load();
   };
+  const toggleComments = async (item: SocialPost) => {
+    if (commentFor === item.id) { setCommentFor(''); return; }
+    setCommentFor(item.id);
+    setComment('');
+    if (demo) {
+      setCommentsByPost(current => ({ ...current, [item.id]: current[item.id] ?? [] }));
+      return;
+    }
+    setCommentsLoadingFor(item.id);
+    try {
+      const comments = await loadPostComments(item.id);
+      setCommentsByPost(current => ({ ...current, [item.id]: comments }));
+      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: comments.length } : value));
+    } catch (error) { setNotice(friendlyError(error)); }
+    finally { setCommentsLoadingFor(''); }
+  };
   const addComment = async (item: SocialPost) => {
-    if (!comment.trim()) return;
-    if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, comments: value.comments + 1 } : value)); setComment(''); setCommentFor(''); setNotice(''); return; }
-    await addPostComment(item.id, comment); setComment(''); setCommentFor(''); await load();
+    const text = comment.trim();
+    if (!text || text.length > 500) return;
+    if (demo) {
+      const next: SocialComment = { id: `local-comment-${Date.now()}`, postId: item.id, userId: 'demo-current-user', displayName: currentUserName, avatarUrl: '', content: text, createdAt: new Date().toISOString() };
+      setCommentsByPost(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), next] }));
+      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: (commentsByPost[item.id] ?? []).length + 1 } : value));
+      setComment(''); setNotice(''); return;
+    }
+    await addPostComment(item.id, text);
+    const comments = await loadPostComments(item.id);
+    setCommentsByPost(current => ({ ...current, [item.id]: comments }));
+    setItems(current => current.map(value => value.id === item.id ? { ...value, comments: comments.length } : value));
+    setComment('');
   };
   if (loading) return <ActivityIndicator color={colors.brand} style={f.loader} />;
   return <View style={f.feed}>
@@ -376,12 +449,17 @@ export function SocialFeedSection({ canPost = false, demo = false }: { canPost?:
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.postImage} contentFit="cover" /> : demo ? <Image source={[images.pouch, images.print, images.bowls, images.linen][index % 4]} style={f.postImage} contentFit="cover" /> : null}
       <View style={f.socialActions}>
         <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void toggleLike(item).catch(error => setNotice(friendlyError(error))); }}><CuritText style={item.liked ? f.brand : f.muted}>♥ {item.likes}</CuritText></Pressable>
-        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => setCommentFor(commentFor === item.id ? '' : item.id)}><CuritText style={f.muted}>댓글 {item.comments}</CuritText></Pressable>
-        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void Share.share({ message: item.content }); }}><CuritText style={f.muted}>공유</CuritText></Pressable>
+        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} accessibilityState={{ expanded: commentFor === item.id }} onPress={() => { void toggleComments(item); }}><CuritText style={f.muted}>댓글 {demo ? (commentsByPost[item.id] ?? []).length : item.comments}</CuritText></Pressable>
       </View>
-      {commentFor === item.id ? <View style={f.commentRow}>
-        <TextInput value={comment} onChangeText={setComment} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} />
-        <Pressable accessibilityRole="button" disabled={!comment.trim()} style={f.commentSubmit} onPress={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
+      {commentFor === item.id ? <View style={f.commentPanel}>
+        {commentsLoadingFor === item.id ? <ActivityIndicator color={colors.brand} /> : (commentsByPost[item.id] ?? []).length ? (commentsByPost[item.id] ?? []).map(value => <View key={value.id} style={f.commentItem}>
+          <View style={f.commentMeta}><CuritText weight="semibold">{value.displayName}</CuritText><CuritText style={f.hint}>{new Date(value.createdAt).toLocaleDateString('ko-KR')}</CuritText></View>
+          <CuritText style={f.commentText}>{value.content}</CuritText>
+        </View>) : <CuritText style={f.emptyComment}>첫 댓글을 남겨보세요.</CuritText>}
+        <View style={f.commentRow}>
+          <TextInput value={comment} onChangeText={setComment} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} maxLength={500} returnKeyType="send" onSubmitEditing={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }} />
+          <Pressable accessibilityRole="button" disabled={!comment.trim() || comment.trim().length > 500} style={f.commentSubmit} onPress={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
+        </View>
       </View> : null}
     </View>) : <Empty title="등록된 소식이 없습니다" description="크리에이터의 새 작품과 전시 소식이 여기에 표시됩니다." />}
     {notice ? <Notice text={notice} /> : null}
@@ -408,5 +486,5 @@ const f = StyleSheet.create({
   notificationList: { flexGrow: 1, paddingVertical: 8, paddingBottom: 36 }, notification: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, notificationUnread: { backgroundColor: colors.brandPale }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 7 }, dotRead: { backgroundColor: colors.border },
   verificationStatus: { minHeight: 92, flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16 }, evidenceImage: { width: '100%', height: 220, borderRadius: radius.md, backgroundColor: colors.brandPale }, evidencePlaceholder: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.brand, borderRadius: radius.md, backgroundColor: colors.brandPale },
   headerTextAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentPanel: { gap: 10, paddingTop: 4 }, commentItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }, commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentText: { color: colors.ink, fontSize: 13, lineHeight: 19 }, emptyComment: { color: colors.muted, fontSize: 12, paddingVertical: 8 }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

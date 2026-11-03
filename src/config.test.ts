@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCommerceApiUrl, buildQrApiUrl, buildQrWebUrl } from './config';
+import { buildCommerceApiUrl, buildFieldSaleUrl, buildQrApiUrl, buildQrWebUrl, localDemoModeAllowed } from './config';
 
 describe('QR URL builders', () => {
   it('builds a stable product web URL and removes trailing slash', () => {
@@ -14,6 +14,12 @@ describe('QR URL builders', () => {
     );
   });
 
+  it('builds the existing field-sale page URL rather than a commerce listing URL', () => {
+    expect(buildFieldSaleUrl('poetry-postcards', 'https://project-curit.github.io/curit-qr-web/')).toBe(
+      'https://project-curit.github.io/curit-qr-web/?buy=poetry-postcards',
+    );
+  });
+
   it('pins Supabase Edge Function calls to the Seoul region', () => {
     expect(
       buildCommerceApiUrl(
@@ -23,5 +29,13 @@ describe('QR URL builders', () => {
     ).toBe(
       'https://example.supabase.co/functions/v1/commerce/health?forceFunctionRegion=ap-northeast-2',
     );
+  });
+});
+
+describe('local-only session access', () => {
+  it('allows sample sessions only when backend credentials are absent', () => {
+    expect(localDemoModeAllowed('', '')).toBe(true);
+    expect(localDemoModeAllowed('https://project.supabase.co', 'public-key')).toBe(false);
+    expect(localDemoModeAllowed('https://project.supabase.co', '')).toBe(true);
   });
 });

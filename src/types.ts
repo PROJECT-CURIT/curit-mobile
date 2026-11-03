@@ -36,6 +36,8 @@ export interface QrProduct {
   artistName?: string;
   qrUrl?: string;
   issuable?: boolean;
+  source?: 'collaboration' | 'field-sale';
+  inventoryTracked?: boolean;
 }
 
 export type MatchTargetType = 'project' | 'store';

@@ -3,12 +3,12 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshCo
 import { Image } from 'expo-image';
 import { Button, Chip, CuritText, Empty, Field, Header, Icon, SectionTitle } from './ui';
 import { colors, fonts, radius } from './theme';
-import { images, projects, qrTokens, stores } from './data';
+import { images, projects, stores } from './data';
 import { loadCollaborations, loadMatchRecommendations } from './curation';
-import { fetchQrProduct } from './api';
 import { friendlyError, issueQrListing, loadManagedQrProducts, loadSettlements, type SettlementEntry } from './platform';
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role } from './types';
-import { demoCollaborationList, demoQrProducts } from './demoContent';
+import { demoCollaborationList } from './demoContent';
+import { loadFieldSaleProducts } from './fieldSaleCatalog';
 
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const demoSettlements: SettlementEntry[] = [
@@ -17,15 +17,18 @@ const demoSettlements: SettlementEntry[] = [
 ];
 
 async function fetchQrCatalog(demo?: boolean) {
-  if (!demo) return { items: await loadManagedQrProducts(), warning: '' };
-  const results = await Promise.allSettled(qrTokens.map(token => fetchQrProduct(token)));
-  const items = demoQrProducts.map((fallback, index) => {
-    const result = results[index];
-    return result?.status === 'fulfilled'
-      ? { ...fallback, ...result.value, viewCount: fallback.viewCount, qrUrl: fallback.qrUrl }
-      : fallback;
-  });
-  return { items, warning: '' };
+  const [fieldResult, managedResult] = await Promise.allSettled([
+    loadFieldSaleProducts(),
+    demo ? Promise.resolve([] as QrProduct[]) : loadManagedQrProducts(),
+  ]);
+  if (fieldResult.status === 'rejected' && managedResult.status === 'rejected') {
+    throw new Error('QR 상품 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+  const field = fieldResult.status === 'fulfilled' ? fieldResult.value : { items: [], warning: '현장 QR 상품 정보를 불러오지 못했습니다.' };
+  const managed = managedResult.status === 'fulfilled' ? managedResult.value : [];
+  const realManagedItems = managed.filter(item => !item.token.startsWith('demo-'));
+  const warning = [field.warning, managedResult.status === 'rejected' ? '협업 QR 정보를 불러오지 못했습니다.' : ''].filter(Boolean).join(' ');
+  return { items: [...field.items, ...realManagedItems], warning };
 }
 
 export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEnabled, configured }: { onLogin: (email: string, password: string) => Promise<void>; onSignUp: () => void; onDemo: (role: Role) => void; onResetPassword: (email: string) => Promise<void>; demoEnabled: boolean; configured: boolean }) {
@@ -179,7 +182,7 @@ function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?
       image: store.image,
       tags: index === 1 ? ['계산대 옆 진열대', '북 큐레이션 테이블'] : ['창가 우드 선반', '입구 벽면'],
     }))
-    : recommended.items.map((item, index) => ({ ...item, image: item.imageUrl ? { uri: item.imageUrl } : [images.cafe, images.bookstore, images.showroom, images.lounge][index % 4] }));
+    : recommended.items.map(item => ({ ...item, image: item.imageUrl ? { uri: item.imageUrl } : undefined }));
   return (
     <ScrollView contentContainerStyle={s.curationScroll} showsVerticalScrollIndicator={false}>
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
@@ -204,7 +207,7 @@ function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: 
   const current = collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
   const items = demo
     ? projects.map((project, index) => ({ targetId: project.id, title: project.title, subtitle: `${project.artist} 작가`, description: project.priceRange, score: project.match ?? Math.max(79, 88 - index * 2), image: project.image }))
-    : recommended.items.map((item, index) => ({ ...item, image: item.imageUrl ? { uri: item.imageUrl } : [images.pottery, images.linen, images.bowls, images.print][index % 4] }));
+    : recommended.items.map(item => ({ ...item, image: item.imageUrl ? { uri: item.imageUrl } : undefined }));
   return (
     <ScrollView contentContainerStyle={s.curationScroll} showsVerticalScrollIndicator={false}>
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
@@ -213,8 +216,8 @@ function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: 
         <Pressable accessibilityRole="button" accessibilityLabel="공간 취향과 전시 구역 설정" style={s.preferenceLink} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.preferenceLinkText}>취향 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
       <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품</CuritText></View><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.dnaLabel}>SPACE DNA</CuritText><View style={s.dnaPill}><CuritText style={s.dnaPillText}>미니멀</CuritText></View><CuritText style={s.dnaHint}>수정 →</CuritText></Pressable>
-      <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 분위기와 작품 태그를 비교해 골랐어요.</CuritText>
+      <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.dnaLabel}>SPACE DNA</CuritText><View style={s.dnaPill}><CuritText style={s.dnaPillText}>매장 정보 기준</CuritText></View><CuritText style={s.dnaHint}>수정 →</CuritText></Pressable>
+      <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 정보와 공개된 작품 조건을 비교해 추천해요.</CuritText>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
       <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onMove('discover')} />)}</View>
       {!recommended.loading && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 예산을 저장하면 전시 가능한 작품을 비교해 드립니다." /> : null}
@@ -223,8 +226,8 @@ function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: 
   );
 }
 
-function CurationTile({ index, title, subtitle, description, score, image, role, onPress }: { index: number; title: string; subtitle: string; description: string; score: number; image: typeof images[keyof typeof images] | { uri: string }; role: 'space' | 'art'; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" style={s.curationTile} onPress={onPress}><View style={s.curationImageWrap}><Image source={image} style={s.curationImage} contentFit="cover" /><View style={s.rankBadge}><CuritText style={s.rankText}>{String(index + 1).padStart(2, '0')}</CuritText></View>{role === 'art' ? <View style={s.scoreBadge}><CuritText weight="semibold" style={s.scoreText}>DNA 적합 {score}%</CuritText></View> : null}</View><CuritText style={s.tileEyebrow} numberOfLines={1}>{subtitle}</CuritText><CuritText weight="semibold" style={s.tileTitle} numberOfLines={1}>{title}</CuritText><CuritText style={s.tileDescription} numberOfLines={2}>{description}</CuritText></Pressable>;
+function CurationTile({ index, title, subtitle, description, score, image, role, onPress }: { index: number; title: string; subtitle: string; description: string; score: number; image?: number | { uri: string }; role: 'space' | 'art'; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" style={s.curationTile} onPress={onPress}><View style={s.curationImageWrap}>{image ? <Image source={image} style={s.curationImage} contentFit="cover" /> : <View style={[s.curationImage, s.imagePlaceholder]}><Icon name={role === 'art' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={s.muted}>이미지 준비 중</CuritText></View>}<View style={s.rankBadge}><CuritText style={s.rankText}>{String(index + 1).padStart(2, '0')}</CuritText></View>{role === 'art' ? <View style={s.scoreBadge}><CuritText weight="semibold" style={s.scoreText}>조건 일치 {score}점</CuritText></View> : null}</View><CuritText style={s.tileEyebrow} numberOfLines={1}>{subtitle}</CuritText><CuritText weight="semibold" style={s.tileTitle} numberOfLines={1}>{title}</CuritText><CuritText style={s.tileDescription} numberOfLines={2}>{description}</CuritText></Pressable>;
 }
 
 function collaborationStatusLabel(status: CollaborationSummary['status']) {
@@ -434,10 +437,32 @@ export function QrProductsScreen({ demo, onBack, onSelect }: { demo?: boolean; o
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [demo]);
-  const totalStock = useMemo(() => items.reduce((sum, item) => sum + item.stock, 0), [items]);
   const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
   const visibleItems = useMemo(() => items.filter(item => `${item.name} ${item.artistName || ''} ${item.token || ''}`.toLocaleLowerCase('ko-KR').includes(normalizedQuery)), [items, normalizedQuery]);
-  return <View style={s.flex}><Header title="QR 상품 관리" subtitle="승인된 협업의 상품별 QR" back={onBack} /><ScrollView contentContainerStyle={s.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}><View style={s.storeInfo}><View style={s.quickIcon}><Icon name="store" color={colors.brand} /></View><View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>전시 상품 {items.length}종 · 판매 가능 {totalStock}개</CuritText></View><Chip label={`${items.length}종`} /></View><Field placeholder="상품명 또는 QR 토큰 검색" value={query} onChangeText={setQuery} returnKeyType="search" />{loading && items.length === 0 ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}{error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}{!loading && items.length === 0 ? <Empty title="발급 가능한 QR 상품이 없습니다" description="양측 승인이 완료된 협업에서 전시·판매 상품의 QR을 발급할 수 있습니다." /> : !loading && visibleItems.length === 0 ? <Empty title="검색 결과가 없습니다" description="상품명, 작가명 또는 QR 토큰을 다시 확인해 주세요." /> : visibleItems.map((item, index) => <Pressable accessibilityRole="button" key={item.id || item.token} disabled={Boolean(issuing)} style={s.qrRow} onPress={() => { void openOrIssue(item); }}><Image source={item.imageUrl ? { uri: item.imageUrl } : [projects[0]?.image, projects[1]?.image, projects[3]?.image][index % 3]} style={s.qrImage} /><View style={s.flex}><CuritText weight="semibold">{item.name}</CuritText><CuritText style={s.muted}>{money(item.price)} · 재고 {item.stock}개 · {item.issuable ? '발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : '판매 전'}</CuritText><CuritText style={s.tokenText} numberOfLines={1}>{item.issuable ? '눌러서 상품 전용 QR 발급' : `QR 조회 ${(item.viewCount || 0).toLocaleString('ko-KR')}회 · ${item.token}`}</CuritText></View><View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="qr" size={21} color={colors.brand} />}</View></Pressable>)}</ScrollView></View>;
+  return <View style={s.flex}>
+    <Header title="QR 상품 관리" subtitle="등록 상품과 협업 QR을 함께 확인해요" back={onBack} />
+    <ScrollView contentContainerStyle={s.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}>
+      <View style={s.storeInfo}>
+        <View style={s.quickIcon}><Icon name="store" color={colors.brand} /></View>
+        <View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>QR이 연결된 상품 {items.length}종</CuritText></View>
+        <Chip label={`${items.length}종`} />
+      </View>
+      <Field placeholder="상품명 또는 QR 토큰 검색" value={query} onChangeText={setQuery} returnKeyType="search" />
+      {loading && items.length === 0 ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}
+      {error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}
+      {!loading && items.length === 0 ? <Empty title="QR로 연결된 상품이 없습니다" description="현장 등록 상품이나 승인된 협업 상품이 이곳에 표시됩니다." /> : null}
+      {!loading && items.length > 0 && visibleItems.length === 0 ? <Empty title="검색 결과가 없습니다" description="상품명, 작가명 또는 QR 토큰을 다시 확인해 주세요." /> : null}
+      {visibleItems.map(item => <Pressable accessibilityRole="button" key={item.id || item.token} disabled={Boolean(issuing)} style={s.qrRow} onPress={() => { void openOrIssue(item); }}>
+        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={s.qrImage} contentFit="cover" /> : <View style={[s.qrImage, s.qrImagePlaceholder]}><Icon name="qr" size={20} color={colors.brand} /></View>}
+        <View style={s.flex}>
+          <View style={s.qrProductHeading}><CuritText weight="semibold" numberOfLines={1}>{item.name}</CuritText><Chip label={item.source === 'field-sale' ? '현장 QR' : '협업 QR'} /></View>
+          <CuritText style={s.muted}>{money(item.price)} · {item.inventoryTracked === false ? '수량 별도 관리' : `재고 ${item.stock}개`} · {item.issuable ? 'QR 발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : '판매 전'}</CuritText>
+          <CuritText style={s.tokenText} numberOfLines={1}>{item.issuable ? '눌러서 상품 전용 QR 발급' : item.token}</CuritText>
+        </View>
+        <View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="qr" size={21} color={colors.brand} />}</View>
+      </Pressable>)}
+    </ScrollView>
+  </View>;
 }
 
 const s = StyleSheet.create({
@@ -517,6 +542,6 @@ const s = StyleSheet.create({
   accountButtons: { marginTop: 18, gap: 10 },
   settingsValue: { color: colors.brand, fontSize: 12, marginRight: 6 },
   storeInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: 14 }, errorBox: { marginVertical: 14, backgroundColor: '#FFF2EF', borderRadius: radius.sm, padding: 13, gap: 5 }, errorHint: { color: colors.muted, fontSize: 11 },
-  qrRow: { minHeight: 92, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }, qrImage: { width: 66, height: 66, borderRadius: radius.sm }, qrArrow: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, tokenText: { color: colors.subtle, fontSize: 9, maxWidth: 190 },
+  qrRow: { minHeight: 92, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }, qrImage: { width: 66, height: 66, borderRadius: radius.sm }, qrArrow: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, tokenText: { color: colors.subtle, fontSize: 9, maxWidth: 190 }, qrImagePlaceholder: { backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, qrProductHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }, imagePlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 7, padding: 8 },
   settlementSummary: { backgroundColor: colors.brandPale, borderRadius: radius.lg, padding: 20, marginBottom: 12, gap: 5 }, settlementTotal: { fontSize: 25, color: colors.brand }, settlementFilters: { gap: 8, paddingVertical: 8, paddingRight: 20 }, settlementCard: { borderBottomWidth: 1, borderBottomColor: colors.border }, settlementRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12 }, settlementDetail: { backgroundColor: colors.brandPale, borderRadius: radius.md, padding: 14, gap: 10, marginBottom: 14 }, settlementLine: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
 });

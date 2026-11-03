@@ -1,4 +1,5 @@
 import { buildQrApiUrl, buildQrWebUrl, config } from './config';
+import { isFieldSaleProductId, loadFieldSaleProduct } from './fieldSaleCatalog';
 import type { QrProduct } from './types';
 
 type JsonRecord = Record<string, unknown>;
@@ -20,10 +21,17 @@ export function normalizeQrProduct(token: string, payload: JsonRecord): QrProduc
     imageUrl: typeof product.image === 'string' ? product.image : typeof product.imageUrl === 'string' ? product.imageUrl : undefined,
     artistName: typeof product.artist === 'string' ? product.artist : typeof product.artistName === 'string' ? product.artistName : undefined,
     qrUrl: buildQrWebUrl(token),
+    source: 'collaboration',
+    inventoryTracked: true,
   };
 }
 
 export async function fetchQrProduct(token: string, signal?: AbortSignal) {
+  if (isFieldSaleProductId(token)) {
+    const item = await loadFieldSaleProduct(token);
+    if (!item) throw new Error('등록된 상품을 찾을 수 없습니다.');
+    return item;
+  }
   const response = await fetch(buildQrApiUrl(token), {
     signal,
     headers: config.supabaseAnonKey

@@ -249,6 +249,8 @@ function mapManagedQrProduct(item: Record<string, unknown>): QrProduct {
     artistName: typeof item.artistName === 'string' ? item.artistName : undefined,
     qrUrl: typeof item.qrUrl === 'string' ? item.qrUrl : undefined,
     issuable: item.issuable === true,
+    source: 'collaboration',
+    inventoryTracked: true,
   };
 }
 
