@@ -445,6 +445,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, onBack, on
     try {
       const status = await transitionCollaboration(item.id, action);
       onUpdated({ ...item, status, updatedAt: new Date().toISOString() });
+      if (status === 'active') setConditionsOpen(false);
       setNotice(status === 'active' ? '전시가 확정됐어요. 작품의 QR을 발급하거나 판매 상태를 설정할 수 있어요.' : '협업 상태를 변경했습니다.');
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(false); }
   };
@@ -515,9 +516,9 @@ export function CollaborationDetailScreen({ role, userId, item, demo, onBack, on
           {!demo ? <Button label={editing ? '편집 취소' : '최신 조건 불러오기'} variant="secondary" disabled={termsBusy || busy} onPress={() => { void refreshTerms(); }} /> : null}
         </View> : null}
       </View>
-      {notice ? <View accessibilityLiveRegion="polite" style={c.notice}><CuritText style={c.brandText}>{notice}</CuritText></View> : null}
       {busy && !messages.length ? <ActivityIndicator color={colors.brand} /> : messages.length ? messages.map(message => <View key={message.id} style={[c.collabBubble, message.senderId === userId ? c.ownCollabBubble : c.otherCollabBubble]}><CuritText style={message.senderId === userId ? c.userText : undefined}>{message.content}</CuritText><CuritText style={[c.time, message.senderId === userId && { color: '#D7DFCF' }]}>{new Date(message.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</CuritText></View>) : <CuritText style={c.muted}>조건이나 일정에 관해 첫 메시지를 남겨보세요.</CuritText>}
     </ScrollView>
+    {notice ? <Pressable accessibilityLiveRegion="polite" accessibilityRole="button" accessibilityHint="눌러서 안내 닫기" style={[c.notice, { marginHorizontal: 12, marginBottom: 8 }]} onPress={() => setNotice('')}><CuritText style={c.brandText}>{notice}</CuritText></Pressable> : null}
     <View style={c.composerWrap}>
       {quickRepliesOpen ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.topicRow}>{quickReplies.map(value => <Pressable key={value} accessibilityRole="button" style={c.quickReply} onPress={() => { setInput(value); setQuickRepliesOpen(false); }}><CuritText style={c.quickReplyText}>{value}</CuritText></Pressable>)}</ScrollView> : null}
       <View style={c.composer}><Pressable accessibilityRole="button" accessibilityLabel="빠른 문의 열기" accessibilityState={{ expanded: quickRepliesOpen }} style={c.composerMore} onPress={() => setQuickRepliesOpen(value => !value)}><CuritText weight="semibold" style={c.composerMoreText}>＋</CuritText></Pressable><TextInput value={input} onChangeText={setInput} maxLength={2000} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="협업 메시지 보내기" disabled={!input.trim() || busy} style={[c.send, (!input.trim() || busy) && c.sendDisabled]} onPress={() => { void send(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
