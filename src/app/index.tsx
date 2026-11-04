@@ -33,6 +33,7 @@ export default function AppIndex() {
   const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-preferences' | 'verification' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | 'recommendation' | null>(null);
   const [selectedRecommendation, setSelectedRecommendation] = useState<MatchRecommendation | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
+  const [collaborationDrafts, setCollaborationDrafts] = useState<Record<string, string>>({});
   const [demoCollaborations, setDemoCollaborations] = useState<CollaborationSummary[]>([]);
   const [creatorProducts, setCreatorProducts] = useState<ProjectProduct[]>(initialCreatorProducts);
   const [creatorProjectId, setCreatorProjectId] = useState('');
@@ -185,7 +186,7 @@ export default function AppIndex() {
   const logout = async () => {
     const wasDemo = session?.demo;
     if (session && !wasDemo && isSupabaseConfigured) await deactivateNativePush(session.userId).catch(() => undefined);
-    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setDiscoverVisited(false); setTab('home'); setSubview(null);
+    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setCollaborationDrafts({}); setDiscoverVisited(false); setTab('home'); setSubview(null);
     if (!wasDemo && isSupabaseConfigured) await signOut();
   };
 
@@ -284,10 +285,20 @@ export default function AppIndex() {
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen project={creatorProject} products={creatorProducts} onSaveProject={saveProject} onSaveProduct={saveCreatorProduct} onUpdateProduct={saveCreatorProductUpdate} onDeleteProduct={removeCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
   if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={openCollaboration} /></ScreenFrame>;
   if (subview === 'recommendation' && selectedRecommendation) return <ScreenFrame><RecommendationScreen item={selectedRecommendation} demo={session.demo} onBack={() => setSubview(null)} onOpenCollaboration={openCollaboration} /></ScreenFrame>;
-  if (subview === 'collaboration' && selectedCollaboration) return <ScreenFrame><CollaborationDetailScreen key={selectedCollaboration.id} role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo} onBack={() => setSubview(null)} onOpenQr={session.role === 'store' && !session.demo ? () => { setQrParent('collaboration'); setSubview('qr-products'); } : undefined} onUpdated={updated => {
-    setSelectedCollaboration(updated);
-    if (session.demo) setDemoCollaborations(current => current.map(item => item.id === updated.id ? updated : item));
-  }} /></ScreenFrame>;
+  if (subview === 'collaboration' && selectedCollaboration) {
+    const draftKey = `${session.userId}:${selectedCollaboration.id}`;
+    return <ScreenFrame><CollaborationDetailScreen key={draftKey} role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo}
+      input={collaborationDrafts[draftKey] ?? ''}
+      setInput={next => setCollaborationDrafts(current => ({
+        ...current,
+        [draftKey]: typeof next === 'function' ? next(current[draftKey] ?? '') : next,
+      }))}
+      onBack={() => setSubview(null)} onOpenQr={session.role === 'store' && !session.demo ? () => { setQrParent('collaboration'); setSubview('qr-products'); } : undefined}
+      onUpdated={updated => {
+        setSelectedCollaboration(updated);
+        if (session.demo) setDemoCollaborations(current => current.map(item => item.id === updated.id ? updated : item));
+      }} /></ScreenFrame>;
+  }
 
   const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onOpenPreferences={() => {
     if (session.role === 'creator') setSubview('creator-dna');

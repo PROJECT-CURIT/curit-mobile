@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import {
@@ -329,9 +329,8 @@ function collaborationRecommendationLabel(status?: MatchRecommendation['collabor
   return '진행 중';
 }
 
-export function CollaborationDetailScreen({ role, userId, item, demo, onBack, onUpdated, onOpenQr }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; onBack: () => void; onUpdated: (item: CollaborationSummary) => void; onOpenQr?: () => void }) {
+export function CollaborationDetailScreen({ role, userId, item, demo, input, setInput, onBack, onUpdated, onOpenQr }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; input: string; setInput: Dispatch<SetStateAction<string>>; onBack: () => void; onUpdated: (item: CollaborationSummary) => void; onOpenQr?: () => void }) {
   const [messages, setMessages] = useState<CollaborationMessage[]>(demo ? [{ id: 'demo-message', collaborationId: item.id, senderId: role === 'creator' ? 'demo-store' : 'demo-creator', content: '전시 조건과 상품 수량을 확인했습니다.', createdAt: new Date().toISOString() }] : []);
-  const [input, setInput] = useState('');
   const [busy, setBusy] = useState(!demo);
   const messageInFlight = useRef(false);
   const [notice, setNotice] = useState('');
