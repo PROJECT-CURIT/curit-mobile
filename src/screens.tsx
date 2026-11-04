@@ -523,7 +523,7 @@ export function QrProductsScreen({ demo, collaborationId, onBack, onSelect }: { 
     <ScrollView contentContainerStyle={s.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}>
       <View style={s.storeInfo}>
         <View style={s.quickIcon}><Icon name="store" color={colors.brand} /></View>
-        <View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>QR이 연결된 상품 {scopedItems.length}종</CuritText></View>
+        <View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>QR 관리 대상 {scopedItems.length}종</CuritText></View>
         <Chip label={`${scopedItems.length}종`} />
       </View>
       <Field placeholder="상품명 또는 QR 토큰 검색" value={query} onChangeText={setQuery} returnKeyType="search" />
