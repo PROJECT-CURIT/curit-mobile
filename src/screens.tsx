@@ -287,13 +287,13 @@ export function ChatScreen() {
   return <View style={s.flex}><Header title="협업 메시지" /><View style={s.searchPad}><Field placeholder="대화 검색" /></View>{chats.map(chat => <Pressable key={chat.name} style={s.chatRow}><View style={s.avatar}><CuritText weight="bold">{chat.name[0]}</CuritText></View><View style={s.flex}><View style={s.row}><CuritText weight="semibold">{chat.name}</CuritText><CuritText style={s.chatTime}>{chat.time}</CuritText></View><CuritText style={s.chatProject}>{chat.project}</CuritText><CuritText style={s.muted} numberOfLines={1}>{chat.message}</CuritText></View></Pressable>)}</View>;
 }
 
-export function ManagementScreen({ role, demo, onOpenQr, onOpenPickup, onOpenProject, onOpenSettlements, onOpenCollaboration }: { role: Role; demo?: boolean; onOpenQr: () => void; onOpenPickup: () => void; onOpenProject: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
+export function ManagementScreen({ role, demo, onOpenQr, onOpenPickup, onOpenSettlements, onOpenCollaboration }: { role: Role; demo?: boolean; onOpenQr: () => void; onOpenPickup: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
   return role === 'creator'
-    ? <CreatorManagement demo={demo} onOpenProject={onOpenProject} onOpenSettlements={onOpenSettlements} onOpenCollaboration={onOpenCollaboration} />
+    ? <CreatorManagement demo={demo} onOpenSettlements={onOpenSettlements} onOpenCollaboration={onOpenCollaboration} />
     : <StoreManagement demo={demo} onOpenQr={onOpenQr} onOpenPickup={onOpenPickup} onOpenSettlements={onOpenSettlements} onOpenCollaboration={onOpenCollaboration} />;
 }
 
-function CreatorManagement({ demo, onOpenProject, onOpenSettlements, onOpenCollaboration }: { demo?: boolean; onOpenProject: () => void; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
+function CreatorManagement({ demo, onOpenSettlements, onOpenCollaboration }: { demo?: boolean; onOpenSettlements: () => void; onOpenCollaboration: (item: CollaborationSummary) => void }) {
   const summary = useCommerceSummary('creator', demo);
   const collaborations = useCollaborationList('creator', demo);
   const active = collaborations.items.filter(item => !['completed', 'cancelled'].includes(item.status));
@@ -302,7 +302,7 @@ function CreatorManagement({ demo, onOpenProject, onOpenSettlements, onOpenColla
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
   return <View style={s.flex}><Header title="협업 관리" /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 대기" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="출고 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
-    <View style={s.quickGrid}><QuickAction icon="qr" label="내 프로젝트" description="작품·재고·조건 관리" onPress={onOpenProject} /><QuickAction icon="management" label="판매·정산" description={summary.loading ? '정산 내역 확인' : `예상 ${money(summary.expectedSettlement)}`} onPress={onOpenSettlements} /></View>
+    <View style={s.quickGrid}><QuickAction icon="management" label="판매·정산" description={summary.loading ? '정산 내역 확인' : `예상 ${money(summary.expectedSettlement)}`} onPress={onOpenSettlements} /></View>
     <SectionTitle title="협업 제안 및 전시" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="creator" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 협업이 없습니다" description="AI 큐레이터의 추천에서 매장에 협업을 제안해 보세요." />}
   </ScrollView></View>;
 }

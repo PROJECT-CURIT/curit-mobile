@@ -1,6 +1,7 @@
 import { readImageUpload } from './mediaUpload';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
@@ -179,11 +180,12 @@ export function StorePreferencesScreen({ userId, onBack, demo = false }: { userI
 export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = false }: { item: QrProduct; onBack: () => void; onSaved: (item: QrProduct) => void; demo?: boolean }) {
   const [item, setItem] = useState(initial);
   const [stock, setStock] = useState(String(initial.stock));
-  const [preview, setPreview] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const [saleNotice, setSaleNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   const saveLock = useRef(false);
   if (item.source === 'field-sale') return <FieldSaleProductScreen item={item} onBack={onBack} />;
   const stockValue = Number(stock);
@@ -195,7 +197,8 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
     if (saveLock.current || !item.id || (saleStatus === undefined && !valuesValid)) return;
     if (saleStatus === 'active' && (!ready || stockChanged || !valuesValid || item.canStartSale === false)) return;
     saveLock.current = true;
-    setSaving(true); setNotice('');
+    const setFeedback = saleStatus === undefined ? setNotice : setSaleNotice;
+    setSaving(true); setFeedback('');
     try {
       const changes = saleStatus === undefined
         ? { stock: stockValue, expectedStock: item.stock }
@@ -208,22 +211,15 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
         status: saleStatus === 'preparing' ? 'PAUSED' as const : saleStatus === 'active' ? item.stock > 0 ? 'ACTIVE' as const : 'SOLD_OUT' as const : item.status,
       } : await updateQrListing(item.id, changes);
       setItem(saved); setStock(String(saved.stock)); setReady(false); onSaved(saved);
-      setNotice(saleStatus === 'preparing' ? 'QR 판매를 중단했습니다.' : saleStatus === 'active' ? 'QR 판매를 시작했습니다.' : '구매 가능 수량을 저장했습니다.');
-    }
-    catch (error) { if (saleStatus === 'active') setReady(false); setNotice(friendlyError(error)); }
-    finally { saveLock.current = false; setSaving(false); }
-  };
-  const share = async (message: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(message);
-        setNotice('클립보드에 복사했습니다.');
-      } else {
-        await Share.share({ message });
+      if (saleStatus === 'preparing') setConfirmStop(false);
+      setFeedback(saleStatus === 'preparing' ? 'QR 판매를 중단했습니다.' : saleStatus === 'active' ? 'QR 판매를 시작했습니다.' : '구매 가능 수량을 저장했습니다.');
+      if (saleStatus === undefined && Platform.OS !== 'web') {
+        Keyboard.dismiss();
+        Alert.alert('구매 가능 수량을 저장했어요', `QR 구매 화면에 ${saved.stock.toLocaleString('ko-KR')}개가 표시됩니다.`);
       }
-    } catch {
-      setNotice('공유하지 못했어요. 잠시 후 다시 시도해 주세요.');
     }
+    catch (error) { if (saleStatus === 'active') setReady(false); setFeedback(friendlyError(error)); }
+    finally { saveLock.current = false; setSaving(false); }
   };
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="QR 상품 정보 확인" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} /> : null}<CuritText style={f.hint}>{item.artistName || '등록 작가'}</CuritText>
@@ -239,9 +235,18 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
     <View style={f.infoBanner}><CuritText weight="semibold">수령 방식</CuritText><CuritText style={f.hint}>{item.pickupMode === 'exhibition' ? '전시 종료 후 현장 수령' : '주문 후 현장 수령'}</CuritText></View>
     {notice ? <Notice text={notice} /> : null}
     <Button label={saving ? '저장 중…' : '수량 저장'} disabled={saving || !valuesValid || !stockChanged} onPress={() => { void save(); }} />
-    <View style={f.two}><View style={f.flex}><Button label="QR 미리보기" variant="secondary" onPress={() => setPreview(value => !value)} /></View><View style={f.flex}><Button label="데이터 내보내기" variant="secondary" onPress={() => { void share(JSON.stringify({ token: item.token, name: item.name, price: item.price, stock: item.stock, qrUrl: item.qrUrl }, null, 2)); }} /></View></View>
-    {preview ? <View style={f.preview}><QRCode value={item.qrUrl || item.token || item.productId} size={140} color={colors.ink} backgroundColor={colors.surface} /><CuritText weight="bold">{item.name}</CuritText><CuritText>{item.price.toLocaleString('ko-KR')}원 · 재고 {item.stock}개</CuritText><CuritText style={f.hint} numberOfLines={2}>{item.qrUrl}</CuritText></View> : null}
-    {selling ? <Button label="QR 판매 중단" variant="secondary" disabled={saving} onPress={() => { void save('preparing'); }} /> : item.canStartSale !== false ? <View style={f.infoBanner}>
+    <QrLinkCard item={item} allowExport />
+    {saleNotice ? <Notice text={saleNotice} /> : null}
+    {selling ? <View style={f.qrDanger}>
+      {confirmStop ? <>
+        <CuritText weight="semibold">새 주문 접수를 중단할까요?</CuritText>
+        <CuritText style={f.description}>이미 접수된 주문은 수령 관리에서 계속 확인할 수 있어요.</CuritText>
+        <Button label="계속 판매하기" variant="secondary" disabled={saving} onPress={() => setConfirmStop(false)} />
+      </> : null}
+      <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving }} disabled={saving} style={f.qrStopAction} onPress={() => { if (confirmStop) void save('preparing'); else setConfirmStop(true); }}>
+        <CuritText weight="semibold" style={f.danger}>{confirmStop ? '판매 중단 확인' : 'QR 판매 중단'}</CuritText>
+      </Pressable>
+    </View> : item.canStartSale !== false ? <View style={f.infoBanner}>
       <CuritText weight="semibold">판매 전 확인</CuritText>
       <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: ready, disabled: saving }} disabled={saving} onPress={() => setReady(value => !value)} style={f.readinessCheck}>
         <View style={[f.readinessBox, ready && f.readinessBoxChecked]}>{ready ? <CuritText style={f.readinessTick}>✓</CuritText> : null}</View>
@@ -250,29 +255,55 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
       {stockChanged ? <CuritText style={f.hint}>변경한 수량을 먼저 저장해 주세요.</CuritText> : null}
       <Button label="QR 판매 시작" disabled={saving || !ready || stockChanged || !valuesValid} onPress={() => { void save('active'); }} />
     </View> : <CuritText style={f.hint}>진행 중인 전시에서만 QR 판매를 시작할 수 있어요.</CuritText>}
-    <Button label="구매 화면 열기 ↗" variant="secondary" disabled={!item.qrUrl} onPress={() => { if (item.qrUrl) void Linking.openURL(item.qrUrl).catch(() => setNotice('상품 페이지를 열지 못했어요. QR 링크를 다시 확인해 주세요.')); }} />
-    <Button label={Platform.OS === 'web' ? 'QR 주소 복사' : 'QR 링크 공유'} variant="secondary" disabled={!item.qrUrl} onPress={() => { void share(item.qrUrl || ''); }} />
   </ScrollView></KeyboardAvoidingView>;
 }
 
-function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () => void }) {
+function QrLinkCard({ item, initiallyExpanded = false, allowExport = false }: { item: QrProduct; initiallyExpanded?: boolean; allowExport?: boolean }) {
   const url = item.qrUrl || '';
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const [notice, setNotice] = useState('');
+  const copy = async (value: string, success: string) => {
+    try {
+      if (!(await Clipboard.setStringAsync(value))) throw new Error('Clipboard unavailable');
+      setNotice(success);
+    } catch { setNotice('복사하지 못했어요. 잠시 후 다시 시도해 주세요.'); }
+  };
   const open = async () => {
     if (!url) return;
-    try { await Linking.openURL(url); } catch { setNotice('상품 페이지를 열지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
+    try { await Linking.openURL(url); } catch { setNotice('상품 페이지를 열지 못했어요. QR 주소를 다시 확인해 주세요.'); }
   };
-  const shareLink = async () => {
-    if (!url) return;
+  const share = async (message: string) => {
+    if (Platform.OS === 'web') {
+      await copy(message, '클립보드에 복사했습니다.');
+      return;
+    }
     try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(url);
-        setNotice('QR 주소를 복사했습니다.');
-      } else {
-        await Share.share({ message: `${item.name} 상품 페이지\n${url}` });
-      }
-    } catch { setNotice('QR 주소를 공유하지 못했습니다.'); }
+      await Share.share({ message });
+    } catch { setNotice('공유하지 못했어요. 잠시 후 다시 시도해 주세요.'); }
   };
+  return <View style={f.qrLinks}>
+    <CuritText weight="semibold">QR 코드와 구매 링크</CuritText>
+    <View style={f.two}>
+      <View style={f.flex}><Button label="QR 주소 복사" variant="secondary" disabled={!url} onPress={() => { void copy(url, 'QR 주소를 복사했어요.'); }} /></View>
+      <View style={f.flex}><Button label="구매 화면 열기" variant="secondary" disabled={!url} onPress={() => { void open(); }} /></View>
+    </View>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} style={f.qrDetailsAction} onPress={() => setExpanded(value => !value)}>
+      <CuritText weight="semibold">QR 미리보기</CuritText><CuritText>{expanded ? '−' : '＋'}</CuritText>
+    </Pressable>
+    {expanded ? <>
+      <View style={f.preview}>
+        {url ? <QRCode value={url} size={140} color={colors.ink} backgroundColor={colors.surface} /> : null}
+        <CuritText weight="bold">{item.name}</CuritText>
+        {url ? <CuritText selectable style={f.hint}>{url}</CuritText> : <CuritText style={f.hint}>연결된 구매 주소가 없어요.</CuritText>}
+      </View>
+      {Platform.OS !== 'web' && url ? <Button label="QR 링크 공유" variant="ghost" onPress={() => { void share(url); }} /> : null}
+      {allowExport ? <Button label="데이터 내보내기" variant="ghost" onPress={() => { void share(JSON.stringify({ token: item.token, name: item.name, price: item.price, stock: item.stock, qrUrl: url }, null, 2)); }} /> : null}
+    </> : null}
+    {notice ? <View accessibilityLiveRegion="polite"><Notice text={notice} /></View> : null}
+  </View>;
+}
+
+function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () => void }) {
   return <View style={f.flex}>
     <Header title="QR 상품 정보" back={onBack} />
     <ScrollView contentContainerStyle={f.scroll}>
@@ -282,15 +313,7 @@ function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () 
       <CuritText style={f.hint}>현장 판매 상품 · {item.status === 'SOLD_OUT' ? '품절' : item.status === 'ACTIVE' ? '구매 가능' : '구매 안내 준비 중'}</CuritText>
       <CuritText weight="bold" style={{ fontSize: 20, marginTop: 10 }}>{item.price.toLocaleString('ko-KR')}원</CuritText>
       <CuritText style={f.description}>{item.inventoryTracked === false ? '수량은 매장 재고를 확인해 주세요.' : `등록 수량 ${item.stock}개`}</CuritText>
-      <View style={f.preview}>
-        {url ? <QRCode value={url} size={180} color={colors.ink} backgroundColor={colors.surface} /> : null}
-        <CuritText weight="semibold" style={{ marginTop: 14 }}>상품 전용 QR</CuritText>
-        <CuritText style={f.hint} numberOfLines={2}>{url}</CuritText>
-      </View>
-      <CuritText style={f.description}>QR을 열면 현재 상품의 소개와 매장 수령·결제 안내 페이지로 이동합니다.</CuritText>
-      <Button label="상품 페이지 열기" onPress={() => { void open(); }} />
-      <Button label="QR 주소 공유" variant="secondary" onPress={() => { void shareLink(); }} />
-      {notice ? <Notice text={notice} /> : null}
+      <QrLinkCard item={item} initiallyExpanded />
     </ScrollView>
   </View>;
 }
@@ -676,6 +699,9 @@ const f = StyleSheet.create({
   headerTextAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   qrDetails: { gap: 6 },
   qrDetailsAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  qrLinks: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 },
+  qrDanger: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12, gap: 8 },
+  qrStopAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   readinessCheck: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
   readinessBox: { width: 20, height: 20, borderWidth: 1, borderColor: colors.brand, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
   readinessBoxChecked: { backgroundColor: colors.brand },
