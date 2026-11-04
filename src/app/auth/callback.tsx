@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button, CuritText, Field, ScreenFrame } from '../../ui';
@@ -21,7 +21,7 @@ export default function AuthCallbackScreen() {
     }
     return query.size ? `${AUTH_REDIRECT_URL}?${query.toString()}` : null;
   })();
-  const handledUrl = useRef<string | null>(null);
+  const pendingRedirect = useRef<{ key: string; result: Promise<boolean> } | null>(null);
   const [state, setState] = useState<CallbackState>('loading');
   const [message, setMessage] = useState('인증 정보를 확인하고 있습니다.');
   const [password, setPassword] = useState('');
@@ -34,11 +34,18 @@ export default function AuthCallbackScreen() {
     void (async () => {
       try {
         const url = routedUrl ?? incomingUrl ?? await Linking.getInitialURL();
-        if (url && handledUrl.current === url) return;
-        if (url) handledUrl.current = url;
-        if (!url || !(await applyAuthRedirect(url))) throw new Error('인증 정보가 없거나 만료되었습니다. 새 인증 메일을 받아 다시 시도해 주세요.');
         if (!active) return;
-        if (parseAuthRedirect(url).type === 'recovery') {
+        if (!url) throw new Error('인증 정보가 없거나 만료되었습니다. 새 인증 메일을 받아 다시 시도해 주세요.');
+        const payload = parseAuthRedirect(url);
+        const key = payload.code ?? payload.accessToken ?? url;
+        // Expo can report one callback through both route params and Linking.
+        // Share the exchange so a later effect can still consume its result.
+        if (pendingRedirect.current?.key !== key) {
+          pendingRedirect.current = { key, result: applyAuthRedirect(url) };
+        }
+        if (!(await pendingRedirect.current.result)) throw new Error('인증 정보가 없거나 만료되었습니다. 새 인증 메일을 받아 다시 시도해 주세요.');
+        if (!active) return;
+        if (payload.type === 'recovery') {
           setState('reset');
           setMessage('새 비밀번호를 설정해 주세요.');
           return;
@@ -61,6 +68,7 @@ export default function AuthCallbackScreen() {
     setMessage('');
     try {
       await completePasswordReset(password);
+      Keyboard.dismiss();
       setState('reset-complete');
       setMessage('비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.');
     } catch (caught) {
@@ -70,7 +78,7 @@ export default function AuthCallbackScreen() {
     }
   };
 
-  return <ScreenFrame><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}><View style={{ flex: 1, padding: 28, justifyContent: 'center', gap: 18 }}>
+  return <ScreenFrame><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, padding: 28, justifyContent: 'center', gap: 18 }}>
     {state === 'loading' ? <ActivityIndicator color={colors.brand} size="large" /> : null}
     <CuritText weight="bold" style={{ fontSize: 24 }}>{state === 'success' ? '인증 완료' : state === 'reset' ? '새 비밀번호 설정' : state === 'reset-complete' ? '변경 완료' : state === 'error' ? '인증 확인 필요' : '이메일 인증 중'}</CuritText>
     <CuritText style={{ color: state === 'error' ? colors.danger : colors.muted }}>{message}</CuritText>
@@ -81,5 +89,5 @@ export default function AuthCallbackScreen() {
       <Button label={saving ? '변경 중…' : '비밀번호 변경'} disabled={saving || password.length < 8 || password !== passwordConfirm} onPress={() => { void savePassword(); }} />
     </View> : null}
     {state !== 'loading' && state !== 'reset' ? <Button label={state === 'success' ? 'CURI:T 시작하기' : '로그인으로 돌아가기'} onPress={() => router.replace('/')} /> : null}
-  </View></KeyboardAvoidingView></ScreenFrame>;
+  </ScrollView></KeyboardAvoidingView></ScreenFrame>;
 }
