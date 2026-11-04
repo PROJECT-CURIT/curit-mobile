@@ -501,7 +501,10 @@ export function friendlyError(error: unknown) {
   if (/User already registered/i.test(raw)) return '이미 가입된 이메일입니다.';
   if (/Password should be/i.test(raw)) return '비밀번호는 8자 이상으로 입력해 주세요.';
   if (raw === 'INVALID_COLLABORATION_QUANTITY') return '보유 수량 내에서 1개 이상으로 설정해 주세요.';
-  if (raw === 'COLLABORATION_QUANTITY_CHANGED') return '매장이 제안 수량을 바꿨어요. 대화를 다시 열어 수량을 확인해 주세요.';
+  if (raw === 'COLLABORATION_QUANTITY_CHANGED') return '제안한 작품이나 수량이 바뀌었어요. 최신 조건을 불러온 뒤 다시 확인해 주세요.';
+  if (raw === 'COLLABORATION_SUPPLY_UNCONFIRMED') return '크리에이터가 선택한 작품의 수량을 모두 확인한 뒤 전시를 확정해 주세요.';
+  if (raw === 'COLLABORATION_SUPPLY_OUT_OF_STOCK') return '작품 재고가 줄었어요. 최신 조건을 불러온 뒤 전시 수량을 조정해 주세요.';
+  if (raw === 'INVALID_COLLABORATION_TRANSITION') return '협업 상태가 바뀌었어요. 최신 조건을 불러와 확인해 주세요.';
   if (raw === 'COLLABORATION_CONFIRM_CREATOR_ONLY') return '작품 수량 확인은 크리에이터만 할 수 있어요.';
   if (raw === 'COLLABORATION_QUANTITY_LOCKED') return 'QR이 발급된 상품의 합의 수량은 변경할 수 없어요.';
   if (raw === 'COLLABORATION_CLOSED') return '종료된 협업의 조건은 변경할 수 없어요.';

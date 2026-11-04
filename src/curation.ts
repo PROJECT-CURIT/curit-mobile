@@ -416,24 +416,26 @@ export async function loadCollaborations(role: Role): Promise<CollaborationSumma
 export async function transitionCollaboration(collaborationId: string, action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete', message = '') {
   const result = await getSupabase().rpc('transition_curit_collaboration', { p_collaboration_id: collaborationId, p_action: action, p_message: message.trim() });
   if (result.error) throw new Error(result.error.message);
-  await dispatchCollaborationPush(collaborationId).catch(() => undefined);
+  void dispatchCollaborationPush(collaborationId).catch(() => undefined);
+  return result.data.status as CollaborationStatus;
 }
 
-export async function loadCollaborationItems(collaboration: CollaborationSummary): Promise<CollaborationItem[]> {
+export async function loadCollaborationItems(collaboration: Pick<CollaborationSummary, 'id' | 'projectId'>): Promise<CollaborationItem[]> {
   const supabase = getSupabase();
   const [itemsResult, selectedResult] = await Promise.all([
-    supabase.from('project_items').select('id, name, image_path, price, stock').eq('project_id', collaboration.projectId).gt('stock', 0).order('created_at'),
+    supabase.from('project_items').select('id, name, image_path, price, stock').eq('project_id', collaboration.projectId).order('created_at'),
     supabase.from('collaboration_items').select('project_item_id, quantity, creator_confirmed').eq('collaboration_id', collaboration.id),
   ]);
   if (itemsResult.error || selectedResult.error) throw new Error(itemsResult.error?.message || selectedResult.error?.message || '협업 상품을 불러오지 못했습니다.');
   const selected = new Map((selectedResult.data || []).map(row => [String(row.project_item_id), row]));
-  return (itemsResult.data || []).map(row => ({
+  return (itemsResult.data || []).filter(row => Number(row.stock) > 0 || selected.has(String(row.id))).map(row => ({
     projectItemId: String(row.id),
     name: String(row.name),
     imageUrl: row.image_path ? mediaUrl(String(row.image_path)) : '',
     price: Number(row.price),
     stock: Number(row.stock),
     quantity: Number(selected.get(String(row.id))?.quantity || 1),
+    selected: selected.has(String(row.id)),
     creatorConfirmed: selected.get(String(row.id))?.creator_confirmed === true,
   }));
 }
@@ -442,7 +444,7 @@ export async function saveCollaborationTerms(collaborationId: string, terms: Rec
   const result = await getSupabase().rpc('save_curit_collaboration_terms', {
     p_collaboration_id: collaborationId,
     p_terms: terms,
-    p_items: items.map(item => ({ projectItemId: item.projectItemId, quantity: item.quantity, creatorConfirmed: item.creatorConfirmed })),
+    p_items: items.map(item => ({ projectItemId: item.projectItemId, quantity: item.quantity, selected: item.selected, creatorConfirmed: item.creatorConfirmed })),
   });
   if (result.error) throw new Error(result.error.message);
 }

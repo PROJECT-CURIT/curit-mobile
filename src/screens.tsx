@@ -475,7 +475,7 @@ export function AccountSettingsScreen({ userId, email, role, demo, onBack, onRes
   </ScrollView></View>;
 }
 
-export function QrProductsScreen({ demo, onBack, onSelect }: { demo?: boolean; onBack: () => void; onSelect: (item: QrProduct) => void }) {
+export function QrProductsScreen({ demo, collaborationId, onBack, onSelect }: { demo?: boolean; collaborationId?: string; onBack: () => void; onSelect: (item: QrProduct) => void }) {
   const [items, setItems] = useState<QrProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [issuing, setIssuing] = useState('');
@@ -515,21 +515,22 @@ export function QrProductsScreen({ demo, onBack, onSelect }: { demo?: boolean; o
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [demo]);
+  const scopedItems = useMemo(() => collaborationId ? items.filter(item => item.collaborationId === collaborationId) : items, [collaborationId, items]);
   const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
-  const visibleItems = useMemo(() => items.filter(item => `${item.name} ${item.artistName || ''} ${item.token || ''}`.toLocaleLowerCase('ko-KR').includes(normalizedQuery)), [items, normalizedQuery]);
+  const visibleItems = useMemo(() => scopedItems.filter(item => `${item.name} ${item.artistName || ''} ${item.token || ''}`.toLocaleLowerCase('ko-KR').includes(normalizedQuery)), [scopedItems, normalizedQuery]);
   return <View style={s.flex}>
-    <Header title="QR 상품 관리" subtitle="등록 상품과 협업 QR을 함께 확인해요" back={onBack} />
+    <Header title="QR 상품 관리" subtitle={collaborationId ? "이 전시에 연결된 작품만 표시해요" : "등록 상품과 협업 QR을 함께 확인해요"} back={onBack} />
     <ScrollView contentContainerStyle={s.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}>
       <View style={s.storeInfo}>
         <View style={s.quickIcon}><Icon name="store" color={colors.brand} /></View>
-        <View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>QR이 연결된 상품 {items.length}종</CuritText></View>
-        <Chip label={`${items.length}종`} />
+        <View style={s.flex}><CuritText weight="bold">판매 상품</CuritText><CuritText style={s.muted}>QR이 연결된 상품 {scopedItems.length}종</CuritText></View>
+        <Chip label={`${scopedItems.length}종`} />
       </View>
       <Field placeholder="상품명 또는 QR 토큰 검색" value={query} onChangeText={setQuery} returnKeyType="search" />
-      {loading && items.length === 0 ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}
-      {error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}
-      {!loading && items.length === 0 ? <Empty title="QR로 연결된 상품이 없습니다" description="현장 등록 상품이나 승인된 협업 상품이 이곳에 표시됩니다." /> : null}
-      {!loading && items.length > 0 && visibleItems.length === 0 ? <Empty title="검색 결과가 없습니다" description="상품명, 작가명 또는 QR 토큰을 다시 확인해 주세요." /> : null}
+      {loading && scopedItems.length === 0 ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}
+      {error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText><Button label="다시 시도" variant="secondary" disabled={loading} onPress={() => { void load(); }} /></View> : null}
+      {!loading && !error && scopedItems.length === 0 ? <Empty title="QR로 연결된 상품이 없습니다" description="현장 등록 상품이나 승인된 협업 상품이 이곳에 표시됩니다." /> : null}
+      {!loading && scopedItems.length > 0 && visibleItems.length === 0 ? <Empty title="검색 결과가 없습니다" description="상품명, 작가명 또는 QR 토큰을 다시 확인해 주세요." /> : null}
       {visibleItems.map(item => <Pressable accessibilityRole="button" key={item.id || item.token} disabled={Boolean(issuing)} style={s.qrRow} onPress={() => { void openOrIssue(item); }}>
         {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={s.qrImage} contentFit="cover" /> : <View style={[s.qrImage, s.qrImagePlaceholder]}><Icon name="qr" size={20} color={colors.brand} /></View>}
         <View style={s.flex}>

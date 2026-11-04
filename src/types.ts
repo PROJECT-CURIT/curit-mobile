@@ -106,5 +106,6 @@ export interface CollaborationItem {
   price: number;
   stock: number;
   quantity: number;
+  selected: boolean;
   creatorConfirmed: boolean;
 }
