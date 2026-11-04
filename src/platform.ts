@@ -271,6 +271,7 @@ export type ManagedOrder = {
   quantity: number;
   amount: number;
   paymentMethod: string;
+  paymentStatus: 'paid' | 'cancelled';
   pickupMode: 'immediate' | 'exhibition';
   pickupDate: string;
   fulfillmentStatus: 'awaiting_pickup' | 'reserved' | 'delivered';
@@ -278,9 +279,8 @@ export type ManagedOrder = {
   createdAt: string;
 };
 
-export async function loadManagedOrders(): Promise<ManagedOrder[]> {
-  const result = await managementRequest('/api/management/orders');
-  return (Array.isArray(result?.orders) ? result.orders : []).map((row: Record<string, unknown>) => ({
+function mapManagedOrder(row: Record<string, unknown>): ManagedOrder {
+  return {
     id: String(row.id),
     listingId: String(row.listingId),
     productName: String(row.productName || '등록 상품'),
@@ -290,12 +290,23 @@ export async function loadManagedOrders(): Promise<ManagedOrder[]> {
     quantity: Number(row.quantity || 0),
     amount: Number(row.amount || 0),
     paymentMethod: String(row.paymentMethod || ''),
+    paymentStatus: row.paymentStatus === 'cancelled' ? 'cancelled' : 'paid',
     pickupMode: row.pickupMode === 'exhibition' ? 'exhibition' : 'immediate',
     pickupDate: String(row.pickupDate || ''),
     fulfillmentStatus: ['reserved', 'delivered'].includes(String(row.fulfillmentStatus)) ? row.fulfillmentStatus as ManagedOrder['fulfillmentStatus'] : 'awaiting_pickup',
     deliveredAt: row.deliveredAt ? String(row.deliveredAt) : null,
     createdAt: String(row.createdAt || ''),
-  }));
+  };
+}
+
+export async function loadManagedOrders(): Promise<ManagedOrder[]> {
+  const result = await managementRequest('/api/management/orders');
+  return (Array.isArray(result?.orders) ? result.orders : []).map(mapManagedOrder);
+}
+
+export async function loadManagedOrder(id: string): Promise<ManagedOrder> {
+  const result = await managementRequest(`/api/management/orders/${encodeURIComponent(id)}`);
+  return mapManagedOrder(result);
 }
 
 export async function updateManagedOrder(id: string, fulfillmentStatus: ManagedOrder['fulfillmentStatus']) {

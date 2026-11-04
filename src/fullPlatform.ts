@@ -252,12 +252,12 @@ export async function loadPostComments(postId: string): Promise<SocialComment[]>
   });
 }
 
-export type AppNotification = { id: string; title: string; body: string; kind: string; entityId: string; read: boolean; createdAt: string };
+export type AppNotification = { id: string; title: string; body: string; kind: string; entityId: string; orderId?: string; read: boolean; createdAt: string };
 
 export async function loadNotifications(): Promise<AppNotification[]> {
-  const { data, error } = await getSupabase().from('notifications').select('id, title, body, kind, entity_id, read_at, created_at').order('created_at', { ascending: false }).limit(50);
+  const { data, error } = await getSupabase().from('notifications').select('id, title, body, kind, entity_id, dedupe_key, read_at, created_at').order('created_at', { ascending: false }).limit(50);
   if (error) throw new Error(error.message);
-  return (data || []).map(row => ({ id: String(row.id), title: String(row.title), body: String(row.body || ''), kind: String(row.kind), entityId: String(row.entity_id || ''), read: Boolean(row.read_at), createdAt: String(row.created_at) }));
+  return (data || []).map(row => ({ id: String(row.id), title: String(row.title), body: String(row.body || ''), kind: String(row.kind), entityId: String(row.entity_id || ''), orderId: row.kind === 'order' && typeof row.dedupe_key === 'string' ? row.dedupe_key.match(/^order-paid:(QR-[0-9a-f-]{36})$/i)?.[1] : undefined, read: Boolean(row.read_at), createdAt: String(row.created_at) }));
 }
 
 export async function markNotificationRead(id: string) {

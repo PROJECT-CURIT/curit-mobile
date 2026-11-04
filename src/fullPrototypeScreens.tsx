@@ -1,5 +1,5 @@
 import { readImageUpload } from './mediaUpload';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -30,6 +30,7 @@ import {
 import {
   friendlyError,
   cancelManagedOrder,
+  loadManagedOrder,
   loadManagedOrders,
   loadStoreOnboarding,
   mediaUrl,
@@ -277,46 +278,112 @@ function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () 
   </View>;
 }
 
-export function PickupScreen({ demo, onBack }: { demo?: boolean; onBack: () => void }) {
-  const [orders, setOrders] = useState<ManagedOrder[]>(demo ? [{ id: 'QR-DEMO-CT1001', listingId: 'demo', productName: '머그컵 (화이트·그레이)', imageUrl: '', customerName: '김민서', customerPhoneLast4: '1234', quantity: 1, amount: 35000, paymentMethod: '카드', pickupMode: 'immediate', pickupDate: '', fulfillmentStatus: 'awaiting_pickup', deliveredAt: null, createdAt: new Date().toISOString() }] : []);
+const pickupTabs = [
+  ['awaiting_pickup', '수령 대기'],
+  ['reserved', '예약 작품'],
+  ['delivered', '전달 완료'],
+] as const;
+
+export function PickupScreen({ demo, orderId, onBack, onOpenList, onOpenQr }: {
+  demo?: boolean;
+  orderId?: string;
+  onBack: () => void;
+  onOpenList: () => void;
+  onOpenQr?: () => void;
+}) {
+  const [orders, setOrders] = useState<ManagedOrder[]>(demo ? [{ id: 'QR-DEMO-CT1001', listingId: 'demo', productName: '머그컵 (화이트·그레이)', imageUrl: '', customerName: '김민서', customerPhoneLast4: '1234', quantity: 1, amount: 35000, paymentMethod: '카드', paymentStatus: 'paid', pickupMode: 'immediate', pickupDate: '', fulfillmentStatus: 'awaiting_pickup', deliveredAt: null, createdAt: new Date().toISOString() }] : []);
   const [status, setStatus] = useState<ManagedOrder['fulfillmentStatus']>('awaiting_pickup');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(!demo);
+  const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
-  const [cancellingId, setCancellingId] = useState('');
-  const load = async () => { if (demo) return; setLoading(true); try { setOrders(await loadManagedOrders()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [processingId, setProcessingId] = useState('');
+  const mutation = useRef(false);
+  const fetchOrders = useCallback(async () => orderId ? [await loadManagedOrder(orderId)] : loadManagedOrders(), [orderId]);
   useEffect(() => {
     if (demo) return;
     let active = true;
-    void loadManagedOrders().then(value => { if (active) setOrders(value); }).catch(error => { if (active) setNotice(friendlyError(error)); }).finally(() => { if (active) setLoading(false); });
+    void fetchOrders().then(value => { if (active) setOrders(value); })
+      .catch(error => { if (active) setLoadError(friendlyError(error)); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [demo]);
-  const visible = orders.filter(order => order.fulfillmentStatus === status && `${order.id} ${order.productName} ${order.customerName}`.toLowerCase().includes(query.toLowerCase()));
-  const change = async (order: ManagedOrder, next: ManagedOrder['fulfillmentStatus']) => { if (demo) { setOrders(current => current.map(item => item.id === order.id ? { ...item, fulfillmentStatus: next } : item)); return; } try { await updateManagedOrder(order.id, next); await load(); } catch (error) { setNotice(friendlyError(error)); } };
-  const executeCancel = (order: ManagedOrder) => {
-    setCancellingId(order.id); setNotice('');
-    void cancelManagedOrder(order.id)
-      .then(async result => { setNotice(result?.status === 'cancellation_pending' ? '취소 승인 결과를 기다리고 있습니다.' : '결제 취소와 재고 복구가 완료됐습니다.'); await load(); })
-      .catch(error => setNotice(friendlyError(error)))
-      .finally(() => setCancellingId(''));
+  }, [demo, fetchOrders]);
+  const load = async () => {
+    if (demo) return;
+    setLoading(true); setLoadError('');
+    try { setOrders(await fetchOrders()); }
+    catch (error) { setLoadError(friendlyError(error)); }
+    finally { setLoading(false); }
   };
+  const search = query.trim().toLocaleLowerCase('ko-KR');
+  const visible = orderId ? orders.filter(order => order.id === orderId) : orders.filter(order =>
+    order.fulfillmentStatus === status && `${order.id} ${order.productName} ${order.customerName}`.toLocaleLowerCase('ko-KR').includes(search));
+  const runAction = async (id: string, action: () => Promise<void>) => {
+    if (mutation.current) return;
+    mutation.current = true;
+    setProcessingId(id); setNotice('');
+    try { await action(); }
+    catch (error) { setNotice(friendlyError(error)); }
+    finally { mutation.current = false; setProcessingId(''); }
+  };
+  const change = (order: ManagedOrder, next: ManagedOrder['fulfillmentStatus']) =>
+    runAction(order.id, async () => {
+      if (demo) setOrders(current => current.map(item => item.id === order.id ? { ...item, fulfillmentStatus: next } : item));
+      else { await updateManagedOrder(order.id, next); await load(); }
+      setNotice(next === 'delivered' ? '상품 전달을 확인했어요.' : '수령 가능한 주문으로 변경했어요.');
+    });
+  const executeCancel = (order: ManagedOrder) => runAction(order.id, async () => {
+    const result = await cancelManagedOrder(order.id);
+    await load();
+    setNotice(result?.status === 'cancellation_pending' ? '취소 승인 결과를 기다리고 있습니다.' : '결제 취소와 재고 복구가 완료됐습니다.');
+  });
   const cancel = (order: ManagedOrder) => {
+    if (mutation.current) return;
     if (Platform.OS === 'web') {
-      if (globalThis.confirm?.(`${order.amount.toLocaleString()}원 결제를 전액 취소할까요?`)) executeCancel(order);
+      if (globalThis.confirm?.(`${order.amount.toLocaleString('ko-KR')}원 결제를 전액 취소할까요?`)) void executeCancel(order);
       return;
     }
-    Alert.alert('결제를 전액 취소할까요?', `${order.amount.toLocaleString()}원이 토스를 통해 환불되고 재고와 정산 예정액이 되돌아갑니다.`, [
+    Alert.alert('결제를 전액 취소할까요?', `${order.amount.toLocaleString('ko-KR')}원 주문의 결제가 취소되고 재고와 정산 예정액이 되돌아갑니다.`, [
       { text: '아니요', style: 'cancel' },
-      { text: '전액 취소', style: 'destructive', onPress: () => executeCancel(order) },
+      { text: '전액 취소', style: 'destructive', onPress: () => { void executeCancel(order); } },
     ]);
   };
-  const count = (value: ManagedOrder['fulfillmentStatus']) => orders.filter(order => order.fulfillmentStatus === value).length;
-  return <View style={f.flex}><Header title="주문 · 현장 수령" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
-    <Button label="결제 완료 주문 확인" variant="secondary" onPress={() => { void load(); }} /><Field placeholder="주문번호 또는 상품명 검색" value={query} onChangeText={setQuery} />
-    <View style={f.tabs}>{([['awaiting_pickup', '수령 대기'], ['reserved', '예약 작품'], ['delivered', '전달 완료']] as const).map(([value, label]) => <Pressable key={value} style={[f.tab, status === value && f.tabActive]} onPress={() => setStatus(value)}><CuritText weight={status === value ? 'semibold' : 'regular'} style={status === value ? f.brand : f.muted}>{label} {count(value)}</CuritText></Pressable>)}</View>
-    {loading ? <ActivityIndicator color={colors.brand} /> : visible.length ? visible.map(order => <View key={order.id} style={f.orderCard}><View style={f.row}><View style={f.flex}><CuritText style={f.hint}>주문 {order.id.length > 14 ? `…${order.id.slice(-12)}` : order.id}</CuritText><CuritText weight="bold">{order.productName}</CuritText><CuritText style={f.description}>{order.quantity}개 · {order.amount.toLocaleString()}원</CuritText><CuritText style={f.hint}>{order.paymentMethod} · {order.customerName} · 전화번호 뒤 4자리 {order.customerPhoneLast4}</CuritText></View><Chip label={status === 'delivered' ? '전달 완료' : '결제 완료'} active={status !== 'delivered'} /></View>{status === 'awaiting_pickup' ? <Button label="상품 전달 확인" onPress={() => { void change(order, 'delivered'); }} /> : status === 'reserved' ? <Button label="수령 가능으로 전환" onPress={() => { void change(order, 'awaiting_pickup'); }} /> : null}{status !== 'delivered' ? <Button label={cancellingId === order.id ? '취소 처리 중…' : '결제 전액 취소'} variant="secondary" disabled={Boolean(cancellingId)} onPress={() => cancel(order)} /> : null}</View>) : <Empty title="해당 주문이 없습니다" description="결제가 승인된 주문이 상태별로 표시됩니다." />}
-    <View style={f.accordion}><CuritText weight="semibold">고객에게 어떤 정보를 요청하나요?</CuritText><CuritText style={f.description}>현장에서는 주문번호와 구매자명, 휴대폰 번호 뒤 4자리만 확인합니다. 전체 전화번호는 노출하지 않습니다.</CuritText></View>{notice ? <Notice text={notice} /> : null}
-  </ScrollView></View>;
+  return <View style={f.flex}>
+    <Header title="주문 · 현장 수령" back={onBack} action={onOpenQr ? <Pressable style={f.pickupQrAction} accessibilityRole="button" accessibilityLabel="QR 판매 설정" onPress={onOpenQr}><Icon name="qr" size={21} color={colors.brand} /></Pressable> : undefined} />
+    <ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+      {orderId ? <Button label="전체 주문 보기" variant="secondary" onPress={onOpenList} /> : <>
+        <Button label="결제 완료 주문 확인" variant="secondary" disabled={loading || Boolean(processingId)} onPress={() => { void load(); }} />
+        <Field label="주문 찾기" placeholder="주문번호 또는 상품명 검색" value={query} onChangeText={setQuery} />
+        <View style={f.tabs} accessibilityRole="tablist">{pickupTabs.map(([value, label]) => <Pressable key={value} style={[f.tab, status === value && f.tabActive]} accessibilityRole="tab" accessibilityState={{ selected: status === value }} onPress={() => setStatus(value)}><CuritText weight={status === value ? 'semibold' : 'regular'} style={status === value ? f.brand : f.muted}>{label} {orders.filter(order => order.fulfillmentStatus === value).length}</CuritText></Pressable>)}</View>
+      </>}
+      {notice ? <Notice text={notice} /> : null}
+      {loading ? <ActivityIndicator color={colors.brand} /> : loadError ? <>
+        <Notice text={loadError} /><Button label="다시 불러오기" variant="secondary" onPress={() => { void load(); }} />
+      </> : visible.length ? visible.map(order => {
+        const cancelled = order.paymentStatus === 'cancelled';
+        const delivered = order.fulfillmentStatus === 'delivered';
+        const reserved = order.fulfillmentStatus === 'reserved';
+        const stateLabel = cancelled ? '결제 취소' : delivered ? '전달 완료' : reserved ? '예약 작품' : '결제 완료';
+        return <View key={order.id} style={f.orderCard}>
+          <View style={f.row}><CuritText style={[f.flex, f.hint]} selectable>주문 {orderId || order.id.length <= 14 ? order.id : `…${order.id.slice(-12)}`}</CuritText><Chip label={stateLabel} active={!cancelled && !delivered} /></View>
+          <View style={f.row}>
+            {order.imageUrl ? <Image source={{ uri: order.imageUrl }} style={f.pickupPhoto} contentFit="cover" /> : null}
+            <View style={f.flex}><CuritText weight="bold">{order.productName}</CuritText><CuritText style={f.description}>{order.quantity}개 · {order.amount.toLocaleString('ko-KR')}원</CuritText><CuritText style={f.hint}>{order.paymentMethod} · {order.customerName} · 전화번호 뒤 4자리 {order.customerPhoneLast4}</CuritText></View>
+          </View>
+          <CuritText style={cancelled ? f.muted : f.brand}>{cancelled ? '수령 취소' : order.pickupMode === 'exhibition' ? `전시 종료 후 현장 수령${order.pickupDate ? ` · ${order.pickupDate}` : ''}` : '결제 후 현장 수령'}</CuritText>
+          {!cancelled && !delivered ? <>
+            <Button label={processingId === order.id ? '처리 중…' : reserved ? '수령 가능으로 전환' : '상품 전달 확인'} disabled={Boolean(processingId)} onPress={() => { void change(order, reserved ? 'awaiting_pickup' : 'delivered'); }} />
+            {!demo ? <Button label="결제 전액 취소" variant="secondary" disabled={Boolean(processingId)} onPress={() => cancel(order)} /> : null}
+          </> : null}
+        </View>;
+      }) : <Empty title="해당 주문이 없습니다" description={orderId ? '전체 주문 목록에서 다시 확인해 주세요.' : search ? '주문번호나 검색어를 확인해 주세요.' : '결제가 승인된 주문이 상태별로 표시됩니다.'} />}
+      <View style={f.accordion}>
+        <Pressable style={f.pickupHelpAction} accessibilityRole="button" accessibilityState={{ expanded: helpOpen }} onPress={() => setHelpOpen(value => !value)}><Icon name="chevron" size={14} color={colors.brand} /><CuritText weight="semibold" style={f.flex}>고객에게 어떤 정보를 요청하나요?</CuritText></Pressable>
+        {helpOpen ? <CuritText style={f.description}>현장에서는 주문번호와 구매자명, 휴대폰 번호 뒤 4자리만 확인합니다.</CuritText> : null}
+      </View>
+    </ScrollView>
+  </View>;
 }
 
 export function VerificationScreen({ kind, demo = false, onBack }: { kind: VerificationKind; demo?: boolean; onBack: () => void }) {
@@ -378,7 +445,7 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
   </KeyboardAvoidingView>;
 }
 
-export function NotificationsScreen({ onBack, demo = false }: { onBack: () => void; demo?: boolean }) {
+export function NotificationsScreen({ onBack, onOpenOrder, demo = false }: { onBack: () => void; onOpenOrder?: (id: string) => void; demo?: boolean }) {
   const [items, setItems] = useState<AppNotification[]>(demo ? [
     { id: 'demo-notification-1', title: '유리 정원의 오후 제안이 도착했습니다', body: '권아영 작가가 전시 기간과 작품 구성을 제안했습니다.', kind: 'collaboration', entityId: 'demo-incoming', read: false, createdAt: '2026-11-02T02:20:00.000Z' },
     { id: 'demo-notification-2', title: '종이 위의 산책 판매가 승인되었습니다', body: '현장 수령 주문 1건의 상품 전달을 확인해 주세요.', kind: 'order', entityId: 'demo-order-paper', read: false, createdAt: '2026-11-01T08:40:00.000Z' },
@@ -392,8 +459,16 @@ export function NotificationsScreen({ onBack, demo = false }: { onBack: () => vo
     void loadNotifications().then(value => { if (active) setItems(value); }).catch(error => { if (active) setNotice(friendlyError(error)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [demo]);
-  const open = async (item: AppNotification) => { if (!item.read) { if (!demo) await markNotificationRead(item.id); setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value)); } };
-  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.notificationList}>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
+  const open = async (item: AppNotification) => {
+    try {
+      if (!item.read) {
+        if (!demo) await markNotificationRead(item.id);
+        setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value));
+      }
+      if (item.orderId) onOpenOrder?.(item.orderId);
+    } catch (error) { setNotice(friendlyError(error)); }
+  };
+  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.notificationList}>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} accessibilityRole="button" style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
 }
 
 export function SocialFeedSection({ canPost = false, demo = false, currentUserName = '권아영' }: { canPost?: boolean; demo?: boolean; currentUserName?: string }) {
@@ -528,6 +603,9 @@ const f = StyleSheet.create({
   profileProject: { minHeight: 104, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface }, profileProjectIndex: { width: 58, height: 70, borderRadius: radius.sm, backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center' }, profileProjectIndexText: { color: colors.brand, fontSize: 18 }, profileProjectStatus: { color: colors.brand, fontSize: 11, marginBottom: 4 },
   storeCover: { width: '100%', height: 210, borderRadius: radius.lg }, placeholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, infoCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14 }, infoRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, infoRowMultiline: { alignItems: 'flex-start', flexDirection: 'column', gap: 5, paddingVertical: 12 }, infoValue: { flex: 1, textAlign: 'right' }, infoValueMultiline: { flex: 0, width: '100%', textAlign: 'left', lineHeight: 21 },
   two: { flexDirection: 'row', gap: 10 }, infoBanner: { backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: 16, gap: 5 }, qrProductImage: { width: '100%', height: 180, borderRadius: radius.md }, preview: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 18, alignItems: 'center', gap: 9 },
+  pickupQrAction: { minHeight: 44, width: 44, alignItems: 'center', justifyContent: 'center' },
+  pickupPhoto: { width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.brandPale },
+  pickupHelpAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border }, tab: { flex: 1, paddingVertical: 13, alignItems: 'center' }, tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, orderCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 15 }, row: { flexDirection: 'row', alignItems: 'center', gap: 10 }, accordion: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
   notificationList: { flexGrow: 1, paddingVertical: 8, paddingBottom: 36 }, notification: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, notificationUnread: { backgroundColor: colors.brandPale }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 7 }, dotRead: { backgroundColor: colors.border },
   verificationStatus: { minHeight: 92, flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16 }, evidenceImage: { width: '100%', height: 220, borderRadius: radius.md, backgroundColor: colors.brandPale }, evidencePlaceholder: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.brand, borderRadius: radius.md, backgroundColor: colors.brandPale },
