@@ -74,6 +74,15 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
   </View>;
 }
 
+async function loadDiscoverResults<T>(request: Promise<T>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('연결이 오래 걸리고 있어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.')), 10_000);
+  });
+  try { return await Promise.race([request, deadline]); }
+  finally { clearTimeout(timer); }
+}
+
 export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string) => Promise<void> }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
@@ -94,7 +103,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
 
   useEffect(() => {
     let active = true;
-    void loadMatchRecommendations(role, demo)
+    void loadDiscoverResults(loadMatchRecommendations(role, demo))
       .then(value => { if (active) setItems(value); })
       .catch(caught => { if (active) setMatchError(friendlyError(caught)); })
       .finally(() => { if (active) setLoading(false); });
@@ -103,7 +112,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   useEffect(() => {
     if (demo) return;
     let active = true;
-    void loadCreatorDirectory().then(projects => {
+    void loadDiscoverResults(loadCreatorDirectory()).then(projects => {
       if (active) setDirectory({ projects, error: '' });
     }).catch(caught => {
       if (active) setDirectory({ projects: [], error: friendlyError(caught) });
