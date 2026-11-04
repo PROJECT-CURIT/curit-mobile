@@ -1,28 +1,33 @@
 allowBuilds:
   unrs-resolver: false
 minimumReleaseAgeExclude:
-  - '@expo/cli@58.1.17'
-  - '@expo/config-plugins@58.0.11'
-  - '@expo/config@58.0.9'
+  - '@expo/cli@58.1.17 || 58.1.19'
+  - '@expo/config-plugins@58.0.11 || 58.0.12'
+  - '@expo/config@58.0.9 || 58.0.11'
   - '@expo/image-utils@0.12.6'
-  - '@expo/inline-modules@0.2.8'
-  - '@expo/local-build-cache-provider@58.0.9'
-  - '@expo/metro-config@58.0.19'
-  - '@expo/prebuild-config@58.0.17'
+  - '@expo/inline-modules@0.2.8 || 0.2.9'
+  - '@expo/local-build-cache-provider@58.0.9 || 58.0.11'
+  - '@expo/metro-config@58.0.19 || 58.0.21'
+  - '@expo/prebuild-config@58.0.17 || 58.0.19'
   - '@expo/require-utils@58.0.5'
-  - '@expo/router-server@58.0.19'
-  - babel-preset-expo@58.0.22
-  - expo-asset@58.0.19
-  - expo-constants@58.0.14
+  - '@expo/router-server@58.0.19 || 58.0.21'
+  - babel-preset-expo@58.0.22 || 58.0.24
+  - expo-asset@58.0.19 || 58.0.20
+  - expo-constants@58.0.14 || 58.0.15
   - expo-file-system@58.0.13
   - expo-font@58.0.11
   - expo-image@58.0.18
-  - expo-linking@58.0.15
-  - expo-modules-autolinking@58.0.16
+  - expo-linking@58.0.15 || 58.0.16
+  - expo-modules-autolinking@58.0.16 || 58.0.17
   - expo-modules-cli@0.4.0
-  - expo-modules-core@58.0.28
-  - expo-modules-jsi@58.0.21
-  - expo-router@58.0.28
-  - expo-splash-screen@58.0.12
+  - expo-modules-core@58.0.28 || 58.0.30
+  - expo-modules-jsi@58.0.21 || 58.0.22
+  - expo-router@58.0.28 || 58.0.30
+  - expo-splash-screen@58.0.12 || 58.0.13
   - expo-system-ui@58.0.7
-  - expo@58.0.21
+  - expo@58.0.21 || 58.0.23
+  - '@expo/env@2.5.4'
+  - '@expo/fingerprint@0.21.9'
+  - '@expo/log-box@58.0.15'
+  - '@expo/metro-runtime@58.0.17'
+  - expo-notifications@58.1.8

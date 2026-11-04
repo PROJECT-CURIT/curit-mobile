@@ -76,13 +76,15 @@ export default function AppIndex() {
     void registerNativePush().catch(() => undefined);
   }, [session]);
 
+  const pushRole = session && !session.demo ? session.role : null;
   useEffect(() => {
+    if (!pushRole) return;
     const subscription = addPushResponseListener(data => {
-      if (data.kind === 'order') setSubview('pickup');
+      if (data.kind === 'order' && pushRole === 'store') setSubview('pickup');
       else setSubview('notifications');
     });
     return () => subscription.remove();
-  }, []);
+  }, [pushRole]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {

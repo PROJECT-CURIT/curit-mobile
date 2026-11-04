@@ -2,7 +2,8 @@ import { buildFieldSaleUrl, buildQrWebAssetUrl } from './config';
 import type { QrProduct } from './types';
 
 const catalogUrl = buildQrWebAssetUrl('field-sale/catalog.json');
-const productIds = ['kendama', 'dango-keyring', 'octopus-keyring', 'poetry-postcards'] as const;
+const baseProductIds = ['kendama', 'dango-keyring', 'octopus-keyring', 'poetry-postcards'] as const;
+const productIds = [...baseProductIds, 'jjukkumi-keyring', 'tea-coaster'] as const;
 
 type FieldProductId = typeof productIds[number];
 type FieldCatalogEntry = { name: string; image: string; price: number; quantity: number | null; status: QrProduct['status'] };
@@ -15,6 +16,8 @@ const fallbackCatalog: FieldCatalog = {
     'dango-keyring': { name: '고양이 당고 키링', image: 'dango-keyring.png', price: 5000, quantity: null, status: 'PAUSED' },
     'octopus-keyring': { name: '양면 문어 키링', image: 'octopus-keyring-photo.jpg', price: 2000, quantity: 8, status: 'PAUSED' },
     'poetry-postcards': { name: '나태주 시 엽서', image: 'poetry-postcards-photo.jpg', price: 1000, quantity: 6, status: 'PAUSED' },
+    'jjukkumi-keyring': { name: '쭈꾸미 키링', image: 'jjukkumi-keyring-photo.jpg', price: 2000, quantity: null, status: 'PAUSED' },
+    'tea-coaster': { name: '티코스터', image: 'tea-coaster-photo.jpg', price: 3000, quantity: null, status: 'PAUSED' },
   },
 };
 
@@ -63,11 +66,12 @@ export async function loadFieldSaleProducts(): Promise<{ items: QrProduct[]; war
     const response = await fetch(url.toString(), { cache: 'no-store' });
     if (!response.ok) throw new Error(`상품 카탈로그 요청 실패 (${response.status})`);
     const data = await response.json() as FieldCatalog;
+    if (data?.version !== 2 || !baseProductIds.every(id => data.products?.[id]))
+      throw new Error('상품 카탈로그가 완전하지 않습니다.');
     const items = productIds.flatMap(id => {
       const raw = data?.products?.[id];
       return raw ? [toProduct(id, safeEntry(id, raw))] : [];
     });
-    if (data?.version !== 2 || items.length !== productIds.length) throw new Error('상품 카탈로그가 완전하지 않습니다.');
     return { items, warning: '' };
   } catch {
     const items = productIds.map(id => toProduct(id, safeEntry(id, fallbackCatalog.products[id])));

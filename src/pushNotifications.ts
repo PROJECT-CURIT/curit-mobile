@@ -28,8 +28,8 @@ function projectId() {
 }
 
 export async function registerNativePush(): Promise<PushRegistrationResult> {
-  if (Platform.OS === 'web' || !Device.isDevice) {
-    return { status: 'unsupported', message: '푸시 알림은 설치된 iOS·Android 앱의 실제 기기에서 사용할 수 있습니다.' };
+  if (Platform.OS === 'web' || (Platform.OS === 'ios' && !Device.isDevice)) {
+    return { status: 'unsupported', message: '푸시 알림은 지원되는 iOS·Android 앱에서 사용할 수 있습니다.' };
   }
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('curit-updates', {
@@ -68,7 +68,7 @@ export async function registerNativePush(): Promise<PushRegistrationResult> {
 }
 
 export async function deactivateNativePush() {
-  if (Platform.OS === 'web' || !Device.isDevice) return;
+  if (Platform.OS === 'web' || (Platform.OS === 'ios' && !Device.isDevice)) return;
   const easProjectId = projectId();
   if (!easProjectId) return;
   const supabase = getSupabase();
@@ -89,7 +89,16 @@ export async function deactivateNativePush() {
 
 export function addPushResponseListener(listener: (data: Record<string, unknown>) => void) {
   if (Platform.OS === 'web') return { remove() {} };
-  return Notifications.addNotificationResponseReceivedListener(response => {
+  let handledResponseId: string | null = null;
+  const handleResponse = (response: Notifications.NotificationResponse) => {
+    const id = response.notification.request.identifier;
+    if (id === handledResponseId) return;
+    handledResponseId = id;
+    Notifications.clearLastNotificationResponse();
     listener(response.notification.request.content.data as Record<string, unknown>);
-  });
+  };
+  const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+  const launchResponse = Notifications.getLastNotificationResponse();
+  if (launchResponse) handleResponse(launchResponse);
+  return subscription;
 }

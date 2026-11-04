@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadFieldSaleProducts } from './fieldSaleCatalog';
+import { loadFieldSaleProduct, loadFieldSaleProducts } from './fieldSaleCatalog';
 
 const catalog = {
   version: 2,
@@ -40,7 +40,26 @@ describe('registered field-sale catalog', () => {
   it('uses the known catalog with a visible freshness warning when the published catalog is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     const result = await loadFieldSaleProducts();
-    expect(result.items).toHaveLength(4);
+    expect(result.items).toHaveLength(6);
     expect(result.warning).toMatch(/최신 상품 정보를 불러오지 못해/);
+  });
+
+  it('links the new field products to their own published QR pages', async () => {
+    const latest = {
+      ...catalog,
+      products: {
+        ...catalog.products,
+        'jjukkumi-keyring': { name: '쭈꾸미 키링', image: 'jjukkumi-keyring-photo.jpg', price: 2000, quantity: 1, status: 'ACTIVE' },
+        'tea-coaster': { name: '티코스터', image: 'tea-coaster-photo.jpg', price: 3000, quantity: 2, status: 'ACTIVE' },
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(latest))));
+    expect((await loadFieldSaleProducts()).items).toHaveLength(6);
+    expect(await loadFieldSaleProduct('jjukkumi-keyring')).toMatchObject({
+      name: '쭈꾸미 키링', stock: 1, status: 'ACTIVE', qrUrl: 'http://localhost:5173/?buy=jjukkumi-keyring',
+    });
+    expect(await loadFieldSaleProduct('tea-coaster')).toMatchObject({
+      name: '티코스터', stock: 2, status: 'ACTIVE', qrUrl: 'http://localhost:5173/?buy=tea-coaster',
+    });
   });
 });

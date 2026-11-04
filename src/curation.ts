@@ -1,7 +1,6 @@
 import { dispatchCollaborationPush, mediaUrl } from './platform';
 import { getSupabase } from './supabase';
 import { calculateMatchScore } from './matchScoring';
-export { calculateMatchScore } from './matchScoring';
 import type {
   CollaborationItem,
   CollaborationMessage,
@@ -11,6 +10,8 @@ import type {
   MatchRecommendation,
   Role,
 } from './types';
+
+export { calculateMatchScore } from './matchScoring';
 
 type ProjectRow = {
   id: string;
