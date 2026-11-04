@@ -310,9 +310,12 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
   const [proposalOpen, setProposalOpen] = useState(false);
   const [period, setPeriod] = useState<ExhibitionPeriod>(suggestedExhibitionPeriod);
   const submitting = useRef(false);
-  const closeProposal = () => { Keyboard.dismiss(); setProposalOpen(false); };
+  const dateInputActive = useRef(false);
+  const closeProposal = () => { dateInputActive.current = false; Keyboard.dismiss(); setProposalOpen(false); };
   const backFromProposal = () => {
-    if (Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) {
+    // Android's modal window can clear the native focus before onRequestClose.
+    if (dateInputActive.current || Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) {
+      dateInputActive.current = false;
       Keyboard.dismiss();
       return;
     }
@@ -344,7 +347,10 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
           <ScrollView contentContainerStyle={c.proposalScroll} keyboardShouldPersistTaps="handled">
             <CuritText weight="bold" style={c.directoryTitle}>{item.title}</CuritText>
             <CuritText style={c.muted}>희망 기간을 확인한 뒤 제안을 보내 주세요.</CuritText>
-            <ExhibitionPeriodFields period={period} onChange={setPeriod} />
+            <ExhibitionPeriodFields period={period} onFocus={() => { dateInputActive.current = true; }} onChange={value => {
+              dateInputActive.current = true;
+              setPeriod(value);
+            }} />
             <Button label="협업 제안 보내기" disabled={busy || Boolean(exhibitionPeriodError(period))} onPress={submitProposal} />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -353,11 +359,11 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
   </View>;
 }
 
-function ExhibitionPeriodFields({ period, onChange, disabled }: { period: ExhibitionPeriod; onChange: (period: ExhibitionPeriod) => void; disabled?: boolean }) {
+function ExhibitionPeriodFields({ period, onChange, onFocus, disabled }: { period: ExhibitionPeriod; onChange: (period: ExhibitionPeriod) => void; onFocus?: () => void; disabled?: boolean }) {
   const error = period.startsOn.length === 10 && period.endsOn.length === 10 ? exhibitionPeriodError(period) : '';
   return <View style={c.periodFields}>
-    <Field label="전시 시작 희망일" value={period.startsOn} onChangeText={value => onChange({ ...period, startsOn: formatExhibitionDateInput(value) })} placeholder="YYYY-MM-DD" keyboardType="number-pad" maxLength={10} editable={!disabled} />
-    <Field label="전시 종료 희망일" value={period.endsOn} onChangeText={value => onChange({ ...period, endsOn: formatExhibitionDateInput(value) })} placeholder="YYYY-MM-DD" keyboardType="number-pad" maxLength={10} editable={!disabled} />
+    <Field label="전시 시작 희망일" value={period.startsOn} onFocus={onFocus} onChangeText={value => onChange({ ...period, startsOn: formatExhibitionDateInput(value) })} placeholder="YYYY-MM-DD" keyboardType="number-pad" maxLength={10} editable={!disabled} />
+    <Field label="전시 종료 희망일" value={period.endsOn} onFocus={onFocus} onChangeText={value => onChange({ ...period, endsOn: formatExhibitionDateInput(value) })} placeholder="YYYY-MM-DD" keyboardType="number-pad" maxLength={10} editable={!disabled} />
     {error ? <CuritText accessibilityLiveRegion="polite" style={c.errorText}>{error}</CuritText> : null}
   </View>;
 }
