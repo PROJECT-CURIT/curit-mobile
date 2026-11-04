@@ -176,34 +176,44 @@ export function StorePreferencesScreen({ userId, onBack, demo = false }: { userI
 
 export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = false }: { item: QrProduct; onBack: () => void; onSaved: (item: QrProduct) => void; demo?: boolean }) {
   const [item, setItem] = useState(initial);
-  const [price, setPrice] = useState(String(initial.price));
   const [stock, setStock] = useState(String(initial.stock));
-  const [pickupMode, setPickupMode] = useState<'immediate' | 'exhibition'>(initial.pickupMode === 'exhibition' ? 'exhibition' : 'immediate');
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   if (item.source === 'field-sale') return <FieldSaleProductScreen item={item} onBack={onBack} />;
-  const valuesValid = Number(price) > 0 && Number.isInteger(Number(stock)) && Number(stock) >= 0;
+  const stockValue = Number(stock);
+  const valuesValid = stock.length > 0 && Number.isSafeInteger(stockValue) && stockValue >= 0 && stockValue <= 100000;
+  const stockChanged = stockValue !== item.stock;
+  const selling = item.status !== 'PAUSED';
   const save = async (saleStatus?: 'active' | 'preparing') => {
-    if (!item.id || !valuesValid) { setNotice('판매가는 1원 이상, 구매 가능 수량은 0개 이상의 정수로 입력해 주세요.'); return; }
+    if (!item.id || (saleStatus === undefined && !valuesValid)) return;
     setSaving(true); setNotice('');
-    try { const saved = demo ? { ...item, price: Number(price), stock: Number(stock), pickupMode, status: saleStatus === 'active' ? 'ACTIVE' as const : 'PAUSED' as const } : await updateQrListing(item.id, { price: Number(price), stock: Number(stock), pickupMode, saleStatus }); setItem(saved); onSaved(saved); setNotice('판매 설정을 저장했습니다.'); }
+    try {
+      const changes = saleStatus === undefined ? { stock: stockValue, expectedStock: item.stock } : { saleStatus };
+      const saved = demo ? {
+        ...item,
+        stock: changes.stock ?? item.stock,
+        status: saleStatus === 'preparing' ? 'PAUSED' as const : saleStatus === 'active' ? item.stock > 0 ? 'ACTIVE' as const : 'SOLD_OUT' as const : item.status,
+      } : await updateQrListing(item.id, changes);
+      setItem(saved); setStock(String(saved.stock)); onSaved(saved);
+      setNotice(saleStatus === 'preparing' ? 'QR 판매를 중단했습니다.' : saleStatus === 'active' ? 'QR 판매를 시작했습니다.' : '구매 가능 수량을 저장했습니다.');
+    }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
   const share = async (message: string) => { if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(message); setNotice('클립보드에 복사했습니다.'); } else await Share.share({ message }); };
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="QR 상품 정보 확인" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} /> : null}<CuritText style={f.hint}>{item.artistName || '등록 작가'}</CuritText>
     <Field label="상품명" value={item.name} editable={false} />
-    <View style={f.two}><View style={f.flex}><Field label="합의 판매가 (원)" value={price} onChangeText={value => setPrice(value.replace(/\D/g, ''))} keyboardType="number-pad" /></View><View style={f.flex}><Field label="구매 가능 수량 *" value={stock} onChangeText={value => setStock(value.replace(/\D/g, ''))} keyboardType="number-pad" /></View></View>
-    <ChoiceCard title="수령 방식" options={['굿즈 · 결제 후 현장 수령', '전시 작품 · 종료 후 전달']} selected={[pickupMode === 'immediate' ? '굿즈 · 결제 후 현장 수령' : '전시 작품 · 종료 후 전달']} onToggle={value => setPickupMode(value.startsWith('굿즈') ? 'immediate' : 'exhibition')} />
-    <View style={f.infoBanner}><CuritText weight="semibold">{pickupMode === 'immediate' ? '굿즈 · 결제 후 현장 수령' : '원화 · 전시 종료 후 전달'}</CuritText><CuritText style={f.hint}>상품 유형에 맞게 적용되는 수령 방식이에요.</CuritText></View>
-    <Button label={saving ? '저장 중…' : '판매 설정 저장'} disabled={saving || !valuesValid} onPress={() => { void save(); }} />
-    <View style={f.two}><View style={f.flex}><Button label="QR 정보 미리보기" variant="secondary" onPress={() => setPreview(value => !value)} /></View><View style={f.flex}><Button label="QR 데이터 내보내기" variant="secondary" onPress={() => { void share(JSON.stringify({ token: item.token, name: item.name, price: Number(price), stock: Number(stock), qrUrl: item.qrUrl }, null, 2)); }} /></View></View>
-    {preview ? <View style={f.preview}><QRCode value={item.qrUrl || item.token || item.productId} size={140} color={colors.ink} backgroundColor={colors.surface} /><CuritText weight="bold">{item.name}</CuritText><CuritText>{Number(price).toLocaleString()}원 · 재고 {stock}개</CuritText><CuritText style={f.hint} numberOfLines={2}>{item.qrUrl}</CuritText></View> : null}
-    <Button label={item.status === 'ACTIVE' ? 'QR 판매 중단' : 'QR 판매 시작'} variant="secondary" disabled={saving || !valuesValid} onPress={() => { void save(item.status === 'ACTIVE' ? 'preparing' : 'active'); }} />
+    <View style={f.two}><View style={f.flex}><Field label="합의 판매가" value={`${item.price.toLocaleString('ko-KR')}원`} editable={false} /></View><View style={f.flex}><Field label="구매 가능 수량 *" value={stock} onChangeText={value => setStock(value.replace(/\D/g, ''))} keyboardType="number-pad" /></View></View>
+    {!valuesValid ? <CuritText style={f.hint}>구매 가능 수량을 0~100,000개 사이의 정수로 입력해 주세요.</CuritText> : null}
+    <View style={f.infoBanner}><CuritText weight="semibold">수령 방식</CuritText><CuritText style={f.hint}>{item.pickupMode === 'exhibition' ? '전시 종료 후 현장 수령' : '주문 후 현장 수령'}</CuritText></View>
+    {notice ? <Notice text={notice} /> : null}
+    <Button label={saving ? '저장 중…' : '수량 저장'} disabled={saving || !valuesValid || !stockChanged} onPress={() => { void save(); }} />
+    <View style={f.two}><View style={f.flex}><Button label="QR 정보 미리보기" variant="secondary" onPress={() => setPreview(value => !value)} /></View><View style={f.flex}><Button label="QR 데이터 내보내기" variant="secondary" onPress={() => { void share(JSON.stringify({ token: item.token, name: item.name, price: item.price, stock: item.stock, qrUrl: item.qrUrl }, null, 2)); }} /></View></View>
+    {preview ? <View style={f.preview}><QRCode value={item.qrUrl || item.token || item.productId} size={140} color={colors.ink} backgroundColor={colors.surface} /><CuritText weight="bold">{item.name}</CuritText><CuritText>{item.price.toLocaleString('ko-KR')}원 · 재고 {item.stock}개</CuritText><CuritText style={f.hint} numberOfLines={2}>{item.qrUrl}</CuritText></View> : null}
+    <Button label={selling ? 'QR 판매 중단' : 'QR 판매 시작'} variant="secondary" disabled={saving} onPress={() => { void save(selling ? 'preparing' : 'active'); }} />
     <Button label="구매 화면 열기 ↗" variant="secondary" disabled={!item.qrUrl} onPress={() => { if (item.qrUrl) void Linking.openURL(item.qrUrl); }} />
     <Button label="QR 주소 복사" variant="secondary" disabled={!item.qrUrl} onPress={() => { void share(item.qrUrl || ''); }} />
-    {notice ? <Notice text={notice} /> : null}
   </ScrollView></KeyboardAvoidingView>;
 }
 

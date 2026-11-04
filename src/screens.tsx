@@ -58,7 +58,7 @@ export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEn
           <Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={() => { void resetPassword(); }}><CuritText style={s.muted}>비밀번호 재설정</CuritText></Pressable>
         </View>
         {error ? <CuritText style={{ color: colors.danger }}>{error}</CuritText> : null}
-        {!configured ? <CuritText style={s.demoNote}>서버 환경변수가 아직 연결되지 않았습니다. `.env`에 Supabase URL과 Publishable Key를 설정해 주세요.</CuritText> : null}
+        {!configured ? <CuritText style={s.demoNote}>지금은 로그인 서비스에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.</CuritText> : null}
         <Button label={busy ? '로그인 중…' : '로그인'} disabled={!configured || !email.trim() || password.length < 8 || busy} onPress={() => { void submit(); }} />
       </View>
       <View style={s.signUpRow}><CuritText style={s.muted}>CURI:T이 처음인가요?</CuritText><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={onSignUp}><CuritText weight="semibold" style={s.brandText}>회원가입</CuritText></Pressable></View>
@@ -350,7 +350,7 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration }: { 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.settlementFilters}>{(['전체', '정산 대기', '정산 완료', '보류·취소'] as SettlementFilter[]).map(value => <Chip key={value} label={value} active={filter === value} onPress={() => setFilter(value)} />)}</ScrollView>
     {loading ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}
     {error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}
-    {!loading && !error && visible.length === 0 ? <Empty title={entries.length ? '해당 상태의 정산이 없습니다' : '정산 내역이 없습니다'} description={entries.length ? '다른 정산 상태를 선택해 확인해 주세요.' : '실결제가 승인되면 배분 비율에 따라 정산 원장이 자동 생성됩니다.'} /> : visible.map(entry => {
+    {!loading && !error && visible.length === 0 ? <Empty title={entries.length ? '해당 상태의 정산이 없습니다' : '정산 내역이 없습니다'} description={entries.length ? '다른 정산 상태를 선택해 확인해 주세요.' : '주문이 완료되면 배분 금액을 이곳에서 확인할 수 있어요.'} /> : visible.map(entry => {
       const expanded = expandedId === entry.id;
       const status = entry.status === 'paid' ? '지급 완료' : entry.status === 'held' ? '보류' : entry.status === 'cancelled' ? '취소' : entry.status === 'ready' ? '지급 준비' : '정산 예정';
       return <View key={entry.id} style={s.settlementCard}>
