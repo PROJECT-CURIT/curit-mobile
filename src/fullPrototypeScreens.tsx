@@ -183,6 +183,8 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [ready, setReady] = useState(false);
+  const saveLock = useRef(false);
   if (item.source === 'field-sale') return <FieldSaleProductScreen item={item} onBack={onBack} />;
   const stockValue = Number(stock);
   const stockLimit = item.supplyLimit ?? 100_000;
@@ -190,19 +192,26 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   const stockChanged = stockValue !== item.stock;
   const selling = item.status !== 'PAUSED';
   const save = async (saleStatus?: 'active' | 'preparing') => {
-    if (!item.id || (saleStatus === undefined && !valuesValid)) return;
+    if (saveLock.current || !item.id || (saleStatus === undefined && !valuesValid)) return;
+    if (saleStatus === 'active' && (!ready || stockChanged || !valuesValid || item.canStartSale === false)) return;
+    saveLock.current = true;
     setSaving(true); setNotice('');
     try {
-      const changes = saleStatus === undefined ? { stock: stockValue, expectedStock: item.stock } : { saleStatus };
+      const changes = saleStatus === undefined
+        ? { stock: stockValue, expectedStock: item.stock }
+        : saleStatus === 'active'
+          ? { saleStatus, readinessConfirmed: true as const, expectedStock: item.stock }
+          : { saleStatus };
       const saved = demo ? {
         ...item,
         stock: changes.stock ?? item.stock,
         status: saleStatus === 'preparing' ? 'PAUSED' as const : saleStatus === 'active' ? item.stock > 0 ? 'ACTIVE' as const : 'SOLD_OUT' as const : item.status,
       } : await updateQrListing(item.id, changes);
-      setItem(saved); setStock(String(saved.stock)); onSaved(saved);
+      setItem(saved); setStock(String(saved.stock)); setReady(false); onSaved(saved);
       setNotice(saleStatus === 'preparing' ? 'QR 판매를 중단했습니다.' : saleStatus === 'active' ? 'QR 판매를 시작했습니다.' : '구매 가능 수량을 저장했습니다.');
     }
-    catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
+    catch (error) { if (saleStatus === 'active') setReady(false); setNotice(friendlyError(error)); }
+    finally { saveLock.current = false; setSaving(false); }
   };
   const share = async (message: string) => {
     try {
@@ -219,7 +228,7 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="QR 상품 정보 확인" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} /> : null}<CuritText style={f.hint}>{item.artistName || '등록 작가'}</CuritText>
     <Field label="상품명" value={item.name} editable={false} />
-    <View style={f.two}><View style={f.flex}><Field label="합의 판매가" value={`${item.price.toLocaleString('ko-KR')}원`} editable={false} /></View><View style={f.flex}><Field label="구매 가능 수량 *" value={stock} onChangeText={value => setStock(value.replace(/\D/g, ''))} keyboardType="number-pad" /></View></View>
+    <View style={f.two}><View style={f.flex}><Field label="합의 판매가" value={`${item.price.toLocaleString('ko-KR')}원`} editable={false} /></View><View style={f.flex}><Field label="구매 가능 수량 *" value={stock} editable={!saving} onChangeText={value => { setStock(value.replace(/\D/g, '')); setReady(false); }} keyboardType="number-pad" /></View></View>
     {item.supplyLimit !== undefined ? <CuritText style={f.hint}>확정 공급량 {item.supplyLimit}개 중 판매 완료 수량을 제외하고 설정할 수 있어요.</CuritText> : null}
     {!valuesValid ? <CuritText style={f.hint}>구매 가능 수량을 0~{stockLimit.toLocaleString('ko-KR')}개 사이로 입력해 주세요.</CuritText> : null}
     {item.description || item.material ? <View style={f.qrDetails}>
@@ -232,7 +241,15 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
     <Button label={saving ? '저장 중…' : '수량 저장'} disabled={saving || !valuesValid || !stockChanged} onPress={() => { void save(); }} />
     <View style={f.two}><View style={f.flex}><Button label="QR 미리보기" variant="secondary" onPress={() => setPreview(value => !value)} /></View><View style={f.flex}><Button label="데이터 내보내기" variant="secondary" onPress={() => { void share(JSON.stringify({ token: item.token, name: item.name, price: item.price, stock: item.stock, qrUrl: item.qrUrl }, null, 2)); }} /></View></View>
     {preview ? <View style={f.preview}><QRCode value={item.qrUrl || item.token || item.productId} size={140} color={colors.ink} backgroundColor={colors.surface} /><CuritText weight="bold">{item.name}</CuritText><CuritText>{item.price.toLocaleString('ko-KR')}원 · 재고 {item.stock}개</CuritText><CuritText style={f.hint} numberOfLines={2}>{item.qrUrl}</CuritText></View> : null}
-    {item.canStartSale !== false || selling ? <Button label={selling ? 'QR 판매 중단' : 'QR 판매 시작'} variant="secondary" disabled={saving} onPress={() => { void save(selling ? 'preparing' : 'active'); }} /> : <CuritText style={f.hint}>진행 중인 전시에서만 QR 판매를 시작할 수 있어요.</CuritText>}
+    {selling ? <Button label="QR 판매 중단" variant="secondary" disabled={saving} onPress={() => { void save('preparing'); }} /> : item.canStartSale !== false ? <View style={f.infoBanner}>
+      <CuritText weight="semibold">판매 전 확인</CuritText>
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: ready, disabled: saving }} disabled={saving} onPress={() => setReady(value => !value)} style={f.readinessCheck}>
+        <View style={[f.readinessBox, ready && f.readinessBoxChecked]}>{ready ? <CuritText style={f.readinessTick}>✓</CuritText> : null}</View>
+        <CuritText style={f.flex}>상품 진열과 QR 가격·재고·수령 안내를 확인했어요.</CuritText>
+      </Pressable>
+      {stockChanged ? <CuritText style={f.hint}>변경한 수량을 먼저 저장해 주세요.</CuritText> : null}
+      <Button label="QR 판매 시작" disabled={saving || !ready || stockChanged || !valuesValid} onPress={() => { void save('active'); }} />
+    </View> : <CuritText style={f.hint}>진행 중인 전시에서만 QR 판매를 시작할 수 있어요.</CuritText>}
     <Button label="구매 화면 열기 ↗" variant="secondary" disabled={!item.qrUrl} onPress={() => { if (item.qrUrl) void Linking.openURL(item.qrUrl).catch(() => setNotice('상품 페이지를 열지 못했어요. QR 링크를 다시 확인해 주세요.')); }} />
     <Button label={Platform.OS === 'web' ? 'QR 주소 복사' : 'QR 링크 공유'} variant="secondary" disabled={!item.qrUrl} onPress={() => { void share(item.qrUrl || ''); }} />
   </ScrollView></KeyboardAvoidingView>;
@@ -641,5 +658,9 @@ const f = StyleSheet.create({
   headerTextAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   qrDetails: { gap: 6 },
   qrDetailsAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  readinessCheck: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  readinessBox: { width: 20, height: 20, borderWidth: 1, borderColor: colors.brand, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  readinessBoxChecked: { backgroundColor: colors.brand },
+  readinessTick: { color: colors.surface, fontSize: 14, lineHeight: 18 },
   feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentPanel: { gap: 10, paddingTop: 4 }, commentItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }, commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentText: { color: colors.ink, fontSize: 13, lineHeight: 19 }, emptyComment: { color: colors.muted, fontSize: 12, paddingVertical: 8 }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

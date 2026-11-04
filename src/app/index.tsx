@@ -150,7 +150,8 @@ export default function AppIndex() {
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       // Android may report that the IME is hidden before the back event reaches JS.
-      if (Keyboard.isVisible() || (subview === 'collaboration' && TextInput.State.currentlyFocusedInput())) {
+      const focusedInSearchOrChat = (subview === 'collaboration' || (!subview && tab === 'discover')) && TextInput.State.currentlyFocusedInput();
+      if (Keyboard.isVisible() || focusedInSearchOrChat) {
         Keyboard.dismiss();
         return true;
       }

@@ -253,7 +253,7 @@ export async function issueQrListing(projectItemId: string, collaborationId: str
   return mapManagedQrProduct(item as Record<string, unknown>);
 }
 
-export async function updateQrListing(id: string, updates: { stock: number; expectedStock: number } | { saleStatus: 'active' | 'preparing' }): Promise<QrProduct> {
+export async function updateQrListing(id: string, updates: { stock: number; expectedStock: number } | { saleStatus: 'preparing' } | { saleStatus: 'active'; readinessConfirmed: true; expectedStock: number }): Promise<QrProduct> {
   const item = await managementRequest(`/api/management/listings/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
