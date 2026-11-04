@@ -523,15 +523,19 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
   const [compose, setCompose] = useState('');
   const [postImage, setPostImage] = useState('');
   const [commentFor, setCommentFor] = useState('');
-  const [comment, setComment] = useState('');
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentsByPost, setCommentsByPost] = useState<Record<string, SocialComment[]>>(demo ? demoSocialComments : {});
-  const [commentsLoadingFor, setCommentsLoadingFor] = useState('');
+  const [olderByPost, setOlderByPost] = useState<Record<string, boolean>>({});
+  const [commentErrors, setCommentErrors] = useState<Record<string, string>>({});
+  const [commentsLoading, setCommentsLoading] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState('');
+  const [postError, setPostError] = useState('');
   const [savingPost, setSavingPost] = useState(false);
   const [savingComment, setSavingComment] = useState(false);
   const postRequest = useRef(false);
   const commentRequest = useRef(false);
-  const load = async () => { if (demo) return; setLoading(true); try { setItems(await loadSocialFeed()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
+  const commentPageRequests = useRef(new Set<string>());
+  const load = async () => { if (demo) return; setLoading(true); setNotice(''); try { setItems(await loadSocialFeed()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
   useEffect(() => {
     if (demo) return;
     let active = true;
@@ -548,9 +552,9 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
       setCompose(''); setPostImage(''); setNotice(''); return;
     }
     postRequest.current = true;
-    setSavingPost(true); setNotice('');
+    setSavingPost(true); setPostError('');
     try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); }
-    catch (error) { setNotice(friendlyError(error)); }
+    catch (error) { setPostError(friendlyError(error)); }
     finally { postRequest.current = false; setSavingPost(false); }
   };
   const toggleFollow = async (item: SocialPost) => {
@@ -561,48 +565,59 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
     if (demo) { setItems(current => current.map(value => value.id === item.id ? { ...value, liked: !item.liked, likes: Math.max(0, item.likes + (item.liked ? -1 : 1)) } : value)); return; }
     await togglePostLike(item.id, item.liked); await load();
   };
-  const toggleComments = async (item: SocialPost) => {
+  const loadComments = async (postId: string, before?: SocialComment) => {
+    if (commentPageRequests.current.has(postId)) return;
+    commentPageRequests.current.add(postId);
+    setCommentErrors(current => ({ ...current, [postId]: '' }));
+    setCommentsLoading(current => ({ ...current, [postId]: true }));
+    try {
+      const page = await loadPostComments(postId, before);
+      setCommentsByPost(current => ({ ...current, [postId]: before ? [...page.comments, ...(current[postId] ?? [])] : page.comments }));
+      setOlderByPost(current => ({ ...current, [postId]: page.hasOlder }));
+    } catch (error) {
+      setCommentErrors(current => ({ ...current, [postId]: friendlyError(error) }));
+    } finally {
+      commentPageRequests.current.delete(postId);
+      setCommentsLoading(current => ({ ...current, [postId]: false }));
+    }
+  };
+  const toggleComments = (item: SocialPost) => {
     if (commentFor === item.id) { setCommentFor(''); return; }
     setCommentFor(item.id);
-    setComment('');
     if (demo) {
       setCommentsByPost(current => ({ ...current, [item.id]: current[item.id] ?? [] }));
-      return;
-    }
-    setCommentsLoadingFor(item.id);
-    try {
-      const comments = await loadPostComments(item.id);
-      setCommentsByPost(current => ({ ...current, [item.id]: comments }));
-      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: comments.length } : value));
-    } catch (error) { setNotice(friendlyError(error)); }
-    finally { setCommentsLoadingFor(''); }
+    } else if (!commentsByPost[item.id]) void loadComments(item.id);
   };
   const addComment = async (item: SocialPost) => {
-    const text = comment.trim();
-    if (!text || text.length > 500 || commentRequest.current) return;
-    if (demo) {
-      const next: SocialComment = { id: `local-comment-${Date.now()}`, postId: item.id, userId: 'demo-current-user', displayName: currentUserName, avatarUrl: '', content: text, createdAt: new Date().toISOString() };
-      setCommentsByPost(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), next] }));
-      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: (commentsByPost[item.id] ?? []).length + 1 } : value));
-      setComment(''); setNotice(''); return;
-    }
+    const text = (commentDrafts[item.id] || '').trim();
+    if (!text || text.length > 500 || !commentsByPost[item.id] || commentRequest.current) return;
     commentRequest.current = true;
-    setSavingComment(true); setNotice('');
+    setSavingComment(true);
+    setCommentErrors(current => ({ ...current, [item.id]: '' }));
     try {
-      await addPostComment(item.id, text);
-      setComment('');
-      const comments = await loadPostComments(item.id);
-      setCommentsByPost(current => ({ ...current, [item.id]: comments }));
-      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: comments.length } : value));
+      const saved = demo
+        ? { id: `local-comment-${Date.now()}`, postId: item.id, userId: 'demo-current-user', content: text, createdAt: new Date().toISOString() }
+        : await addPostComment(item.id, text);
+      const next: SocialComment = { ...saved, displayName: currentUserName, avatarUrl: '' };
+      setCommentsByPost(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), next] }));
+      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: value.comments + 1 } : value));
+      setCommentDrafts(current => ({ ...current, [item.id]: '' }));
+    } catch (error) {
+      setCommentErrors(current => ({ ...current, [item.id]: friendlyError(error) }));
     } finally {
       commentRequest.current = false;
       setSavingComment(false);
     }
   };
   if (loading) return <ActivityIndicator color={colors.brand} style={f.loader} />;
+  const comment = commentDrafts[commentFor] || '';
   return <View style={f.feed}>
+    {notice ? <Notice text={notice} /> : null}
+    {notice && !items.length ? <Button label="다시 불러오기" variant="secondary" onPress={() => { void load(); }} /> : null}
     {canPost ? <View style={f.compose}>
-      <TextInput value={compose} onChangeText={setCompose} placeholder="새 작품이나 전시 소식을 알려주세요" placeholderTextColor={colors.subtle} style={f.composeInput} maxLength={2000} editable={!savingPost} multiline />
+      <TextInput accessibilityLabel="소식 내용" value={compose} onChangeText={setCompose} placeholder="새 작품이나 전시 소식을 알려주세요" placeholderTextColor={colors.subtle} style={f.composeInput} maxLength={2000} editable={!savingPost} multiline />
+      <CuritText style={f.inputCount}>{compose.length.toLocaleString('ko-KR')} / 2,000자</CuritText>
+      {postError ? <Notice text={postError} /> : null}
       {postImage ? <Image source={{ uri: postImage }} style={f.postImage} /> : null}
       <View style={f.two}><View style={f.flex}><Button label={postImage ? '사진 변경' : '사진 추가'} variant="secondary" onPress={() => { void choosePostImage(); }} /></View><View style={f.flex}><Button label={savingPost ? '등록 중…' : '소식 올리기'} disabled={savingPost || !compose.trim()} onPress={() => { void create(); }} /></View></View>
     </View> : null}
@@ -616,20 +631,22 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
       {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.postImage} contentFit="cover" /> : demo ? <Image source={[images.pouch, images.print, images.bowls, images.linen][index % 4]} style={f.postImage} contentFit="cover" /> : null}
       <View style={f.socialActions}>
         <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} onPress={() => { void toggleLike(item).catch(error => setNotice(friendlyError(error))); }}><CuritText style={item.liked ? f.brand : f.muted}>♥ {item.likes}</CuritText></Pressable>
-        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} accessibilityState={{ expanded: commentFor === item.id }} onPress={() => { void toggleComments(item); }}><CuritText style={f.muted}>댓글 {demo ? (commentsByPost[item.id] ?? []).length : item.comments}</CuritText></Pressable>
+        <Pressable accessibilityRole="button" hitSlop={8} style={f.socialAction} accessibilityState={{ expanded: commentFor === item.id }} onPress={() => toggleComments(item)}><CuritText style={f.muted}>댓글 {demo ? (commentsByPost[item.id] ?? []).length : item.comments}</CuritText></Pressable>
       </View>
       {commentFor === item.id ? <View style={f.commentPanel}>
-        {commentsLoadingFor === item.id ? <ActivityIndicator color={colors.brand} /> : (commentsByPost[item.id] ?? []).length ? (commentsByPost[item.id] ?? []).map(value => <View key={value.id} style={f.commentItem}>
+        {commentErrors[item.id] ? <Notice text={commentErrors[item.id] ?? ''} /> : null}
+        {commentsLoading[item.id] ? <ActivityIndicator color={colors.brand} /> : olderByPost[item.id] || !commentsByPost[item.id] ? <Button label={commentsByPost[item.id] ? '이전 댓글 더 보기' : '댓글 다시 불러오기'} variant="secondary" onPress={() => { void loadComments(item.id, commentsByPost[item.id]?.[0]); }} /> : null}
+        {(commentsByPost[item.id] ?? []).length ? (commentsByPost[item.id] ?? []).map(value => <View key={value.id} style={f.commentItem}>
           <View style={f.commentMeta}><CuritText weight="semibold">{value.displayName}</CuritText><CuritText style={f.hint}>{new Date(value.createdAt).toLocaleDateString('ko-KR')}</CuritText></View>
           <CuritText style={f.commentText}>{value.content}</CuritText>
-        </View>) : <CuritText style={f.emptyComment}>첫 댓글을 남겨보세요.</CuritText>}
+        </View>) : commentsByPost[item.id] ? <CuritText style={f.emptyComment}>첫 댓글을 남겨보세요.</CuritText> : null}
         <View style={f.commentRow}>
-          <TextInput value={comment} onChangeText={setComment} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} maxLength={500} editable={!savingComment} returnKeyType="send" onSubmitEditing={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }} />
-          <Pressable accessibilityRole="button" disabled={savingComment || !comment.trim() || comment.trim().length > 500} style={f.commentSubmit} onPress={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
+          <TextInput accessibilityLabel="댓글 내용" value={comment} onChangeText={value => setCommentDrafts(current => ({ ...current, [item.id]: value }))} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} maxLength={500} editable={!savingComment} returnKeyType="send" onSubmitEditing={() => { void addComment(item); }} />
+          <Pressable accessibilityRole="button" accessibilityLabel="댓글 등록" disabled={savingComment || !comment.trim() || !commentsByPost[item.id]} style={f.commentSubmit} onPress={() => { void addComment(item); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
         </View>
+        <CuritText style={f.inputCount}>{comment.length} / 500자</CuritText>
       </View> : null}
     </View>) : <Empty title="등록된 소식이 없습니다" description="크리에이터의 새 작품과 전시 소식이 여기에 표시됩니다." />}
-    {notice ? <Notice text={notice} /> : null}
   </View>;
 }
 
@@ -642,6 +659,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const f = StyleSheet.create({
+  inputCount: { alignSelf: 'flex-end', color: colors.muted, fontSize: 12 },
   flex: { flex: 1 }, scroll: { padding: 20, paddingBottom: 36, gap: 20 }, loader: { marginTop: 80 }, pageTitle: { fontSize: 23, lineHeight: 31 }, description: { color: colors.muted, marginTop: 4 }, longText: { lineHeight: 23 }, brand: { color: colors.brand }, muted: { color: colors.muted }, danger: { color: colors.danger }, hint: { color: colors.muted, fontSize: 11, marginTop: 6 },
   sticky: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, padding: 14 }, stepBars: { flexDirection: 'row', gap: 8 }, stepLine: { height: 4, backgroundColor: colors.border, borderRadius: 2, marginBottom: 7 }, stepLineActive: { backgroundColor: colors.brand },
   choiceCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 14 }, wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, textarea: { minHeight: 96, textAlignVertical: 'top', paddingTop: 13 }, notice: { padding: 13, borderRadius: radius.sm, backgroundColor: colors.brandSoft },
@@ -662,5 +680,5 @@ const f = StyleSheet.create({
   readinessBox: { width: 20, height: 20, borderWidth: 1, borderColor: colors.brand, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
   readinessBoxChecked: { backgroundColor: colors.brand },
   readinessTick: { color: colors.surface, fontSize: 14, lineHeight: 18 },
-  feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentPanel: { gap: 10, paddingTop: 4 }, commentItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }, commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentText: { color: colors.ink, fontSize: 13, lineHeight: 19 }, emptyComment: { color: colors.muted, fontSize: 12, paddingVertical: 8 }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { height: 104, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentPanel: { gap: 10, paddingTop: 4 }, commentItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }, commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentText: { color: colors.ink, fontSize: 13, lineHeight: 19 }, emptyComment: { color: colors.muted, fontSize: 12, paddingVertical: 8 }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

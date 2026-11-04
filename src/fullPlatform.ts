@@ -160,39 +160,41 @@ export type SocialComment = {
 export async function loadSocialFeed(): Promise<SocialPost[]> {
   const supabase = getSupabase();
   const userId = await currentUserId();
-  const postsResult = await supabase.from('creator_posts').select('id, creator_id, content, image_path, created_at').order('created_at', { ascending: false }).limit(50);
+  const postsResult = await supabase.from('creator_posts').select('id, creator_id, content, image_path, created_at, post_comments(count), post_likes(count)').order('created_at', { ascending: false }).limit(50);
   if (postsResult.error) throw new Error(postsResult.error.message);
   const rows = postsResult.data || [];
   if (!rows.length) return [];
   const creatorIds = [...new Set(rows.map(row => String(row.creator_id)))];
   const postIds = rows.map(row => String(row.id));
-  const [profilesResult, likesResult, commentsResult, followsResult] = await Promise.all([
+  const [profilesResult, likesResult, followsResult] = await Promise.all([
     supabase.from('profiles').select('id, display_name, handle, avatar_path').in('id', creatorIds),
-    supabase.from('post_likes').select('post_id, user_id').in('post_id', postIds),
-    supabase.from('post_comments').select('post_id').in('post_id', postIds),
+    supabase.from('post_likes').select('post_id').eq('user_id', userId).in('post_id', postIds),
     supabase.from('creator_follows').select('creator_id').eq('follower_id', userId).in('creator_id', creatorIds),
   ]);
-  const error = profilesResult.error || likesResult.error || commentsResult.error || followsResult.error;
+  const error = profilesResult.error || likesResult.error || followsResult.error;
   if (error) throw new Error(error.message);
   const profiles = new Map((profilesResult.data || []).map(row => [String(row.id), row]));
   const followed = new Set((followsResult.data || []).map(row => String(row.creator_id)));
+  const liked = new Set((likesResult.data || []).map(row => String(row.post_id)));
   return rows.map(row => {
     const profile = profiles.get(String(row.creator_id));
-    const likes = (likesResult.data || []).filter(value => value.post_id === row.id);
     return {
       id: String(row.id), creatorId: String(row.creator_id), creatorName: String(profile?.display_name || '크리에이터'),
       handle: String(profile?.handle || ''), avatarUrl: profile?.avatar_path ? mediaUrl(String(profile.avatar_path)) : '', content: String(row.content),
-      imageUrl: row.image_path ? mediaUrl(String(row.image_path)) : '', likes: likes.length,
-      comments: (commentsResult.data || []).filter(value => value.post_id === row.id).length,
-      liked: likes.some(value => value.user_id === userId), followed: followed.has(String(row.creator_id)), own: String(row.creator_id) === userId, createdAt: String(row.created_at),
+      imageUrl: row.image_path ? mediaUrl(String(row.image_path)) : '', likes: Number(row.post_likes[0]?.count ?? 0),
+      comments: Number(row.post_comments[0]?.count ?? 0),
+      liked: liked.has(String(row.id)), followed: followed.has(String(row.creator_id)), own: String(row.creator_id) === userId, createdAt: String(row.created_at),
     };
   });
 }
 
 export async function createSocialPost(content: string, imageUri = '') {
+  const text = content.trim();
+  if (!text) throw new Error('소식 내용을 입력해 주세요.');
+  if (text.length > 2000) throw new Error('소식은 2,000자 이내로 작성해 주세요.');
   const id = await currentUserId();
   const imagePath = imageUri ? await uploadMedia(imageUri, 'post') : null;
-  const { error } = await getSupabase().from('creator_posts').insert({ creator_id: id, content: content.trim(), image_path: imagePath });
+  const { error } = await getSupabase().from('creator_posts').insert({ creator_id: id, content: text, image_path: imagePath });
   if (error) throw new Error(error.message);
 }
 
@@ -215,21 +217,29 @@ export async function addPostComment(postId: string, content: string) {
   if (!text) throw new Error('댓글 내용을 입력해 주세요.');
   if (text.length > 500) throw new Error('댓글은 500자 이내로 작성해 주세요.');
   const userId = await currentUserId();
-  const { error } = await getSupabase().from('post_comments').insert({ post_id: postId, user_id: userId, content: text });
+  const { data, error } = await getSupabase().from('post_comments').insert({ post_id: postId, user_id: userId, content: text }).select('id, created_at').single();
   if (error) throw new Error(error.message);
+  return { id: String(data.id), postId, userId, content: text, createdAt: String(data.created_at) };
 }
 
-export async function loadPostComments(postId: string): Promise<SocialComment[]> {
+export async function loadPostComments(postId: string, before?: Pick<SocialComment, 'createdAt' | 'id'>): Promise<{ comments: SocialComment[]; hasOlder: boolean }> {
   const supabase = getSupabase();
-  const result = await supabase
+  const pageSize = 20;
+  let query = supabase
     .from('post_comments')
     .select('id, post_id, user_id, content, created_at')
     .eq('post_id', postId)
-    .order('created_at', { ascending: true })
-    .limit(100);
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(pageSize + 1);
+  if (before) {
+    query = query.or(`created_at.lt.${before.createdAt},and(created_at.eq.${before.createdAt},id.lt.${before.id})`);
+  }
+  const result = await query;
   if (result.error) throw new Error(result.error.message);
-  const rows = result.data || [];
-  if (!rows.length) return [];
+  const hasOlder = (result.data?.length ?? 0) > pageSize;
+  const rows = (result.data || []).slice(0, pageSize).reverse();
+  if (!rows.length) return { comments: [], hasOlder: false };
   const userIds = [...new Set(rows.map(row => String(row.user_id)))];
   const profilesResult = await supabase
     .from('profiles')
@@ -237,7 +247,7 @@ export async function loadPostComments(postId: string): Promise<SocialComment[]>
     .in('id', userIds);
   if (profilesResult.error) throw new Error(profilesResult.error.message);
   const profiles = new Map((profilesResult.data || []).map(row => [String(row.id), row]));
-  return rows.map(row => {
+  const comments = rows.map(row => {
     const userId = String(row.user_id);
     const profile = profiles.get(userId);
     return {
@@ -250,6 +260,7 @@ export async function loadPostComments(postId: string): Promise<SocialComment[]>
       createdAt: String(row.created_at),
     };
   });
+  return { comments, hasOlder };
 }
 
 export type AppNotification = { id: string; title: string; body: string; kind: string; entityId: string; orderId?: string; read: boolean; createdAt: string };

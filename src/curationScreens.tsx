@@ -94,6 +94,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [section, setSection] = useState<'matches' | 'creators' | 'news'>('matches');
+  const [newsVisited, setNewsVisited] = useState(false);
   const [matchError, setMatchError] = useState('');
   const [matchAttempt, setMatchAttempt] = useState(0);
   const [directoryAttempt, setDirectoryAttempt] = useState(0);
@@ -148,9 +149,15 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   return <View style={c.flex}>
     <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable accessibilityRole="button" accessibilityLabel="AI 큐레이터 열기" hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
     <ScrollView contentContainerStyle={c.discoverScroll} keyboardShouldPersistTaps="handled">
-      <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
-      <View accessibilityRole="tablist" style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: section === value }} key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
-      {section === 'news' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /> : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
+      {section !== 'news' ? <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' && section === 'matches' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View> : null}
+      <View accessibilityRole="tablist" style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: section === value }} key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => {
+        if (section === value) return;
+        Keyboard.dismiss();
+        if (value === 'news') setNewsVisited(true);
+        setSection(value as 'matches' | 'creators' | 'news');
+      }}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
+      {newsVisited ? <View style={section !== 'news' ? { display: 'none' } : undefined} accessibilityElementsHidden={section !== 'news'} importantForAccessibility={section === 'news' ? 'auto' : 'no-hide-descendants'}><SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /></View> : null}
+      {section === 'news' ? null : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
       {role === 'creator' ? <>
         <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
         <View style={c.filterCard}>
