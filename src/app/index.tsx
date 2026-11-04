@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, Platform, TextInput, View } from 'react-native';
-import { BottomNav, ScreenFrame } from '../ui';
+import { BottomNav, Button, Empty, Header, ScreenFrame } from '../ui';
 import { AccountSettingsScreen, AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
 import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen, RecommendationScreen } from '../curationScreens';
 import { loadCollaborations } from '../curation';
@@ -33,6 +33,9 @@ export default function AppIndex() {
   const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-preferences' | 'verification' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | 'recommendation' | null>(null);
   const [selectedRecommendation, setSelectedRecommendation] = useState<MatchRecommendation | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
+  const [noticeCollaborationId, setNoticeCollaborationId] = useState<string | null>(null);
+  const [noticeCollaborationError, setNoticeCollaborationError] = useState('');
+  const [noticeCollaborationAttempt, setNoticeCollaborationAttempt] = useState(0);
   const [collaborationDrafts, setCollaborationDrafts] = useState<Record<string, string>>({});
   const [demoCollaborations, setDemoCollaborations] = useState<CollaborationSummary[]>([]);
   const [creatorProducts, setCreatorProducts] = useState<ProjectProduct[]>(initialCreatorProducts);
@@ -94,6 +97,39 @@ export default function AppIndex() {
     void registerNativePush(session.userId).catch(() => undefined);
   }, [session]);
 
+  const openNoticeCollaboration = useCallback((id: string) => {
+    setSelectedCollaboration(null);
+    setNoticeCollaborationId(id);
+    setNoticeCollaborationError('');
+    setNoticeCollaborationAttempt(current => current + 1);
+    setSubview('collaboration');
+  }, []);
+
+  useEffect(() => {
+    if (!session || session.demo || subview !== 'collaboration' || selectedCollaboration || !noticeCollaborationId) return;
+    const controller = new AbortController();
+    let active = true;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      if (active) setNoticeCollaborationError('연결이 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.');
+    }, 10_000);
+    void loadCollaborations(session.role, noticeCollaborationId, controller.signal)
+      .then(([item]) => {
+        if (!active || timedOut) return;
+        if (item) setSelectedCollaboration(item);
+        else setNoticeCollaborationError('이 협업 대화를 찾지 못했어요. 내 소식으로 돌아갈 수 있습니다.');
+      })
+      .catch(error => { if (active && !timedOut) setNoticeCollaborationError(friendlyError(error)); })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [noticeCollaborationAttempt, noticeCollaborationId, selectedCollaboration, session, subview]);
+
   const pushUser = session && !session.demo ? session.userId : null;
   const pushRole = session && !session.demo ? session.role : null;
   useEffect(() => {
@@ -103,10 +139,12 @@ export default function AppIndex() {
         setPickupParent(null);
         setPickupOrderId(typeof data.orderId === 'string' && /^QR-[0-9a-f-]{36}$/i.test(data.orderId) ? data.orderId : undefined);
         setSubview('pickup');
+      } else if (data.kind === 'collaboration' && typeof data.entityId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.entityId)) {
+        openNoticeCollaboration(data.entityId);
       } else setSubview('notifications');
     });
     return () => subscription.remove();
-  }, [pushRole, pushUser]);
+  }, [openNoticeCollaboration, pushRole, pushUser]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -122,6 +160,8 @@ export default function AppIndex() {
           ? pickupParent
           : subview === 'qr-products'
             ? qrParent
+            : subview === 'collaboration' && noticeCollaborationId
+              ? 'notifications'
             : subview === 'creator-profile-edit'
           ? 'creator-profile'
           : subview === 'qr-editor'
@@ -143,7 +183,7 @@ export default function AppIndex() {
       return false;
     });
     return () => subscription.remove();
-  }, [authView, creatorOnboardingFlow, pickupParent, qrParent, session, storePreferencesParent, subview, tab]);
+  }, [authView, creatorOnboardingFlow, noticeCollaborationId, pickupParent, qrParent, session, storePreferencesParent, subview, tab]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -190,7 +230,7 @@ export default function AppIndex() {
   const logout = async () => {
     const wasDemo = session?.demo;
     if (session && !wasDemo && isSupabaseConfigured) await deactivateNativePush(session.userId).catch(() => undefined);
-    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setCollaborationDrafts({}); setDiscoverVisited(false); setTab('home'); setSubview(null);
+    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setCollaborationDrafts({}); setSelectedCollaboration(null); setNoticeCollaborationId(null); setDiscoverVisited(false); setTab('home'); setSubview(null);
     if (!wasDemo && isSupabaseConfigured) await signOut();
   };
 
@@ -240,6 +280,7 @@ export default function AppIndex() {
   };
 
   const showCollaboration = (item: CollaborationSummary) => {
+    setNoticeCollaborationId(null);
     setSelectedCollaboration(item);
     setSubview('collaboration');
   };
@@ -255,8 +296,7 @@ export default function AppIndex() {
       showCollaboration(next);
       return;
     }
-    const items = await loadCollaborations(session.role);
-    const item = items.find(candidate => candidate.id === id);
+    const [item] = await loadCollaborations(session.role, id);
     if (!item) throw new Error('이 협업 대화를 찾지 못했어요. 잠시 후 다시 시도해 주세요.');
     setTab('chat');
     showCollaboration(item);
@@ -279,7 +319,17 @@ export default function AppIndex() {
   if (subview === 'store-edit') return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={storeOnboarding ? { ...storeOnboarding, step: 1 } : null} onBack={() => setSubview('store-profile')} onComplete={storeName => { setSession(current => current ? { ...current, displayName: storeName } : current); if (session.demo) { setStoreOnboarding(current => current ? { ...current, name: storeName, complete: true, step: 5 } : demoStoreOnboarding); setSubview('store-profile'); } else void hydrateStore(session.userId).then(() => setSubview('store-profile')); }} /></ScreenFrame>;
   if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen demo={session.demo} userId={session.userId} onBack={() => { if (!session.demo) void hydrateStore(session.userId); setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null); }} /></ScreenFrame>;
   if (subview === 'verification') return <ScreenFrame><VerificationScreen kind={session.role === 'creator' ? 'creator_activity' : 'store_operation'} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
-  if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo} onOpenOrder={session.role === 'store' ? id => { setPickupParent('notifications'); setPickupOrderId(id); setSubview('pickup'); } : undefined} onBack={() => setSubview(null)} /></ScreenFrame>;
+  if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo}
+    onOpenCollaboration={id => {
+      if (!session.demo) { openNoticeCollaboration(id); return; }
+      const sample = demoCollaborations.find(item => item.id === id);
+      if (sample) {
+        showCollaboration(sample);
+        setNoticeCollaborationId(id);
+      }
+    }}
+    onOpenOrder={session.role === 'store' ? id => { setPickupParent('notifications'); setPickupOrderId(id); setSubview('pickup'); } : undefined}
+    onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'account') return <ScreenFrame><AccountSettingsScreen userId={session.userId} email={session.email} role={session.role} demo={session.demo} onBack={() => setSubview(null)} onResetPassword={() => requestPasswordReset(session.email)} onLogout={logout} /></ScreenFrame>;
   if (subview === 'qr-products') return <ScreenFrame><QrProductsScreen demo={session.demo} collaborationId={qrParent === 'collaboration' ? selectedCollaboration?.id : undefined} onBack={() => setSubview(qrParent)} onSelect={item => { setSelectedQrProduct(item); setSubview('qr-editor'); }} /></ScreenFrame>;
   if (subview === 'qr-editor' && selectedQrProduct) return <ScreenFrame><QrProductEditorScreen demo={session.demo} item={selectedQrProduct} onBack={() => setSubview('qr-products')} onSaved={setSelectedQrProduct} /></ScreenFrame>;
@@ -289,6 +339,13 @@ export default function AppIndex() {
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen project={creatorProject} products={creatorProducts} onSaveProject={saveProject} onSaveProduct={saveCreatorProduct} onUpdateProduct={saveCreatorProductUpdate} onDeleteProduct={removeCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
   if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={openCollaboration} /></ScreenFrame>;
   if (subview === 'recommendation' && selectedRecommendation) return <ScreenFrame><RecommendationScreen item={selectedRecommendation} demo={session.demo} onBack={() => setSubview(null)} onOpenCollaboration={openCollaboration} /></ScreenFrame>;
+  if (subview === 'collaboration' && !selectedCollaboration && noticeCollaborationId) return <ScreenFrame>
+    <Header title="협업 대화" back={() => setSubview('notifications')} />
+    {noticeCollaborationError ? <View style={{ flex: 1, padding: 20 }}>
+      <Empty title="협업 대화를 열 수 없어요" description={noticeCollaborationError} />
+      <Button label="다시 시도" variant="secondary" onPress={() => openNoticeCollaboration(noticeCollaborationId)} />
+    </View> : <ActivityIndicator accessibilityLabel="협업 대화를 불러오고 있어요" color={colors.brand} style={{ marginTop: 40 }} />}
+  </ScreenFrame>;
   if (subview === 'collaboration' && selectedCollaboration) {
     const draftKey = `${session.userId}:${selectedCollaboration.id}`;
     return <ScreenFrame><CollaborationDetailScreen key={draftKey} role={session.role} userId={session.userId} item={selectedCollaboration} demo={session.demo}
@@ -297,7 +354,7 @@ export default function AppIndex() {
         ...current,
         [draftKey]: typeof next === 'function' ? next(current[draftKey] ?? '') : next,
       }))}
-      onBack={() => setSubview(null)} onOpenQr={session.role === 'store' && !session.demo ? () => { setQrParent('collaboration'); setSubview('qr-products'); } : undefined}
+      onBack={() => setSubview(noticeCollaborationId ? 'notifications' : null)} onOpenQr={session.role === 'store' && !session.demo ? () => { setQrParent('collaboration'); setSubview('qr-products'); } : undefined}
       onUpdated={updated => {
         setSelectedCollaboration(updated);
         if (session.demo) setDemoCollaborations(current => current.map(item => item.id === updated.id ? updated : item));

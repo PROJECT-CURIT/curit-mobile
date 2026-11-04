@@ -384,7 +384,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     setTermsBusy(true); setNotice('');
     try {
       const [list, items, conversation] = await Promise.all([
-        loadCollaborations(role), loadCollaborationItems(item), loadCollaborationMessages(item.id),
+        loadCollaborations(role, item.id), loadCollaborationItems(item), loadCollaborationMessages(item.id),
       ]);
       const updated = list.find(value => value.id === item.id);
       if (!updated) throw new Error('협업을 다시 열어 주세요.');

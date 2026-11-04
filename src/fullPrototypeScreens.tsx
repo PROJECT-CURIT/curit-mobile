@@ -445,7 +445,7 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
   </KeyboardAvoidingView>;
 }
 
-export function NotificationsScreen({ onBack, onOpenOrder, demo = false }: { onBack: () => void; onOpenOrder?: (id: string) => void; demo?: boolean }) {
+export function NotificationsScreen({ onBack, onOpenOrder, onOpenCollaboration, demo = false }: { onBack: () => void; onOpenOrder?: (id: string) => void; onOpenCollaboration: (id: string) => void; demo?: boolean }) {
   const [items, setItems] = useState<AppNotification[]>(demo ? [
     { id: 'demo-notification-1', title: '유리 정원의 오후 제안이 도착했습니다', body: '권아영 작가가 전시 기간과 작품 구성을 제안했습니다.', kind: 'collaboration', entityId: 'demo-incoming', read: false, createdAt: '2026-11-02T02:20:00.000Z' },
     { id: 'demo-notification-2', title: '종이 위의 산책 판매가 승인되었습니다', body: '현장 수령 주문 1건의 상품 전달을 확인해 주세요.', kind: 'order', entityId: 'demo-order-paper', read: false, createdAt: '2026-11-01T08:40:00.000Z' },
@@ -453,6 +453,12 @@ export function NotificationsScreen({ onBack, onOpenOrder, demo = false }: { onB
   ] : []);
   const [loading, setLoading] = useState(!demo);
   const [notice, setNotice] = useState('');
+  const opening = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   useEffect(() => {
     if (demo) return;
     let active = true;
@@ -460,15 +466,38 @@ export function NotificationsScreen({ onBack, onOpenOrder, demo = false }: { onB
     return () => { active = false; };
   }, [demo]);
   const open = async (item: AppNotification) => {
+    if (opening.current) return;
+    opening.current = true;
+    setNotice('');
     try {
       if (!item.read) {
         if (!demo) await markNotificationRead(item.id);
+        if (!mounted.current) return;
         setItems(current => current.map(value => value.id === item.id ? { ...value, read: true } : value));
       }
       if (item.orderId) onOpenOrder?.(item.orderId);
-    } catch (error) { setNotice(friendlyError(error)); }
+      else if (item.kind === 'collaboration' && item.entityId) onOpenCollaboration(item.entityId);
+    } catch (error) { if (mounted.current) setNotice(friendlyError(error)); }
+    finally { opening.current = false; }
   };
-  return <View style={f.flex}><Header title="내 소식" back={onBack} /><ScrollView contentContainerStyle={f.notificationList}>{loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => <Pressable key={item.id} accessibilityRole="button" style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}><View style={[f.dot, item.read && f.dotRead]} /><View style={f.flex}><CuritText weight="semibold">{item.title}</CuritText><CuritText style={f.description}>{item.body}</CuritText><CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText></View></Pressable>) : <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." />}{notice ? <Notice text={notice} /> : null}</ScrollView></View>;
+  return <View style={f.flex}>
+    <Header title="내 소식" back={onBack} />
+    <ScrollView contentContainerStyle={f.notificationList}>
+      {notice ? <Notice text={notice} /> : null}
+      {loading ? <ActivityIndicator color={colors.brand} /> : items.length ? items.map(item => {
+        const destination = item.orderId && onOpenOrder ? '주문 상세 열기' : item.kind === 'collaboration' && item.entityId ? '협업 대화 열기' : undefined;
+        return <Pressable key={item.id} accessibilityRole="button" accessibilityHint={destination} style={[f.notification, !item.read && f.notificationUnread]} onPress={() => { void open(item); }}>
+          <View style={[f.dot, item.read && f.dotRead]} />
+          <View style={f.flex}>
+            <CuritText weight="semibold">{item.title}</CuritText>
+            <CuritText style={f.description}>{item.body}</CuritText>
+            <CuritText style={f.hint}>{new Date(item.createdAt).toLocaleString('ko-KR')}</CuritText>
+          </View>
+          {destination ? <View style={{ justifyContent: 'center' }}><Icon name="chevron" size={16} color={colors.muted} /></View> : null}
+        </Pressable>;
+      }) : !notice ? <Empty title="새 소식이 없습니다" description="협업 제안과 상태 변경 소식이 여기에 표시됩니다." /> : null}
+    </ScrollView>
+  </View>;
 }
 
 export function SocialFeedSection({ canPost = false, demo = false, currentUserName = '권아영' }: { canPost?: boolean; demo?: boolean; currentUserName?: string }) {

@@ -378,17 +378,22 @@ export async function createCollaborationProposal(recommendation: MatchRecommend
   return collaborationId;
 }
 
-export async function loadCollaborations(role: Role): Promise<CollaborationSummary[]> {
+export async function loadCollaborations(role: Role, id?: string, signal?: AbortSignal): Promise<CollaborationSummary[]> {
   const supabase = getSupabase();
-  const result = await supabase.from('collaborations').select('id, project_id, store_id, creator_id, status, starts_on, ends_on, creator_share_percent, store_share_percent, platform_share_percent, terms, updated_at').order('updated_at', { ascending: false });
+  const query = supabase.from('collaborations').select('id, project_id, store_id, creator_id, status, starts_on, ends_on, creator_share_percent, store_share_percent, platform_share_percent, terms, updated_at').order('updated_at', { ascending: false });
+  if (id) query.eq('id', id);
+  if (signal) query.abortSignal(signal);
+  const result = await query;
   if (result.error) throw new Error(result.error.message);
   const rows = result.data ?? [];
   if (!rows.length) return [];
-  const [projectsResult, storesResult, creatorsResult] = await Promise.all([
+  const relatedQueries = [
     supabase.from('projects').select('id, title').in('id', [...new Set(rows.map(row => String(row.project_id)))]),
     supabase.from('store_profiles').select('id, name').in('id', [...new Set(rows.map(row => String(row.store_id)))]),
     supabase.from('profiles').select('id, display_name').in('id', [...new Set(rows.map(row => String(row.creator_id)))]),
-  ]);
+  ] as const;
+  if (signal) for (const related of relatedQueries) related.abortSignal(signal);
+  const [projectsResult, storesResult, creatorsResult] = await Promise.all(relatedQueries);
   if (projectsResult.error || storesResult.error || creatorsResult.error) throw new Error(projectsResult.error?.message ?? storesResult.error?.message ?? creatorsResult.error?.message ?? '협업 정보를 불러오지 못했습니다.');
   const projectNames = new Map((projectsResult.data ?? []).map(row => [String(row.id), String(row.title)]));
   const storeNames = new Map((storesResult.data ?? []).map(row => [String(row.id), String(row.name)]));
