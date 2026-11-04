@@ -27,6 +27,7 @@ export default function AppIndex() {
   const [pendingStoreOnboarding, setPendingStoreOnboarding] = useState<StoreOnboarding | null>(null);
   const [tab, setTab] = useState<TabKey>('home');
   const [discoverVisited, setDiscoverVisited] = useState(false);
+  const [pickupFromSales, setPickupFromSales] = useState(false);
   const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-preferences' | 'verification' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | 'recommendation' | null>(null);
   const [selectedRecommendation, setSelectedRecommendation] = useState<MatchRecommendation | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
@@ -87,18 +88,19 @@ export default function AppIndex() {
 
   useEffect(() => {
     if (!session || session.demo) return;
-    void registerNativePush().catch(() => undefined);
+    void registerNativePush(session.userId).catch(() => undefined);
   }, [session]);
 
+  const pushUser = session && !session.demo ? session.userId : null;
   const pushRole = session && !session.demo ? session.role : null;
   useEffect(() => {
-    if (!pushRole) return;
-    const subscription = addPushResponseListener(data => {
-      if (data.kind === 'order' && pushRole === 'store') setSubview('pickup');
+    if (!pushRole || !pushUser) return;
+    const subscription = addPushResponseListener(pushUser, data => {
+      if (data.kind === 'order' && pushRole === 'store') { setPickupFromSales(false); setSubview('pickup'); }
       else setSubview('notifications');
     });
     return () => subscription.remove();
-  }, [pushRole]);
+  }, [pushRole, pushUser]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -106,7 +108,9 @@ export default function AppIndex() {
       if (subview === 'creator-project-edit' || subview === 'store-edit' || (!session && authView === 'store-signup')) return false;
       if (subview) {
         if (subview === 'creator-dna' && creatorOnboardingFlow) setCreatorOnboardingFlow(false);
-        const parentSubview = subview === 'creator-profile-edit'
+        const parentSubview = subview === 'pickup' && pickupFromSales
+          ? 'settlements'
+          : subview === 'creator-profile-edit'
           ? 'creator-profile'
           : subview === 'qr-editor'
               ? 'qr-products'
@@ -127,7 +131,7 @@ export default function AppIndex() {
       return false;
     });
     return () => subscription.remove();
-  }, [authView, creatorOnboardingFlow, session, storePreferencesParent, subview, tab]);
+  }, [authView, creatorOnboardingFlow, pickupFromSales, session, storePreferencesParent, subview, tab]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -173,7 +177,7 @@ export default function AppIndex() {
 
   const logout = async () => {
     const wasDemo = session?.demo;
-    if (!wasDemo && isSupabaseConfigured) await deactivateNativePush().catch(() => undefined);
+    if (session && !wasDemo && isSupabaseConfigured) await deactivateNativePush(session.userId).catch(() => undefined);
     setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setDiscoverVisited(false); setTab('home'); setSubview(null);
     if (!wasDemo && isSupabaseConfigured) await signOut();
   };
@@ -264,11 +268,11 @@ export default function AppIndex() {
   if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen demo={session.demo} userId={session.userId} onBack={() => { if (!session.demo) void hydrateStore(session.userId); setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null); }} /></ScreenFrame>;
   if (subview === 'verification') return <ScreenFrame><VerificationScreen kind={session.role === 'creator' ? 'creator_activity' : 'store_operation'} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
-  if (subview === 'account') return <ScreenFrame><AccountSettingsScreen email={session.email} role={session.role} demo={session.demo} onBack={() => setSubview(null)} onResetPassword={() => requestPasswordReset(session.email)} onLogout={logout} /></ScreenFrame>;
+  if (subview === 'account') return <ScreenFrame><AccountSettingsScreen userId={session.userId} email={session.email} role={session.role} demo={session.demo} onBack={() => setSubview(null)} onResetPassword={() => requestPasswordReset(session.email)} onLogout={logout} /></ScreenFrame>;
   if (subview === 'qr-products') return <ScreenFrame><QrProductsScreen demo={session.demo} onBack={() => setSubview(null)} onSelect={item => { setSelectedQrProduct(item); setSubview('qr-editor'); }} /></ScreenFrame>;
   if (subview === 'qr-editor' && selectedQrProduct) return <ScreenFrame><QrProductEditorScreen demo={session.demo} item={selectedQrProduct} onBack={() => setSubview('qr-products')} onSaved={setSelectedQrProduct} /></ScreenFrame>;
-  if (subview === 'pickup') return <ScreenFrame><PickupScreen demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
-  if (subview === 'settlements') return <ScreenFrame><SettlementScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onOpenCollaboration={id => { void openCollaboration(id).catch(error => Alert.alert('협업 대화를 열 수 없어요', friendlyError(error))); }} /></ScreenFrame>;
+  if (subview === 'pickup') return <ScreenFrame><PickupScreen demo={session.demo} onBack={() => setSubview(pickupFromSales ? 'settlements' : null)} /></ScreenFrame>;
+  if (subview === 'settlements') return <ScreenFrame><SettlementScreen role={session.role} demo={session.demo} onOpenPickup={session.role === 'store' ? () => { setPickupFromSales(true); setSubview('pickup'); } : undefined} onBack={() => setSubview(null)} onOpenCollaboration={id => { void openCollaboration(id).catch(error => Alert.alert('협업 대화를 열 수 없어요', friendlyError(error))); }} /></ScreenFrame>;
   if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen project={creatorProject} products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
   if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen project={creatorProject} products={creatorProducts} onSaveProject={saveProject} onSaveProduct={saveCreatorProduct} onUpdateProduct={saveCreatorProductUpdate} onDeleteProduct={removeCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
   if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={openCollaboration} /></ScreenFrame>;
@@ -285,7 +289,7 @@ export default function AppIndex() {
   }} onOpenRecommendation={item => { setSelectedRecommendation(item); setSubview('recommendation'); }} onOpenCollaboration={showCollaboration} />
     : tab === 'discover' ? null
     : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} demoItems={session.demo ? demoCollaborations : undefined} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={showCollaboration} />
-    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenPickup={() => setSubview('pickup')} onOpenProject={() => setSubview('creator-project')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={showCollaboration} />
+    : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenPickup={() => { setPickupFromSales(false); setSubview('pickup'); }} onOpenProject={() => setSubview('creator-project')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={showCollaboration} />
     : <MyScreen role={session.role} displayName={session.displayName} onOpenProject={() => setSubview('creator-project')} onOpenProfile={() => setSubview('creator-profile')} onOpenDna={() => setSubview('creator-dna')} onOpenStore={() => setSubview('store-profile')} onOpenPreferences={() => { setStorePreferencesParent('home'); setSubview('store-preferences'); }} onOpenVerification={() => setSubview('verification')} onOpenNotifications={() => setSubview('notifications')} onOpenAccount={() => setSubview('account')} />;
 
   return <ScreenFrame footer={<BottomNav role={session.role} active={tab} onChange={next => {

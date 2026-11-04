@@ -7,7 +7,7 @@ import { Button, Chip, CuritText, Empty, Field, Header, Icon, SectionTitle } fro
 import { colors, fonts, radius } from './theme';
 import { images, projects, stores } from './data';
 import { loadCollaborations, loadMatchRecommendations } from './curation';
-import { friendlyError, issueQrListing, loadManagedQrProducts, loadSettlements, type SettlementEntry } from './platform';
+import { friendlyError, issueQrListing, loadManagedOrders, loadManagedQrProducts, loadSettlements, type ManagedOrder, type SettlementEntry } from './platform';
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role } from './types';
 import { demoCollaborationList } from './demoContent';
 import { loadFieldSaleProducts } from './fieldSaleCatalog';
@@ -316,7 +316,7 @@ function StoreManagement({ demo, onOpenQr, onOpenPickup, onOpenSettlements, onOp
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
   return <View style={s.flex}><Header title="매장 관리" /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 확인" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="전시 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
-    <View style={s.commerceStrip}><Metric value={summary.loading ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="이번 달 판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View>
+    <View style={s.commerceStrip}><Metric value={summary.loading ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="누적 판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View>
     <View style={s.quickGrid}><QuickAction icon="qr" label="QR 상품 관리" description="가격·수량·판매 상태" onPress={onOpenQr} /><QuickAction icon="store" label="수령 관리" description="예약·즉시 수령 전달" onPress={onOpenPickup} /><QuickAction icon="management" label="판매·정산" description="주문·정산 내역" onPress={onOpenSettlements} /></View><SectionTitle title="협업·전시 현황" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="store" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 전시가 없습니다" description="AI 추천에서 작품을 선택해 협업 제안을 보내보세요." />}
   </ScrollView></View>;
 }
@@ -340,26 +340,79 @@ function settlementScheduleLabel(entry: SettlementEntry) {
   return entry.scheduledFor ? `${entry.scheduledFor} 정산 예정` : '정산일 확인 중';
 }
 
-export function SettlementScreen({ role, demo, onBack, onOpenCollaboration }: { role: Role; demo?: boolean; onBack: () => void; onOpenCollaboration?: (id: string) => void }) {
+export function SettlementScreen({ role, demo, onBack, onOpenCollaboration, onOpenPickup }: { role: Role; demo?: boolean; onBack: () => void; onOpenCollaboration?: (id: string) => void; onOpenPickup?: () => void }) {
   const [entries, setEntries] = useState<SettlementEntry[]>(demo ? demoSettlements : []);
+  const [sales, setSales] = useState<{ orders: ManagedOrder[]; collaborations: CollaborationSummary[] } | null>(null);
+  const [salesError, setSalesError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [section, setSection] = useState<'sales' | 'settlements'>(role === 'store' ? 'sales' : 'settlements');
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<SettlementFilter>('전체');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   useEffect(() => {
     if (demo) return;
-    void loadSettlements().then(setEntries).catch(caught => setError(friendlyError(caught))).finally(() => setLoading(false));
-  }, [demo]);
-  const total = entries.filter(entry => !['cancelled', 'held'].includes(entry.status)).reduce((sum, entry) => sum + (role === 'creator' ? entry.creatorAmount : entry.storeAmount), 0);
+    let active = true;
+    void loadSettlements()
+      .then(value => { if (active) setEntries(value); })
+      .catch(caught => { if (active) setError(friendlyError(caught)); })
+      .finally(() => { if (active) setLoading(false); });
+    if (role === 'store') {
+      void Promise.all([loadManagedOrders(), loadCollaborations('store')])
+        .then(([orders, collaborations]) => { if (active) setSales({ orders, collaborations }); })
+        .catch(caught => { if (active) setSalesError(friendlyError(caught)); });
+    }
+    return () => { active = false; };
+  }, [attempt, demo, role]);
+  const reload = () => {
+    setLoading(true); setError(''); setSales(null); setSalesError('');
+    setAttempt(value => value + 1);
+  };
+  const pending = entries.filter(entry => entry.status === 'scheduled' || entry.status === 'ready');
+  const paid = entries.filter(entry => entry.status === 'paid');
+  const share = (entry: SettlementEntry) => role === 'creator' ? entry.creatorAmount : entry.storeAmount;
+  const expected = pending.reduce((sum, entry) => sum + share(entry), 0);
+  const completed = paid.reduce((sum, entry) => sum + share(entry), 0);
+  const entriesByOrder = new Map(entries.map(entry => [entry.orderId, entry]));
+  const titles = new Map(sales?.collaborations.map(item => [item.id, item.projectTitle]));
+  const exhibitions = new Map<string, { title: string; quantity: number; expected: number }>();
+  let quantity = 0;
+  for (const order of sales?.orders ?? []) {
+    const entry = entriesByOrder.get(order.id);
+    const id = entry?.collaborationId ?? order.listingId;
+    const exhibit = exhibitions.get(id) ?? {
+      title: titles.get(id) ?? order.productName,
+      quantity: 0,
+      expected: 0,
+    };
+    exhibit.quantity += order.quantity;
+    if (entry?.status === 'scheduled' || entry?.status === 'ready') exhibit.expected += entry.storeAmount;
+    exhibitions.set(id, exhibit);
+    quantity += order.quantity;
+  }
+  if (demo && role === 'store') {
+    exhibitions.set('demo', { title: '흙의 기억', quantity: 1, expected });
+    quantity = 1;
+  }
   const visible = entries.filter(entry => filter === '전체'
     || (filter === '정산 대기' && ['scheduled', 'ready'].includes(entry.status))
     || (filter === '정산 완료' && entry.status === 'paid')
     || (filter === '보류·취소' && ['held', 'cancelled'].includes(entry.status)));
-  return <View style={s.flex}><Header title="판매·정산" subtitle="주문별 판매대금과 정산 일정" back={onBack} /><ScrollView contentContainerStyle={s.scroll}>
-    <View style={s.settlementSummary}><CuritText style={s.muted}>예정·완료 정산 합계</CuritText><CuritText weight="bold" style={s.settlementTotal}>{money(total)}</CuritText><CuritText style={s.gridMeta}>구매 취소와 보류 건은 합계에서 제외됩니다.</CuritText></View>
+  return <View style={s.flex}><Header title="판매·정산" subtitle={role === 'creator' ? '주문별 판매대금과 정산 일정' : undefined} back={onBack} action={onOpenPickup ? <Pressable accessibilityRole="button" accessibilityLabel="주문 · 수령 열기" style={s.salesHeaderAction} onPress={onOpenPickup}><Icon name="store" size={19} color={colors.brand} /></Pressable> : undefined} /><ScrollView contentContainerStyle={s.scroll}>
+    <View style={s.settlementSummary}><CuritText style={s.muted}>{role === 'store' ? '매장 정산 예정' : '예정·완료 정산 합계'}</CuritText><CuritText weight="bold" style={s.settlementTotal}>{loading || error ? '—' : money(role === 'store' ? expected : expected + completed)}</CuritText><CuritText style={s.gridMeta}>구매 취소와 보류 건은 합계에서 제외됩니다.</CuritText></View>
+    {role === 'store' ? <>
+      <View style={s.metricsBox}><Metric label="판매 수량" value={sales || demo ? `${quantity}개` : '—'} /><Metric label="정산 완료" value={loading || error ? '—' : money(completed)} /></View>
+      <View style={s.salesTabs} accessibilityRole="tablist">{([['sales', '전시별 판매'], ['settlements', '정산']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: section === value }} style={[s.salesTab, section === value && s.salesTabActive]} onPress={() => setSection(value)}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? s.settingsValue : s.muted}>{label}</CuritText></Pressable>)}</View>
+    </> : null}
+    {section === 'sales' ? (
+      error || salesError ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error || salesError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={reload} /></View>
+        : !demo && (!sales || loading) ? <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
+          : exhibitions.size ? [...exhibitions].map(([id, exhibit]) => <View key={id} style={s.salesRow}><CuritText weight="semibold">{exhibit.title}</CuritText><CuritText style={s.gridMeta}>판매 {exhibit.quantity}개 · 매장 정산 예정 {money(exhibit.expected)}</CuritText></View>)
+            : <Empty title="전시 판매 내역이 없습니다" description="결제 완료된 주문이 생기면 전시별로 확인할 수 있어요." />
+    ) : <>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.settlementFilters}>{(['전체', '정산 대기', '정산 완료', '보류·취소'] as SettlementFilter[]).map(value => <Chip key={value} label={value} active={filter === value} onPress={() => setFilter(value)} />)}</ScrollView>
     {loading ? <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} /> : null}
-    {error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText></View> : null}
+    {error ? <View style={s.errorBox}><CuritText style={{ color: colors.danger }}>{error}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={reload} /></View> : null}
     {!loading && !error && visible.length === 0 ? <Empty title={entries.length ? '해당 상태의 정산이 없습니다' : '정산 내역이 없습니다'} description={entries.length ? '다른 정산 상태를 선택해 확인해 주세요.' : '주문이 완료되면 배분 금액을 이곳에서 확인할 수 있어요.'} /> : visible.map(entry => {
       const expanded = expandedId === entry.id;
       const status = entry.status === 'paid' ? '지급 완료' : entry.status === 'held' ? '보류' : entry.status === 'cancelled' ? '취소' : entry.status === 'ready' ? '지급 준비' : '정산 예정';
@@ -368,6 +421,7 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration }: { 
         {expanded ? <View style={s.settlementDetail}><SettlementLine label="총 결제액" value={money(entry.grossAmount)} /><SettlementLine label="크리에이터 배분" value={money(entry.creatorAmount)} /><SettlementLine label="매장 배분" value={money(entry.storeAmount)} /><SettlementLine label="플랫폼 수수료" value={money(entry.platformAmount)} />{entry.collaborationId && onOpenCollaboration ? <Button label="해당 협업 보기" variant="secondary" onPress={() => onOpenCollaboration(entry.collaborationId!)} /> : null}</View> : null}
       </View>;
     })}
+    </>}
   </ScrollView></View>;
 }
 
@@ -385,7 +439,7 @@ export function MyScreen({ role, displayName, onOpenProject, onOpenProfile, onOp
   </ScrollView></View>;
 }
 
-export function AccountSettingsScreen({ email, role, demo, onBack, onResetPassword, onLogout }: { email: string; role: Role; demo?: boolean; onBack: () => void; onResetPassword: () => Promise<void>; onLogout: () => void | Promise<void> }) {
+export function AccountSettingsScreen({ userId, email, role, demo, onBack, onResetPassword, onLogout }: { userId: string; email: string; role: Role; demo?: boolean; onBack: () => void; onResetPassword: () => Promise<void>; onLogout: () => void | Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [notificationsDenied, setNotificationsDenied] = useState(false);
@@ -396,7 +450,7 @@ export function AccountSettingsScreen({ email, role, demo, onBack, onResetPasswo
     const check = () => {
       void Notifications.getPermissionsAsync().then(permission => {
         if (!active) return;
-        if (wasDenied && permission.granted) void registerNativePush().catch(() => undefined);
+        if (wasDenied && permission.granted) void registerNativePush(userId).catch(() => undefined);
         wasDenied = permission.status === 'denied';
         setNotificationsDenied(wasDenied);
       }).catch(() => undefined);
@@ -404,7 +458,7 @@ export function AccountSettingsScreen({ email, role, demo, onBack, onResetPasswo
     check();
     const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); });
     return () => { active = false; subscription.remove(); };
-  }, [demo]);
+  }, [demo, userId]);
   const resetPassword = async () => {
     if (demo) { setNotice('둘러보기 계정에서는 비밀번호를 변경할 수 없습니다.'); return; }
     setBusy(true); setNotice('');
@@ -557,5 +611,10 @@ const s = StyleSheet.create({
   settingsValue: { color: colors.brand, fontSize: 12, marginRight: 6 },
   storeInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: 14 }, errorBox: { marginVertical: 14, backgroundColor: '#FFF2EF', borderRadius: radius.sm, padding: 13, gap: 5 }, errorHint: { color: colors.muted, fontSize: 11 },
   qrRow: { minHeight: 92, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }, qrImage: { width: 66, height: 66, borderRadius: radius.sm }, qrArrow: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, tokenText: { color: colors.subtle, fontSize: 9, maxWidth: 190 }, qrImagePlaceholder: { backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, qrProductHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }, imagePlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 7, padding: 8 },
+  salesHeaderAction: { minHeight: 44, width: 44, alignItems: 'center', justifyContent: 'center' },
+  salesTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  salesTab: { flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  salesTabActive: { borderBottomColor: colors.brand },
+  salesRow: { minHeight: 68, justifyContent: 'center', paddingVertical: 14, gap: 5, borderBottomWidth: 1, borderBottomColor: colors.border },
   settlementSummary: { backgroundColor: colors.brandPale, borderRadius: radius.lg, padding: 20, marginBottom: 12, gap: 5 }, settlementTotal: { fontSize: 25, color: colors.brand }, settlementFilters: { gap: 8, paddingVertical: 8, paddingRight: 20 }, settlementCard: { borderBottomWidth: 1, borderBottomColor: colors.border }, settlementRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12 }, settlementDetail: { backgroundColor: colors.brandPale, borderRadius: radius.md, padding: 14, gap: 10, marginBottom: 14 }, settlementLine: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
 });
