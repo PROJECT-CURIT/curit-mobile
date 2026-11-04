@@ -14,6 +14,7 @@ import { colors } from '../theme';
 import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role, Session, TabKey } from '../types';
 import { demoCollaboration, demoCollaborationList, demoProposalCollaboration, demoStoreOnboarding } from '../demoContent';
+import type { ExhibitionPeriod } from '../exhibitionPeriod';
 
 type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
 
@@ -285,11 +286,11 @@ export default function AppIndex() {
     setSubview('collaboration');
   };
 
-  const openCollaboration = async (id: string) => {
+  const openCollaboration = async (id: string, period?: ExhibitionPeriod) => {
     if (!session) throw new Error('로그인이 필요합니다.');
     if (session.demo) {
       const next = id === 'demo-proposal'
-        ? demoProposalCollaboration(session.role)
+        ? { ...demoProposalCollaboration(session.role), ...period }
         : demoCollaborations.find(item => item.id === id) ?? demoCollaboration(session.role);
       if (id === 'demo-proposal') setDemoCollaborations(current => [next, ...current.filter(item => item.id !== next.id)]);
       setTab('chat');

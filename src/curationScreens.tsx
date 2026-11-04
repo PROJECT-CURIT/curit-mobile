@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import {
   createCollaborationProposal,
@@ -17,11 +17,12 @@ import {
 import { SocialFeedSection } from './fullPrototypeScreens';
 import { projects } from './data';
 import { demoCollaborationList, nextDemoCollaborationStatus } from './demoContent';
+import { exhibitionPeriodError, formatExhibitionDateInput, suggestedExhibitionPeriod, type ExhibitionPeriod } from './exhibitionPeriod';
 import { friendlyError } from './platform';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
 import type { CreatorDirectoryEntry } from './curation';
-import { Button, Chip, CuritText, Empty, Header, Icon } from './ui';
+import { Button, Chip, CuritText, Empty, Field, Header, Icon, ScreenFrame } from './ui';
 
 const statusLabel: Record<CollaborationSummary['status'], string> = {
   proposed: '승인 대기', negotiating: '조건 조율 중', approved: '매장 최종 확인', active: '전시·판매 중', completed: '협업 완료', cancelled: '취소',
@@ -83,7 +84,7 @@ async function loadDiscoverResults<T>(request: Promise<T>) {
   finally { clearTimeout(timer); }
 }
 
-export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string) => Promise<void> }) {
+export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string, period?: ExhibitionPeriod) => Promise<void> }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -133,13 +134,13 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   const visibleDirectoryProjects = directoryProjects.filter(item => [item.title, item.artist, item.region, ...item.tags].join(' ').toLocaleLowerCase('ko-KR').includes(query.trim().toLocaleLowerCase('ko-KR')));
   const toggleDna = (value: string) => setDnaFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
   const resetFilters = () => { setRegion('전체'); setDnaFilters([]); };
-  const propose = async (item: MatchRecommendation) => {
+  const propose = async (item: MatchRecommendation, period?: ExhibitionPeriod) => {
     if (busy) return;
     setBusy(item.targetId); setNotice('');
     try {
-      if (demo) { await onProposalCreated('demo-proposal'); return; }
+      if (demo) { await onProposalCreated(item.collaborationId || 'demo-proposal', period); return; }
       if (item.collaborationId) { setNotice('이미 진행 중인 협업으로 이동합니다.'); await onProposalCreated(item.collaborationId); return; }
-      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`);
+      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`, period);
       setNotice('협업 제안을 보냈습니다. 채팅에서 승인 상태를 확인할 수 있어요.');
       if (id) await onProposalCreated(id);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(''); }
@@ -166,7 +167,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
       </> : null}
       <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">조건 일치도는 등록 정보 기준 참고 점수예요</CuritText><CuritText style={c.pinCaption}>취향 키워드·지역·판매 재고·전시 구역을 반영하며, 판매가는 예산과 따로 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
-      {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : matchError ? <View style={c.error}><CuritText style={c.errorText}>{matchError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={() => { setLoading(true); setMatchError(''); setMatchAttempt(value => value + 1); }} /></View> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={() => { void propose(item); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
+      {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : matchError ? <View style={c.error}><CuritText style={c.errorText}>{matchError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={() => { setLoading(true); setMatchError(''); setMatchAttempt(value => value + 1); }} /></View> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={period => { void propose(item, period); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
       {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
       </>}
     </ScrollView>
@@ -191,7 +192,7 @@ function demoWelcome(role: Role): CuratorMessage {
   };
 }
 
-export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role: Role; demo?: boolean; onBack: () => void; onProposalCreated: (id: string) => Promise<void> }) {
+export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role: Role; demo?: boolean; onBack: () => void; onProposalCreated: (id: string, period?: ExhibitionPeriod) => Promise<void> }) {
   const scrollRef = useRef<ScrollViewInstance>(null);
   const [messages, setMessages] = useState<CuratorMessage[]>(demo ? [demoWelcome(role)] : []);
   const [input, setInput] = useState('');
@@ -232,13 +233,13 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setSending(false); }
   };
 
-  const propose = async (item: MatchRecommendation) => {
+  const propose = async (item: MatchRecommendation, period?: ExhibitionPeriod) => {
     if (proposalTarget) return;
     setProposalTarget(item.targetId); setNotice('');
     try {
       if (demo) {
         setNotice('협업 조건을 확인할 수 있는 대화방으로 이동합니다.');
-        await onProposalCreated('demo-proposal');
+        await onProposalCreated(item.collaborationId || 'demo-proposal', period);
         return;
       }
       if (item.collaborationId) {
@@ -246,7 +247,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
         await onProposalCreated(item.collaborationId);
         return;
       }
-      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다. 조건 일치도 ${item.score}점과 추천 이유를 확인했습니다.`);
+      const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다. 조건 일치도 ${item.score}점과 추천 이유를 확인했습니다.`, period);
       setNotice('협업 제안을 보냈습니다. 상대방 승인 후 다음 단계가 열립니다.');
       if (id) await onProposalCreated(id);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setProposalTarget(''); }
@@ -261,7 +262,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
           {message.sender === 'assistant' ? <View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View> : null}
           <View style={[c.bubble, message.sender === 'user' ? c.userBubble : c.aiBubble]}><CuritText style={message.sender === 'user' ? c.userText : undefined}>{message.content}</CuritText></View>
         </View>
-        {message.recommendations.map(item => <RecommendationCard key={`${message.id}-${item.targetId}`} item={item} busy={proposalTarget === item.targetId} onPropose={() => { void propose(item); }} />)}
+        {message.recommendations.map(item => <RecommendationCard key={`${message.id}-${item.targetId}`} item={item} busy={proposalTarget === item.targetId} onPropose={period => { void propose(item, period); }} />)}
         {message.actions.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.actionRow}>{message.actions.map(action => <Chip key={action} label={action} onPress={() => { void submit(action); }} />)}</ScrollView> : null}
       </View>)}
       {sending ? <View style={c.typing}><ActivityIndicator size="small" color={colors.brand} /><CuritText style={c.muted}>등록 데이터와 조건을 비교하고 있어요…</CuritText></View> : null}
@@ -278,17 +279,17 @@ export function RecommendationScreen({ item, demo, onBack, onOpenCollaboration }
   item: MatchRecommendation;
   demo?: boolean;
   onBack: () => void;
-  onOpenCollaboration: (id: string) => Promise<void>;
+  onOpenCollaboration: (id: string, period?: ExhibitionPeriod) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const propose = async () => {
+  const propose = async (period?: ExhibitionPeriod) => {
     if (busy) return;
     setBusy(true); setError('');
     try {
-      const id = demo ? 'demo-proposal' : item.collaborationId || await createCollaborationProposal(item, `${item.title} 전시 협업을 제안합니다.`);
-      await onOpenCollaboration(id);
+      const id = item.collaborationId || (demo ? 'demo-proposal' : await createCollaborationProposal(item, `${item.title} 전시 협업을 제안합니다.`, period));
+      await onOpenCollaboration(id, period);
     } catch (caught) {
       setError(friendlyError(caught));
     } finally {
@@ -299,13 +300,23 @@ export function RecommendationScreen({ item, demo, onBack, onOpenCollaboration }
   return <View style={c.flex}>
     <Header title={item.targetType === 'project' ? '추천 작품' : '추천 공간'} subtitle="추천 이유와 협업 조건" back={onBack} />
     <ScrollView contentContainerStyle={c.discoverScroll}>
-      <RecommendationCard item={item} busy={busy} inset={false} onPropose={() => { void propose(); }} />
+      <RecommendationCard item={item} busy={busy} inset={false} onPropose={period => { void propose(period); }} />
       {error ? <View style={c.error}><CuritText accessibilityRole="alert" style={c.errorText}>{error}</CuritText></View> : null}
     </ScrollView>
   </View>;
 }
 
-function RecommendationCard({ item, busy, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; onPropose: () => void; inset?: boolean }) {
+function RecommendationCard({ item, busy, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; onPropose: (period?: ExhibitionPeriod) => void; inset?: boolean }) {
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [period, setPeriod] = useState<ExhibitionPeriod>(suggestedExhibitionPeriod);
+  const submitting = useRef(false);
+  const closeProposal = () => { Keyboard.dismiss(); setProposalOpen(false); };
+  const submitProposal = () => {
+    if (busy || submitting.current || exhibitionPeriodError(period)) return;
+    submitting.current = true;
+    closeProposal();
+    onPropose(period);
+  };
   return <View style={[c.recommendation, !inset && c.recommendationWide]}>
     {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
     <View style={c.recommendationBody}>
@@ -314,8 +325,33 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
       <View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
-      <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy} onPress={onPropose} />
+      <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy} onPress={() => {
+        if (item.collaborationId) onPropose();
+        else { submitting.current = false; setProposalOpen(true); }
+      }} />
     </View>
+    {proposalOpen ? <Modal animationType="slide" onRequestClose={closeProposal}>
+      <ScreenFrame>
+        <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Header title="협업 제안" back={closeProposal} />
+          <ScrollView contentContainerStyle={c.proposalScroll} keyboardShouldPersistTaps="handled">
+            <CuritText weight="bold" style={c.directoryTitle}>{item.title}</CuritText>
+            <CuritText style={c.muted}>희망 기간을 확인한 뒤 제안을 보내 주세요.</CuritText>
+            <ExhibitionPeriodFields period={period} onChange={setPeriod} />
+            <Button label="협업 제안 보내기" disabled={busy || Boolean(exhibitionPeriodError(period))} onPress={submitProposal} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </ScreenFrame>
+    </Modal> : null}
+  </View>;
+}
+
+function ExhibitionPeriodFields({ period, onChange, disabled }: { period: ExhibitionPeriod; onChange: (period: ExhibitionPeriod) => void; disabled?: boolean }) {
+  const error = period.startsOn.length === 10 && period.endsOn.length === 10 ? exhibitionPeriodError(period) : '';
+  return <View style={c.periodFields}>
+    <Field label="전시 시작 희망일" value={period.startsOn} onChangeText={value => onChange({ ...period, startsOn: formatExhibitionDateInput(value) })} placeholder="YYYY-MM-DD" keyboardType="number-pad" maxLength={10} editable={!disabled} />
+    <Field label="전시 종료 희망일" value={period.endsOn} onChangeText={value => onChange({ ...period, endsOn: formatExhibitionDateInput(value) })} placeholder="YYYY-MM-DD" keyboardType="number-pad" maxLength={10} editable={!disabled} />
+    {error ? <CuritText accessibilityLiveRegion="polite" style={c.errorText}>{error}</CuritText> : null}
   </View>;
 }
 
@@ -349,6 +385,11 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
   const currentStatus = item.status;
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [conditionsOpen, setConditionsOpen] = useState(false);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [period, setPeriod] = useState<ExhibitionPeriod>(() => ({
+    startsOn: item.startsOn ?? '', endsOn: item.endsOn ?? '',
+  }));
+  const [periodLocked, setPeriodLocked] = useState(false);
   const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
   const refreshMessages = async () => {
     if (demo) return;
@@ -373,8 +414,11 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
   const selectedItems = collaborationItems.filter(value => value.selected);
   const quantitiesFit = selectedItems.every(value => value.quantity <= Math.min(value.stock, 100_000));
   const supplyConfirmed = selectedItems.length > 0 && quantitiesFit && selectedItems.every(value => value.creatorConfirmed);
+  const periodPending = item.terms.scheduleNeedsReview === true;
   const isClosed = currentStatus === 'completed' || currentStatus === 'cancelled';
   const canEdit = role === 'store' && !isClosed && !termsBusy;
+  const canEditPeriod = role === 'store' && ['proposed', 'negotiating', 'approved'].includes(currentStatus) && !periodLocked;
+  const periodChanged = period.startsOn !== item.startsOn || period.endsOn !== item.endsOn;
   const updateItem = (id: string, change: Partial<Pick<CollaborationItem, 'selected' | 'quantity'>>) => {
     setEditing(true);
     setCollaborationItems(current => current.map(value => value.projectItemId === id ? { ...value, ...change, creatorConfirmed: false } : value));
@@ -391,29 +435,51 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
       applyItems(items);
       setZone(String(updated.terms.installationZone || '선반'));
       setTermNote(String(updated.terms.note || ''));
+      setPeriod({ startsOn: updated.startsOn ?? '', endsOn: updated.endsOn ?? '' });
       setMessages(conversation);
       onUpdated(updated);
       setEditing(false);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setTermsBusy(false); }
+  };
+  const savePeriod = async () => {
+    if (!canEditPeriod || termsBusy || !periodChanged || exhibitionPeriodError(period)) return;
+    setTermsBusy(true); setNotice('');
+    try {
+      const saved = demo
+        ? { ...period, terms: { ...item.terms, scheduleNeedsReview: true } }
+        : await saveCollaborationTerms(item.id, period, [], true);
+      onUpdated({ ...item, ...saved });
+      setPeriodOpen(false);
+      setNotice('전시 기간을 저장했어요. 크리에이터가 변경된 일정을 확인하면 전시를 확정할 수 있어요.');
+    } catch (caught) {
+      if (caught instanceof Error && caught.message === 'COLLABORATION_SCHEDULE_LOCKED') {
+        setPeriodLocked(true);
+        setPeriodOpen(false);
+      }
+      setNotice(friendlyError(caught));
+    } finally { setTermsBusy(false); }
   };
   const saveTerms = async (confirm = false) => {
     if (termsBusy || isClosed || !termsLoaded || !selectedItems.length || !quantitiesFit) return;
     const payload = confirm
       ? selectedItems.map(value => ({ ...value, creatorConfirmed: true }))
       : collaborationItems.filter(value => value.selected || savedSelection.includes(value.projectItemId));
-    const success = confirm ? '작품 구성과 수량을 확인했습니다.' : '협업 상품과 배치 조건을 저장했습니다.';
+    const success = confirm ? periodPending ? '전시 기간과 작품 수량을 확인했어요.' : '작품 구성과 수량을 확인했습니다.' : '협업 상품과 배치 조건을 저장했습니다.';
     if (demo) {
       applyItems(collaborationItems.map(value => confirm && value.selected ? { ...value, creatorConfirmed: true } : value));
+      if (confirm && periodPending) onUpdated({ ...item, terms: { ...item.terms, scheduleNeedsReview: false } });
       setEditing(false);
       setNotice(success);
       return;
     }
     setTermsBusy(true); setNotice('');
     try {
-      const terms = { ...item.terms, installationZone: zone, note: termNote.trim() };
-      await saveCollaborationTerms(item.id, terms, payload);
+      const terms = confirm
+        ? item.startsOn && item.endsOn ? { startsOn: item.startsOn, endsOn: item.endsOn } : {}
+        : { installationZone: zone, note: termNote.trim() };
+      const saved = await saveCollaborationTerms(item.id, terms, payload);
       setEditing(false);
-      if (!confirm) onUpdated({ ...item, terms });
+      onUpdated({ ...item, ...saved });
       applyItems(await loadCollaborationItems(item));
       setNotice(success);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setTermsBusy(false); }
@@ -432,7 +498,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     finally { messageInFlight.current = false; setBusy(false); }
   };
   const transition = async (action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete') => {
-    if (busy || termsBusy || (action === 'confirm' && (editing || !supplyConfirmed))) return;
+    if (busy || termsBusy || (action === 'confirm' && (editing || periodOpen || periodPending || !supplyConfirmed))) return;
     if (demo) {
       const nextStatus = nextDemoCollaborationStatus(currentStatus, action, role);
       if (nextStatus === currentStatus) { setNotice('현재 역할과 협업 단계에서는 이 상태로 변경할 수 없습니다.'); return; }
@@ -470,6 +536,15 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
         {summaryOpen ? <View style={c.summaryBody}>
           <CuritText style={c.muted}>{item.storeName} × {item.creatorName}</CuritText>
           <Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} />
+          {periodPending ? <CuritText style={c.flowHint}>{role === 'creator' ? '전시 기간이 변경됐어요. 최신 기간과 작품 수량을 함께 확인해 주세요.' : '변경된 전시 기간의 크리에이터 확인을 기다리고 있어요.'}</CuritText> : null}
+          {canEditPeriod ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: periodOpen }} style={c.conditionToggle} disabled={termsBusy} onPress={() => {
+            setPeriod({ startsOn: item.startsOn ?? '', endsOn: item.endsOn ?? '' });
+            setPeriodOpen(value => !value);
+          }}><CuritText weight="semibold" style={c.brandText}>{periodOpen ? '전시 기간 편집 닫기' : '전시 기간 편집'}</CuritText><CuritText style={c.brandText}>{periodOpen ? '−' : '＋'}</CuritText></Pressable> : null}
+          {canEditPeriod && periodOpen ? <View style={c.conditionBody}>
+            <ExhibitionPeriodFields period={period} onChange={setPeriod} disabled={termsBusy} />
+            <Button label={termsBusy ? '처리 중…' : '전시 기간 저장'} variant="secondary" disabled={termsBusy || !periodChanged || Boolean(exhibitionPeriodError(period))} onPress={() => { void savePeriod(); }} />
+          </View> : null}
           <CuritText style={c.flowHint}>{item.terms.initiatedBy === 'creator' ? '크리에이터 제안 → 작품 수량 확인 → 전시 확정·QR 발급' : '매장 제안 → 크리에이터 승인·수량 확인 → 전시 확정·QR 발급'}</CuritText>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: conditionsOpen }} style={c.conditionToggle} onPress={() => setConditionsOpen(value => !value)}><CuritText weight="semibold" style={c.brandText}>작품 수량·배치 조건 {conditionsOpen ? '접기' : '관리'}</CuritText><CuritText style={c.brandText}>{conditionsOpen ? '−' : '＋'}</CuritText></Pressable>
           {conditionsOpen ? <View style={c.conditionBody}>
@@ -507,11 +582,11 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
               <Term label="배치 위치" value={zone} />
               {termNote ? <CuritText style={c.muted}>{termNote}</CuritText> : null}
             </>}
-            {!isClosed && (role === 'store' || !supplyConfirmed) ? <Button label={termsBusy ? '처리 중…' : role === 'creator' ? '작품 구성·수량 확인' : '상품·배치 조건 저장'} disabled={termsBusy || !termsLoaded || !selectedItems.length || !quantitiesFit || (role === 'store' && !editing)} variant="secondary" onPress={() => { void saveTerms(role === 'creator'); }} /> : null}
+            {!isClosed && (role === 'store' || !supplyConfirmed || periodPending) ? <Button label={termsBusy ? '처리 중…' : role === 'creator' ? periodPending ? '전시 기간·작품 수량 확인' : '작품 구성·수량 확인' : '상품·배치 조건 저장'} disabled={termsBusy || !termsLoaded || !selectedItems.length || !quantitiesFit || (role === 'store' && !editing)} variant="secondary" onPress={() => { void saveTerms(role === 'creator'); }} /> : null}
           </View> : null}
           {role === 'store' && currentStatus === 'approved' && (!supplyConfirmed || editing) ? <CuritText style={c.flowHint}>{editing ? '변경한 작품과 수량을 먼저 저장해 주세요.' : '크리에이터가 선택한 작품의 수량을 확인하면 전시를 확정할 수 있어요.'}</CuritText> : null}
           {onOpenQr && currentStatus === 'active' ? <Button label="이 전시의 QR 상품 관리" onPress={onOpenQr} /> : null}
-          {actions.length ? <View style={c.actionButtons}>{actions.map(action => <View key={action.action} style={c.actionButton}><Button label={action.label} variant={action.primary ? 'primary' : 'secondary'} disabled={busy || termsBusy || (action.action === 'confirm' && (!supplyConfirmed || editing))} onPress={() => { void transition(action.action); }} /></View>)}</View> : null}
+          {actions.length ? <View style={c.actionButtons}>{actions.map(action => <View key={action.action} style={c.actionButton}><Button label={action.label} variant={action.primary ? 'primary' : 'secondary'} disabled={busy || termsBusy || (action.action === 'confirm' && (!supplyConfirmed || editing || periodOpen || periodPending))} onPress={() => { void transition(action.action); }} /></View>)}</View> : null}
           {!demo ? <Button label={editing ? '편집 취소' : '최신 조건 불러오기'} variant="secondary" disabled={termsBusy || busy} onPress={() => { void refreshTerms(); }} /> : null}
         </View> : null}
       </View>
@@ -528,6 +603,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
 function Term({ label, value }: { label: string; value: string }) { return <View style={c.termRow}><CuritText style={c.termLabel}>{label}</CuritText><CuritText weight="semibold" style={c.termValue}>{value}</CuritText></View>; }
 
 const c = StyleSheet.create({
+  proposalScroll: { padding: 20, gap: 14, paddingBottom: 32 }, periodFields: { gap: 10 },
   flex: { flex: 1 }, between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, muted: { color: colors.muted }, brandText: { color: colors.brand },
   hubScroll: { flexGrow: 1, padding: 20, paddingBottom: 36 }, curatorPin: { minHeight: 82, borderRadius: radius.lg, backgroundColor: colors.brandSoft, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }, curatorAvatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }, smallAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, pinCaption: { color: colors.muted, fontSize: 11, marginTop: 3 }, pinAction: { color: colors.brand, fontSize: 11 }, listHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 6 }, chatRow: { minHeight: 88, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }, contactAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, chatName: { fontSize: 16 }, chatProjectRow: { minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 }, project: { flexShrink: 1, color: colors.brand, fontSize: 11, marginVertical: 3 }, chatStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.brandSoft }, chatStatusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.brand }, chatStatusText: { color: colors.brand, fontSize: 9 }, time: { color: colors.subtle, fontSize: 9 }, loader: { marginVertical: 40 }, error: { padding: 14, borderRadius: radius.sm, backgroundColor: '#FFF2EF', marginVertical: 16 }, errorText: { color: colors.danger },
   chatScroll: { padding: 16, paddingBottom: 28, gap: 12 }, messageBlock: { gap: 10 }, bubbleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 }, bubbleRowUser: { justifyContent: 'flex-end' }, bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11 }, aiBubble: { backgroundColor: colors.brandPale, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: colors.brand, borderTopRightRadius: 4 }, userText: { color: colors.surface }, actionRow: { gap: 7, paddingLeft: 42, paddingBottom: 4 }, typing: { flexDirection: 'row', gap: 9, alignItems: 'center', marginLeft: 42 }, notice: { padding: 12, backgroundColor: colors.brandSoft, borderRadius: radius.sm },

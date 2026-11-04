@@ -365,12 +365,13 @@ export async function sendCuratorMessage(role: Role, content: string) {
   return [mapCuratorMessage(userInsert.data as Record<string, unknown>), mapCuratorMessage(assistantInsert.data as Record<string, unknown>)];
 }
 
-export async function createCollaborationProposal(recommendation: MatchRecommendation, message: string) {
+export async function createCollaborationProposal(recommendation: MatchRecommendation, message: string, period?: { startsOn: string; endsOn: string }) {
   if (recommendation.collaborationId) return recommendation.collaborationId;
   const result = await getSupabase().rpc('create_curit_proposal', {
     p_target_id: recommendation.targetId,
     p_target_kind: recommendation.targetType,
     p_message: message.trim(),
+    ...(period ? { p_starts_on: period.startsOn, p_ends_on: period.endsOn } : {}),
   });
   if (result.error) throw new Error(result.error.message);
   const collaborationId = String((result.data as { id?: string } | null)?.id || '');
@@ -445,13 +446,19 @@ export async function loadCollaborationItems(collaboration: Pick<CollaborationSu
   }));
 }
 
-export async function saveCollaborationTerms(collaborationId: string, terms: Record<string, unknown>, items: CollaborationItem[]) {
+export async function saveCollaborationTerms(collaborationId: string, terms: Record<string, unknown>, items: CollaborationItem[], notify = false) {
   const result = await getSupabase().rpc('save_curit_collaboration_terms', {
     p_collaboration_id: collaborationId,
     p_terms: terms,
     p_items: items.map(item => ({ projectItemId: item.projectItemId, quantity: item.quantity, selected: item.selected, creatorConfirmed: item.creatorConfirmed })),
   });
   if (result.error) throw new Error(result.error.message);
+  if (notify) void dispatchCollaborationPush(collaborationId).catch(() => undefined);
+  return {
+    startsOn: result.data.starts_on as string | null,
+    endsOn: result.data.ends_on as string | null,
+    terms: result.data.terms as Record<string, unknown>,
+  };
 }
 
 export async function loadCollaborationMessages(collaborationId: string): Promise<CollaborationMessage[]> {

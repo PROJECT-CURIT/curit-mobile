@@ -502,6 +502,10 @@ export function friendlyError(error: unknown) {
   if (/Password should be/i.test(raw)) return '비밀번호는 8자 이상으로 입력해 주세요.';
   if (raw === 'INVALID_COLLABORATION_QUANTITY') return '보유 수량 내에서 1개 이상으로 설정해 주세요.';
   if (raw === 'COLLABORATION_QUANTITY_CHANGED') return '제안한 작품이나 수량이 바뀌었어요. 최신 조건을 불러온 뒤 다시 확인해 주세요.';
+  if (raw === 'INVALID_EXHIBITION_DATES') return '종료일은 시작일보다 뒤인 실제 날짜로 입력해 주세요.';
+  if (raw === 'COLLABORATION_SCHEDULE_CHANGED') return '전시 기간이 바뀌었어요. 최신 조건을 불러온 뒤 다시 확인해 주세요.';
+  if (raw === 'COLLABORATION_SCHEDULE_UNCONFIRMED') return '크리에이터가 변경된 전시 기간을 확인하면 전시를 확정할 수 있어요.';
+  if (raw === 'COLLABORATION_SCHEDULE_LOCKED') return 'QR이 발급됐거나 전시가 확정되어 기간을 바꿀 수 없어요.';
   if (raw === 'COLLABORATION_SUPPLY_UNCONFIRMED') return '크리에이터가 선택한 작품의 수량을 모두 확인한 뒤 전시를 확정해 주세요.';
   if (raw === 'COLLABORATION_SUPPLY_OUT_OF_STOCK') return '작품 재고가 줄었어요. 최신 조건을 불러온 뒤 전시 수량을 조정해 주세요.';
   if (raw === 'INVALID_COLLABORATION_TRANSITION') return '협업 상태가 바뀌었어요. 최신 조건을 불러와 확인해 주세요.';
