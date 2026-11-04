@@ -243,6 +243,10 @@ function mapManagedQrProduct(item: Record<string, unknown>): QrProduct {
     price: Number(item.price || 0),
     stock: Number(item.stock || 0),
     viewCount: Number(item.viewCount || 0),
+    supplyLimit: typeof item.supplyLimit === 'number' ? item.supplyLimit : undefined,
+    description: typeof item.description === 'string' ? item.description : undefined,
+    material: typeof item.material === 'string' ? item.material : undefined,
+    canStartSale: typeof item.canStartSale === 'boolean' ? item.canStartSale : undefined,
     status: ['ACTIVE', 'PAUSED', 'SOLD_OUT'].includes(String(item.status)) ? item.status as QrProduct['status'] : 'PAUSED',
     pickupMode: String(item.pickupMode || 'immediate'),
     imageUrl: typeof item.imageUrl === 'string' ? item.imageUrl : undefined,
@@ -497,5 +501,11 @@ export function friendlyError(error: unknown) {
   if (/Invalid login credentials/i.test(raw)) return '이메일 또는 비밀번호가 맞지 않습니다.';
   if (/User already registered/i.test(raw)) return '이미 가입된 이메일입니다.';
   if (/Password should be/i.test(raw)) return '비밀번호는 8자 이상으로 입력해 주세요.';
+  if (raw === 'INVALID_COLLABORATION_QUANTITY') return '보유 수량 내에서 1개 이상으로 설정해 주세요.';
+  if (raw === 'COLLABORATION_QUANTITY_CHANGED') return '매장이 제안 수량을 바꿨어요. 대화를 다시 열어 수량을 확인해 주세요.';
+  if (raw === 'COLLABORATION_CONFIRM_CREATOR_ONLY') return '작품 수량 확인은 크리에이터만 할 수 있어요.';
+  if (raw === 'COLLABORATION_QUANTITY_LOCKED') return 'QR이 발급된 상품의 합의 수량은 변경할 수 없어요.';
+  if (raw === 'COLLABORATION_CLOSED') return '종료된 협업의 조건은 변경할 수 없어요.';
+  if (raw === 'INVALID_COLLABORATION_ITEM') return '협업에 포함된 작품을 다시 확인해 주세요.';
   return raw;
 }

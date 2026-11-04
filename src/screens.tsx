@@ -143,8 +143,16 @@ function useCommerceSummary(role: Role, demo?: boolean) {
   return summary;
 }
 
-export function HomeScreen({ role, displayName, demo, onMove }: { role: Role; displayName: string; demo?: boolean; onMove: (target: string) => void }) {
-  return role === 'creator' ? <CreatorHome displayName={displayName} demo={demo} onMove={onMove} /> : <StoreHome displayName={displayName} demo={demo} onMove={onMove} />;
+type HomeProps = {
+  displayName: string;
+  demo?: boolean;
+  onOpenPreferences: () => void;
+  onOpenRecommendation: (item: MatchRecommendation) => void;
+  onOpenCollaboration: (item: CollaborationSummary) => void;
+};
+
+export function HomeScreen({ role, ...props }: HomeProps & { role: Role }) {
+  return role === 'creator' ? <CreatorHome {...props} /> : <StoreHome {...props} />;
 }
 
 function useRecommendations(role: Role, demo?: boolean) {
@@ -167,7 +175,7 @@ function useCollaborationList(role: Role, demo?: boolean) {
   return { items, loading };
 }
 
-function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?: boolean; onMove: (target: string) => void }) {
+function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendation, onOpenCollaboration }: HomeProps) {
   const summary = useCommerceSummary('creator', demo);
   const recommended = useRecommendations('creator', demo);
   const collaborations = useCollaborationList('creator', demo);
@@ -175,6 +183,8 @@ function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?
   const items = demo
     ? stores.map((store, index) => ({
       targetId: `demo-space-${index}`,
+      targetType: 'store' as const,
+      reasons: [store.mood],
       title: store.name,
       subtitle: `${index === 1 ? '서점' : '카페'} · 서울`,
       description: store.mood,
@@ -188,46 +198,44 @@ function CreatorHome({ displayName, demo, onMove }: { displayName: string; demo?
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
       <View style={s.curationHero}>
         <View style={s.flex}><CuritText style={s.curationPrelude}>{displayName} 님의 다음 장면</CuritText><CuritText weight="bold" style={s.curationTitle}>내 작품을 위한{`\n`}오늘의 큐레이션</CuritText></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 설정" style={s.preferenceLink} onPress={() => onMove('creator-dna')}><CuritText weight="semibold" style={s.preferenceLinkText}>작품 DNA</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 설정" style={s.preferenceLink} onPress={onOpenPreferences}><CuritText weight="semibold" style={s.preferenceLinkText}>작품 DNA 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
-      <View style={s.curationSectionTop}><CuritText weight="semibold" style={s.curationSectionTitle}>내 작품과 어울리는 공간</CuritText><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="작품 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('creator-dna')}><CuritText weight="semibold" style={s.dnaLabel}>ARTIST DNA</CuritText><CuritText style={s.dnaHint}>작품 취향을 등록해 보세요 →</CuritText></Pressable>
+      <View style={s.curationSectionTop}><CuritText weight="semibold" style={s.curationSectionTitle}>내 작품과 어울리는 공간</CuritText></View>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
-      <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onMove('discover')} />)}</View>
+      <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onOpenRecommendation(item)} />)}</View>
       {!recommended.loading && !items.length ? <Empty title="추천할 공간을 찾고 있어요" description="작품 DNA와 활동 지역을 저장하면 맞는 매장을 비교해 드립니다." /> : null}
-      {current ? <Pressable accessibilityRole="button" accessibilityLabel="진행 중인 협업 관리 열기" style={s.compactCollaboration} onPress={() => onMove('management')}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `${summary.salesCount}건 판매 · ${money(summary.expectedSettlement)} 예상 정산`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
+      {current ? <Pressable accessibilityRole="button" accessibilityLabel="진행 중인 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `${summary.salesCount}건 판매 · ${money(summary.expectedSettlement)} 예상 정산`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
 }
 
-function StoreHome({ displayName, demo, onMove }: { displayName: string; demo?: boolean; onMove: (target: string) => void }) {
+function StoreHome({ displayName, demo, onOpenPreferences, onOpenRecommendation, onOpenCollaboration }: HomeProps) {
   const summary = useCommerceSummary('store', demo);
   const recommended = useRecommendations('store', demo);
   const collaborations = useCollaborationList('store', demo);
   const current = collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
   const items = demo
-    ? projects.map((project, index) => ({ targetId: project.id, title: project.title, subtitle: `${project.artist} 작가`, description: project.priceRange, score: project.match ?? Math.max(79, 88 - index * 2), image: project.image }))
+    ? projects.map((project, index) => ({ targetId: project.id, targetType: 'project' as const, reasons: project.tags, tags: project.tags, title: project.title, subtitle: `${project.artist} 작가`, description: project.priceRange, score: project.match ?? Math.max(79, 88 - index * 2), image: project.image }))
     : recommended.items.map(item => ({ ...item, image: item.imageUrl ? { uri: item.imageUrl } : undefined }));
   return (
     <ScrollView contentContainerStyle={s.curationScroll} showsVerticalScrollIndicator={false}>
       <CuritText style={s.eyebrow}>CURI:T</CuritText>
       <View style={s.curationHero}>
         <View style={s.flex}><CuritText weight="bold" style={s.curationTitle}>{displayName}을 위한{`\n`}오늘의 큐레이션</CuritText></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="공간 취향과 전시 구역 설정" style={s.preferenceLink} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.preferenceLinkText}>취향 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="공간 취향과 전시 구역 설정" style={s.preferenceLink} onPress={onOpenPreferences}><CuritText weight="semibold" style={s.preferenceLinkText}>공간 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
-      <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품</CuritText></View><Pressable accessibilityRole="button" hitSlop={10} style={s.curationLinkAction} onPress={() => onMove('discover')}><CuritText weight="semibold" style={s.curationLink}>전체 보기 ↗</CuritText></Pressable></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="공간 DNA 등록 및 수정" style={s.dnaIntro} onPress={() => onMove('store-preferences')}><CuritText weight="semibold" style={s.dnaLabel}>SPACE DNA</CuritText><View style={s.dnaPill}><CuritText style={s.dnaPillText}>매장 정보 기준</CuritText></View><CuritText style={s.dnaHint}>수정 →</CuritText></Pressable>
+      <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품</CuritText></View></View>
       <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 정보와 공개된 작품 조건을 비교해 추천해요.</CuritText>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
-      <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onMove('discover')} />)}</View>
+      <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onOpenRecommendation(item)} />)}</View>
       {!recommended.loading && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 예산을 저장하면 전시 가능한 작품을 비교해 드립니다." /> : null}
-      {current ? <Pressable accessibilityRole="button" accessibilityLabel="현재 협업 관리 열기" style={s.compactCollaboration} onPress={() => onMove('management')}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
+      {current ? <Pressable accessibilityRole="button" accessibilityLabel="현재 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
 }
 
 function CurationTile({ index, title, subtitle, description, score, image, role, onPress }: { index: number; title: string; subtitle: string; description: string; score: number; image?: number | { uri: string }; role: 'space' | 'art'; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" style={s.curationTile} onPress={onPress}><View style={s.curationImageWrap}>{image ? <Image source={image} style={s.curationImage} contentFit="cover" /> : <View style={[s.curationImage, s.imagePlaceholder]}><Icon name={role === 'art' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={s.muted}>이미지 준비 중</CuritText></View>}<View style={s.rankBadge}><CuritText style={s.rankText}>{String(index + 1).padStart(2, '0')}</CuritText></View>{role === 'art' ? <View style={s.scoreBadge}><CuritText weight="semibold" style={s.scoreText}>조건 일치 {score}점</CuritText></View> : null}</View><CuritText style={s.tileEyebrow} numberOfLines={1}>{subtitle}</CuritText><CuritText weight="semibold" style={s.tileTitle} numberOfLines={1}>{title}</CuritText><CuritText style={s.tileDescription} numberOfLines={2}>{description}</CuritText></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${title} 추천 상세 열기`} style={s.curationTile} onPress={onPress}><View style={s.curationImageWrap}>{image ? <Image source={image} style={s.curationImage} contentFit="cover" /> : <View style={[s.curationImage, s.imagePlaceholder]}><Icon name={role === 'art' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={s.muted}>이미지 준비 중</CuritText></View>}<View style={s.rankBadge}><CuritText style={s.rankText}>{String(index + 1).padStart(2, '0')}</CuritText></View>{role === 'art' ? <View style={s.scoreBadge}><CuritText weight="semibold" style={s.scoreText}>조건 일치 {score}점</CuritText></View> : null}</View><CuritText style={s.tileEyebrow} numberOfLines={1}>{subtitle}</CuritText><CuritText weight="semibold" style={s.tileTitle} numberOfLines={1}>{title}</CuritText><CuritText style={s.tileDescription} numberOfLines={2}>{description}</CuritText></Pressable>;
 }
 
 function collaborationStatusLabel(status: CollaborationSummary['status']) {
@@ -363,23 +371,19 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration }: { 
 
 function SettlementLine({ label, value }: { label: string; value: string }) { return <View style={s.settlementLine}><CuritText style={s.muted}>{label}</CuritText><CuritText weight="semibold">{value}</CuritText></View>; }
 
-export function MyScreen({ role, displayName, demo, onLogout, onOpenProject, onOpenProfile, onOpenDna, onOpenStore, onOpenPreferences, onOpenVerification, onOpenNotifications, onOpenSettlements, onOpenAccount }: { role: Role; displayName: string; demo?: boolean; onLogout: () => void; onOpenProject?: () => void; onOpenProfile: () => void; onOpenDna: () => void; onOpenStore: () => void; onOpenPreferences: () => void; onOpenVerification: () => void; onOpenNotifications: () => void; onOpenSettlements: () => void; onOpenAccount: () => void }) {
-  const summary = useCommerceSummary(role, demo);
+export function MyScreen({ role, displayName, onOpenProject, onOpenProfile, onOpenDna, onOpenStore, onOpenPreferences, onOpenVerification, onOpenNotifications, onOpenAccount }: { role: Role; displayName: string; onOpenProject?: () => void; onOpenProfile: () => void; onOpenDna: () => void; onOpenStore: () => void; onOpenPreferences: () => void; onOpenVerification: () => void; onOpenNotifications: () => void; onOpenAccount: () => void }) {
   const rows = role === 'creator'
     ? [{ icon: 'heart' as const, label: '활동 인증', onPress: onOpenVerification }, { icon: 'store' as const, label: '나의 작품 DNA', onPress: onOpenDna }, { icon: 'qr' as const, label: '내 전시 프로젝트', onPress: onOpenProject }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }]
     : [{ icon: 'store' as const, label: '매장 운영 인증', onPress: onOpenVerification }, { icon: 'heart' as const, label: '공간 취향·전시 구역', onPress: onOpenPreferences }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }];
   const openProfile = role === 'creator' ? onOpenProfile : onOpenStore;
-  return <View style={s.flex}><ScrollView contentContainerStyle={s.myScroll} showsVerticalScrollIndicator={false}>
-    <CuritText style={s.eyebrow}>CURI:T</CuritText>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${role === 'creator' ? '크리에이터' : '매장'} 프로필 보기 및 수정`} style={s.myIdentity} onPress={openProfile}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 16 }}>{displayName.slice(0, 2) || 'CU'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.myName}>{displayName}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '패브릭·드로잉' : '카페'} / 서울</CuritText></View><View style={s.profileOpen}><CuritText weight="semibold" style={s.profileOpenText}>프로필</CuritText><Icon name="chevron" size={14} color={colors.brand} /></View></Pressable>
-    {role === 'store' ? <Pressable accessibilityRole="button" style={s.myPerformanceCard} onPress={onOpenSettlements}><View style={s.myPanelTitle}><View><CuritText weight="semibold">판매 현황</CuritText><CuritText style={s.gridMeta}>QR 조회와 승인된 주문 기준</CuritText></View><CuritText style={s.curationLink}>판매·정산 보기</CuritText></View><View style={s.myPerformanceMetrics}><Metric value={summary.loading ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View></Pressable> : null}
+  return <View style={s.flex}><Header title="마이" /><ScrollView contentContainerStyle={s.myScroll} showsVerticalScrollIndicator={false}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${role === 'creator' ? '크리에이터' : '매장'} 프로필 보기 및 수정`} style={s.myIdentity} onPress={openProfile}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 16 }}>{displayName.slice(0, 2) || 'CU'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.myName}>{displayName}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '크리에이터' : '매장 운영자'}</CuritText></View><View style={s.profileOpen}><CuritText weight="semibold" style={s.profileOpenText}>프로필</CuritText><Icon name="chevron" size={14} color={colors.brand} /></View></Pressable>
     <View style={s.myMenuBox}>{rows.map(row => <Pressable accessibilityRole="button" key={row.label} style={s.myMenuRow} onPress={row.onPress}><Icon name={row.icon} size={17} color={colors.muted} /><CuritText style={s.flex}>{row.label}</CuritText><Icon name="chevron" size={14} color={colors.subtle} /></Pressable>)}</View>
     <Pressable accessibilityRole="button" style={s.accountAction} onPress={onOpenAccount}><CuritText style={s.muted}>계정 정보 · 개인정보 관리</CuritText><CuritText style={s.muted}>→</CuritText></Pressable>
-    <Pressable accessibilityRole="button" style={s.logoutAction} onPress={onLogout}><CuritText style={s.muted}>로그아웃</CuritText></Pressable>
   </ScrollView></View>;
 }
 
-export function AccountSettingsScreen({ email, role, demo, onBack, onOpenNotifications, onResetPassword, onLogout }: { email: string; role: Role; demo?: boolean; onBack: () => void; onOpenNotifications: () => void; onResetPassword: () => Promise<void>; onLogout: () => void | Promise<void> }) {
+export function AccountSettingsScreen({ email, role, demo, onBack, onResetPassword, onLogout }: { email: string; role: Role; demo?: boolean; onBack: () => void; onResetPassword: () => Promise<void>; onLogout: () => void | Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const resetPassword = async () => {
@@ -392,7 +396,7 @@ export function AccountSettingsScreen({ email, role, demo, onBack, onOpenNotific
   return <View style={s.flex}><Header title="계정 정보" back={onBack} /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.accountInfoCard}><CuritText weight="bold" style={s.cardTitle}>내 계정</CuritText><View style={s.accountInfoRow}><CuritText style={s.muted}>이메일</CuritText><CuritText weight="semibold" style={s.accountInfoValue}>{email}</CuritText></View><View style={s.accountInfoRow}><CuritText style={s.muted}>계정 유형</CuritText><CuritText weight="semibold">{role === 'creator' ? '크리에이터' : '매장 운영자'}</CuritText></View></View>
     <View style={s.privacyCard}><CuritText weight="semibold">개인정보 표시 범위</CuritText><CuritText style={s.accountDescription}>이메일과 역할, 등록한 작품·공간·협업 정보는 계정 기능 제공에 사용됩니다. 매장 직원에게는 고객의 전체 전화번호 대신 주문번호와 뒤 4자리만 표시합니다.</CuritText></View>
-    <View style={s.accountButtons}><Button label="내 소식 보기" variant="secondary" onPress={onOpenNotifications} /><Button label={busy ? '메일 전송 중…' : '비밀번호 재설정 메일 받기'} variant="secondary" disabled={busy} onPress={() => { void resetPassword(); }} /><Button label="로그아웃" variant="ghost" onPress={() => { void onLogout(); }} /></View>
+    <View style={s.accountButtons}><Button label={busy ? '메일 전송 중…' : '비밀번호 재설정 메일 받기'} variant="secondary" disabled={busy} onPress={() => { void resetPassword(); }} /><Button label="로그아웃" variant="ghost" onPress={() => { void onLogout(); }} /></View>
     {notice ? <View style={s.noticeCard}><CuritText style={s.muted}>{notice}</CuritText></View> : null}
   </ScrollView></View>;
 }
@@ -485,13 +489,7 @@ const s = StyleSheet.create({
   preferenceLinkText: { color: colors.brand, fontSize: 11 },
   curationSectionTop: { minHeight: 48, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 14, marginBottom: 14 },
   curationSectionTitle: { color: colors.ink, fontSize: 17, lineHeight: 24, letterSpacing: -.3 },
-  curationLinkAction: { minWidth: 72, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
-  curationLink: { color: colors.brand, fontSize: 11 },
-  dnaIntro: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 0 },
-  dnaLabel: { color: colors.brand, fontSize: 10, letterSpacing: 1.2 },
   dnaHint: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-  dnaPill: { paddingHorizontal: 9, paddingVertical: 4, backgroundColor: colors.brandSoft, borderRadius: radius.pill },
-  dnaPillText: { color: colors.brand, fontSize: 10 },
   curationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12, marginBottom: 24 },
   curationTile: { width: '47.5%', minWidth: 0, marginBottom: 8 },
   curationImageWrap: { width: '100%', aspectRatio: .9, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.brandPale, marginBottom: 10 },
@@ -526,14 +524,10 @@ const s = StyleSheet.create({
   profileOpen: { minHeight: 40, paddingLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 3 },
   profileOpenText: { color: colors.brand, fontSize: 11 },
   myProfilePanel: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: 17, gap: 14, backgroundColor: colors.surface, marginBottom: 14 },
-  myPanelTitle: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   myPanelButtons: { flexDirection: 'row', gap: 8 },
-  myPerformanceCard: { borderRadius: radius.lg, padding: 17, backgroundColor: colors.brandPale, marginBottom: 14 },
-  myPerformanceMetrics: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15, marginTop: 12 },
   myMenuBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface, marginBottom: 12 },
   myMenuRow: { minHeight: 56, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 },
   accountAction: { minHeight: 52, paddingHorizontal: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  logoutAction: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   accountInfoCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: 17, gap: 4, backgroundColor: colors.surface },
   accountInfoRow: { minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   accountInfoValue: { flex: 1, textAlign: 'right' },

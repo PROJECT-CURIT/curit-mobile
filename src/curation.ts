@@ -422,7 +422,7 @@ export async function transitionCollaboration(collaborationId: string, action: '
 export async function loadCollaborationItems(collaboration: CollaborationSummary): Promise<CollaborationItem[]> {
   const supabase = getSupabase();
   const [itemsResult, selectedResult] = await Promise.all([
-    supabase.from('project_items').select('id, name, image_path, price, stock').eq('project_id', collaboration.projectId).order('created_at'),
+    supabase.from('project_items').select('id, name, image_path, price, stock').eq('project_id', collaboration.projectId).gt('stock', 0).order('created_at'),
     supabase.from('collaboration_items').select('project_item_id, quantity, creator_confirmed').eq('collaboration_id', collaboration.id),
   ]);
   if (itemsResult.error || selectedResult.error) throw new Error(itemsResult.error?.message || selectedResult.error?.message || '협업 상품을 불러오지 못했습니다.');

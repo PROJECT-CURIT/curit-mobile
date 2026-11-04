@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Alert, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
@@ -109,6 +109,18 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
   const [publish, setPublish] = useState(!['draft', 'archived'].includes(project.status));
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const back = useCallback(() => {
+    if (Keyboard.isVisible()) { Keyboard.dismiss(); return; }
+    if (!saving) {
+      if (step === 1) onBack();
+      else setStep(step === 3 ? 2 : 1);
+    }
+  }, [onBack, saving, step]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
+    return () => subscription.remove();
+  }, [back]);
 
   const reset = () => {
     setDraft(emptyDraft);
@@ -172,8 +184,12 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
   const saveProduct = async () => {
     const price = Number(draft.price);
     const stock = Number(draft.stock);
-    if (!draft.name.trim() || !Number.isInteger(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
-      setNotice('상품명·판매가·정수 재고를 확인해 주세요.');
+    if (!draft.name.trim() || !Number.isSafeInteger(price) || price <= 0 || price > 100_000_000) {
+      setNotice('상품명과 1원 이상 1억 원 이하의 판매가를 입력해 주세요.');
+      return;
+    }
+    if (!draft.stock || !Number.isSafeInteger(stock) || stock < 0 || stock > 100_000) {
+      setNotice('재고를 0~100,000개 사이의 정수로 입력해 주세요.');
       return;
     }
     setSaving(true);
@@ -191,8 +207,8 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
 
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Header title="전시 프로젝트 수정" subtitle={`${step}/3 · ${['기본 정보', '작품·굿즈', '최종 확인'][step - 1]}`} back={() => step === 1 ? onBack() : setStep((step - 1) as 1 | 2 | 3)} />
-      <ScrollView ref={scrollRef} style={d.flex} contentContainerStyle={d.editScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <Header title="전시 프로젝트 수정" subtitle={`${step}/3 · ${['기본 정보', '작품·굿즈', '최종 확인'][step - 1]}`} back={back} />
+      <ScrollView ref={scrollRef} style={d.flex} contentContainerStyle={d.editScroll} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <StepProgress current={step} labels={['1 기본', '2 상품', '3 확인']} />
         {step === 1 ? <>
           <View><CuritText weight="bold" style={d.projectTitle}>프로젝트를 소개해 주세요</CuritText><CuritText style={d.description}>공간 운영자가 협업 여부를 판단할 핵심 정보입니다.</CuritText></View>
@@ -290,7 +306,9 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const firstValid = Boolean(name.trim() && address.trim() && intro.trim() && audience.trim());
-  const stepValid = step === 1 ? firstValid : step === 2 ? moods.length > 0 && purposes.length > 0 : step === 3 ? photos.length > 0 : step === 4 ? zones.length > 0 : true;
+  const budgetValid = (!budgetMin || !budgetMax || Number(budgetMin) <= Number(budgetMax))
+    && [budgetMin, budgetMax].every(value => !value || Number(value) <= 2_147_483_647);
+  const stepValid = step === 1 ? firstValid : step === 2 ? moods.length > 0 && purposes.length > 0 && budgetValid : step === 3 ? photos.length > 0 : step === 4 ? zones.length > 0 : true;
 
   const toggle = (value: string, current: string[], update: (next: string[]) => void) =>
     update(current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
@@ -347,11 +365,22 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
     }
   };
 
-  const back = () => step === 1 ? onBack() : setStep(value => Math.max(1, value - 1));
+  const back = useCallback(() => {
+    if (Keyboard.isVisible()) { Keyboard.dismiss(); return; }
+    if (!busy) {
+      if (step === 1) onBack();
+      else setStep(value => value - 1);
+    }
+  }, [busy, onBack, step]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
+    return () => subscription.remove();
+  }, [back]);
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Header title="매장 공간 등록" subtitle={`${step}/5 · ${['기본 정보', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step - 1]}`} back={back} />
-      <ScrollView style={d.flex} contentContainerStyle={d.signupScroll} keyboardShouldPersistTaps="handled">
+      <ScrollView style={d.flex} contentContainerStyle={d.signupScroll} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
         <StepProgress current={step} />
         {step === 1 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장을 소개해 주세요</CuritText>
@@ -374,6 +403,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
           <ChoiceGroup title="선호 분위기 *" values={['따뜻한', '미니멀', '빈티지', '자연', '컬러풀']} selected={moods} onToggle={value => toggle(value, moods, setMoods)} />
           <ChoiceGroup title="협업 목적 *" values={['분위기 전환', '포토존', '빈 공간 활용', '추가 수익', '지역 작가 소개']} selected={purposes} onToggle={value => toggle(value, purposes, setPurposes)} />
           <View style={d.twoColumns}><View style={d.flex}><Field label="최소 예산(원)" value={budgetMin} onChangeText={value => setBudgetMin(value.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="100000" /></View><View style={d.flex}><Field label="최대 예산(원)" value={budgetMax} onChangeText={value => setBudgetMax(value.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="500000" /></View></View>
+          {!budgetValid ? <CuritText accessibilityRole="alert" style={d.error}>최대 예산은 최소 예산 이상으로 입력해 주세요. 입력할 수 있는 최대 금액은 2,147,483,647원입니다.</CuritText> : null}
         </> : null}
         {step === 3 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장 사진을 등록해 주세요</CuritText>

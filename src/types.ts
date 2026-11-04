@@ -30,6 +30,10 @@ export interface QrProduct {
   price: number;
   stock: number;
   viewCount?: number;
+  supplyLimit?: number;
+  description?: string;
+  material?: string;
+  canStartSale?: boolean;
   status: 'ACTIVE' | 'PAUSED' | 'SOLD_OUT';
   pickupMode: string;
   imageUrl?: string;

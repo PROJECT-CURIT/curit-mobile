@@ -74,7 +74,7 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
   </View>;
 }
 
-export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string) => void }) {
+export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string) => Promise<void> }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -118,17 +118,13 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   const resetFilters = () => { setRegion('전체'); setDnaFilters([]); };
   const propose = async (item: MatchRecommendation) => {
     if (busy) return;
-    if (demo) {
-      setNotice('협업 조건을 확인할 수 있는 대화방으로 이동합니다.');
-      onProposalCreated('demo-proposal');
-      return;
-    }
     setBusy(item.targetId); setNotice('');
     try {
-      if (item.collaborationId) { setNotice('이미 진행 중인 협업으로 이동합니다.'); onProposalCreated(item.collaborationId); return; }
+      if (demo) { await onProposalCreated('demo-proposal'); return; }
+      if (item.collaborationId) { setNotice('이미 진행 중인 협업으로 이동합니다.'); await onProposalCreated(item.collaborationId); return; }
       const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다.`);
       setNotice('협업 제안을 보냈습니다. 채팅에서 승인 상태를 확인할 수 있어요.');
-      if (id) onProposalCreated(id);
+      if (id) await onProposalCreated(id);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(''); }
   };
   return <View style={c.flex}>
@@ -178,7 +174,7 @@ function demoWelcome(role: Role): CuratorMessage {
   };
 }
 
-export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role: Role; demo?: boolean; onBack: () => void; onProposalCreated: (id: string) => void }) {
+export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role: Role; demo?: boolean; onBack: () => void; onProposalCreated: (id: string) => Promise<void> }) {
   const scrollRef = useRef<ScrollViewInstance>(null);
   const [messages, setMessages] = useState<CuratorMessage[]>(demo ? [demoWelcome(role)] : []);
   const [input, setInput] = useState('');
@@ -225,17 +221,17 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
     try {
       if (demo) {
         setNotice('협업 조건을 확인할 수 있는 대화방으로 이동합니다.');
-        onProposalCreated('demo-proposal');
+        await onProposalCreated('demo-proposal');
         return;
       }
       if (item.collaborationId) {
         setNotice('이미 진행 중인 협업으로 이동합니다.');
-        onProposalCreated(item.collaborationId);
+        await onProposalCreated(item.collaborationId);
         return;
       }
       const id = await createCollaborationProposal(item, `${item.title}과(와) 전시 협업을 제안합니다. 조건 일치도 ${item.score}점과 추천 이유를 확인했습니다.`);
       setNotice('협업 제안을 보냈습니다. 상대방 승인 후 다음 단계가 열립니다.');
-      if (id) onProposalCreated(id);
+      if (id) await onProposalCreated(id);
     } catch (caught) { setNotice(friendlyError(caught)); } finally { setProposalTarget(''); }
   };
 
@@ -259,6 +255,37 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
       <View style={c.composer}><TextInput value={input} onChangeText={setInput} onSubmitEditing={() => { void submit(); }} editable={!sending} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="메시지 보내기" disabled={!input.trim() || sending} style={[c.send, (!input.trim() || sending) && c.sendDisabled]} onPress={() => { void submit(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
     </View>
   </KeyboardAvoidingView>;
+}
+
+export function RecommendationScreen({ item, demo, onBack, onOpenCollaboration }: {
+  item: MatchRecommendation;
+  demo?: boolean;
+  onBack: () => void;
+  onOpenCollaboration: (id: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const propose = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const id = demo ? 'demo-proposal' : item.collaborationId || await createCollaborationProposal(item, `${item.title} 전시 협업을 제안합니다.`);
+      await onOpenCollaboration(id);
+    } catch (caught) {
+      setError(friendlyError(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <View style={c.flex}>
+    <Header title={item.targetType === 'project' ? '추천 작품' : '추천 공간'} subtitle="추천 이유와 협업 조건" back={onBack} />
+    <ScrollView contentContainerStyle={c.discoverScroll}>
+      <RecommendationCard item={item} busy={busy} inset={false} onPropose={() => { void propose(); }} />
+      {error ? <View style={c.error}><CuritText accessibilityRole="alert" style={c.errorText}>{error}</CuritText></View> : null}
+    </ScrollView>
+  </View>;
 }
 
 function RecommendationCard({ item, busy, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; onPropose: () => void; inset?: boolean }) {

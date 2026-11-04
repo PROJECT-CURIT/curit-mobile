@@ -10,7 +10,7 @@ export const config = {
   // Keep local-only sample flows unavailable whenever a real backend is configured.
   // This avoids a release build entering a screen-only session that can look saved
   // while none of its changes reach Supabase.
-  demoMode: localDemoModeAllowed(process.env.EXPO_PUBLIC_SUPABASE_URL ?? '', process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? ''),
+  demoMode: typeof __DEV__ !== 'undefined' && __DEV__ && localDemoModeAllowed(process.env.EXPO_PUBLIC_SUPABASE_URL ?? '', process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? ''),
 };
 
 export function localDemoModeAllowed(supabaseUrl: string, publishableKey: string) {

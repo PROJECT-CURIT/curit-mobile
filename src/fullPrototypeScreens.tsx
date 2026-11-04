@@ -178,11 +178,13 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   const [item, setItem] = useState(initial);
   const [stock, setStock] = useState(String(initial.stock));
   const [preview, setPreview] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   if (item.source === 'field-sale') return <FieldSaleProductScreen item={item} onBack={onBack} />;
   const stockValue = Number(stock);
-  const valuesValid = stock.length > 0 && Number.isSafeInteger(stockValue) && stockValue >= 0 && stockValue <= 100000;
+  const stockLimit = item.supplyLimit ?? 100_000;
+  const valuesValid = stock.length > 0 && Number.isSafeInteger(stockValue) && stockValue >= 0 && stockValue <= stockLimit;
   const stockChanged = stockValue !== item.stock;
   const selling = item.status !== 'PAUSED';
   const save = async (saleStatus?: 'active' | 'preparing') => {
@@ -200,20 +202,37 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
     }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
-  const share = async (message: string) => { if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(message); setNotice('클립보드에 복사했습니다.'); } else await Share.share({ message }); };
+  const share = async (message: string) => {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(message);
+        setNotice('클립보드에 복사했습니다.');
+      } else {
+        await Share.share({ message });
+      }
+    } catch {
+      setNotice('공유하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    }
+  };
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="QR 상품 정보 확인" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} /> : null}<CuritText style={f.hint}>{item.artistName || '등록 작가'}</CuritText>
     <Field label="상품명" value={item.name} editable={false} />
     <View style={f.two}><View style={f.flex}><Field label="합의 판매가" value={`${item.price.toLocaleString('ko-KR')}원`} editable={false} /></View><View style={f.flex}><Field label="구매 가능 수량 *" value={stock} onChangeText={value => setStock(value.replace(/\D/g, ''))} keyboardType="number-pad" /></View></View>
-    {!valuesValid ? <CuritText style={f.hint}>구매 가능 수량을 0~100,000개 사이의 정수로 입력해 주세요.</CuritText> : null}
+    {item.supplyLimit !== undefined ? <CuritText style={f.hint}>확정 공급량 {item.supplyLimit}개 중 판매 완료 수량을 제외하고 설정할 수 있어요.</CuritText> : null}
+    {!valuesValid ? <CuritText style={f.hint}>구매 가능 수량을 0~{stockLimit.toLocaleString('ko-KR')}개 사이로 입력해 주세요.</CuritText> : null}
     <View style={f.infoBanner}><CuritText weight="semibold">수령 방식</CuritText><CuritText style={f.hint}>{item.pickupMode === 'exhibition' ? '전시 종료 후 현장 수령' : '주문 후 현장 수령'}</CuritText></View>
     {notice ? <Notice text={notice} /> : null}
     <Button label={saving ? '저장 중…' : '수량 저장'} disabled={saving || !valuesValid || !stockChanged} onPress={() => { void save(); }} />
     <View style={f.two}><View style={f.flex}><Button label="QR 정보 미리보기" variant="secondary" onPress={() => setPreview(value => !value)} /></View><View style={f.flex}><Button label="QR 데이터 내보내기" variant="secondary" onPress={() => { void share(JSON.stringify({ token: item.token, name: item.name, price: item.price, stock: item.stock, qrUrl: item.qrUrl }, null, 2)); }} /></View></View>
     {preview ? <View style={f.preview}><QRCode value={item.qrUrl || item.token || item.productId} size={140} color={colors.ink} backgroundColor={colors.surface} /><CuritText weight="bold">{item.name}</CuritText><CuritText>{item.price.toLocaleString('ko-KR')}원 · 재고 {item.stock}개</CuritText><CuritText style={f.hint} numberOfLines={2}>{item.qrUrl}</CuritText></View> : null}
-    <Button label={selling ? 'QR 판매 중단' : 'QR 판매 시작'} variant="secondary" disabled={saving} onPress={() => { void save(selling ? 'preparing' : 'active'); }} />
-    <Button label="구매 화면 열기 ↗" variant="secondary" disabled={!item.qrUrl} onPress={() => { if (item.qrUrl) void Linking.openURL(item.qrUrl); }} />
-    <Button label="QR 주소 복사" variant="secondary" disabled={!item.qrUrl} onPress={() => { void share(item.qrUrl || ''); }} />
+    {item.canStartSale !== false || selling ? <Button label={selling ? 'QR 판매 중단' : 'QR 판매 시작'} variant="secondary" disabled={saving} onPress={() => { void save(selling ? 'preparing' : 'active'); }} /> : <CuritText style={f.hint}>진행 중인 전시에서만 QR 판매를 시작할 수 있어요.</CuritText>}
+    <Button label="구매 화면 열기 ↗" variant="secondary" disabled={!item.qrUrl} onPress={() => { if (item.qrUrl) void Linking.openURL(item.qrUrl).catch(() => setNotice('상품 페이지를 열지 못했어요. QR 링크를 다시 확인해 주세요.')); }} />
+    <Button label={Platform.OS === 'web' ? 'QR 주소 복사' : 'QR 링크 공유'} variant="secondary" disabled={!item.qrUrl} onPress={() => { void share(item.qrUrl || ''); }} />
+    {item.description || item.material ? <View style={f.infoBanner}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: detailsOpen }} style={f.qrDetailsAction} onPress={() => setDetailsOpen(value => !value)}><CuritText weight="semibold">작가가 등록한 상품 정보</CuritText><CuritText>{detailsOpen ? '−' : '＋'}</CuritText></Pressable>
+      {detailsOpen && item.description ? <CuritText style={f.description}>{item.description}</CuritText> : null}
+      {detailsOpen && item.material ? <CuritText style={f.hint}>소재 · {item.material}</CuritText> : null}
+    </View> : null}
   </ScrollView></KeyboardAvoidingView>;
 }
 
@@ -257,7 +276,7 @@ function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () 
   </View>;
 }
 
-export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBack: () => void; onOpenQr: () => void }) {
+export function PickupScreen({ demo, onBack }: { demo?: boolean; onBack: () => void }) {
   const [orders, setOrders] = useState<ManagedOrder[]>(demo ? [{ id: 'QR-DEMO-CT1001', listingId: 'demo', productName: '머그컵 (화이트·그레이)', imageUrl: '', customerName: '김민서', customerPhoneLast4: '1234', quantity: 1, amount: 35000, paymentMethod: '카드', pickupMode: 'immediate', pickupDate: '', fulfillmentStatus: 'awaiting_pickup', deliveredAt: null, createdAt: new Date().toISOString() }] : []);
   const [status, setStatus] = useState<ManagedOrder['fulfillmentStatus']>('awaiting_pickup');
   const [query, setQuery] = useState('');
@@ -291,7 +310,7 @@ export function PickupScreen({ demo, onBack, onOpenQr }: { demo?: boolean; onBac
     ]);
   };
   const count = (value: ManagedOrder['fulfillmentStatus']) => orders.filter(order => order.fulfillmentStatus === value).length;
-  return <View style={f.flex}><Header title="주문 · 현장 수령" back={onBack} action={<Pressable accessibilityRole="button" accessibilityLabel="QR 판매 설정" style={f.headerTextAction} hitSlop={10} onPress={onOpenQr}><Icon name="qr" color={colors.brand} /></Pressable>} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+  return <View style={f.flex}><Header title="주문 · 현장 수령" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     <Button label="결제 완료 주문 확인" variant="secondary" onPress={() => { void load(); }} /><Field placeholder="주문번호 또는 상품명 검색" value={query} onChangeText={setQuery} />
     <View style={f.tabs}>{([['awaiting_pickup', '수령 대기'], ['reserved', '예약 작품'], ['delivered', '전달 완료']] as const).map(([value, label]) => <Pressable key={value} style={[f.tab, status === value && f.tabActive]} onPress={() => setStatus(value)}><CuritText weight={status === value ? 'semibold' : 'regular'} style={status === value ? f.brand : f.muted}>{label} {count(value)}</CuritText></Pressable>)}</View>
     {loading ? <ActivityIndicator color={colors.brand} /> : visible.length ? visible.map(order => <View key={order.id} style={f.orderCard}><View style={f.row}><View style={f.flex}><CuritText style={f.hint}>주문 {order.id.length > 14 ? `…${order.id.slice(-12)}` : order.id}</CuritText><CuritText weight="bold">{order.productName}</CuritText><CuritText style={f.description}>{order.quantity}개 · {order.amount.toLocaleString()}원</CuritText><CuritText style={f.hint}>{order.paymentMethod} · {order.customerName} · 전화번호 뒤 4자리 {order.customerPhoneLast4}</CuritText></View><Chip label={status === 'delivered' ? '전달 완료' : '결제 완료'} active={status !== 'delivered'} /></View>{status === 'awaiting_pickup' ? <Button label="상품 전달 확인" onPress={() => { void change(order, 'delivered'); }} /> : status === 'reserved' ? <Button label="수령 가능으로 전환" onPress={() => { void change(order, 'awaiting_pickup'); }} /> : null}{status !== 'delivered' ? <Button label={cancellingId === order.id ? '취소 처리 중…' : '결제 전액 취소'} variant="secondary" disabled={Boolean(cancellingId)} onPress={() => cancel(order)} /> : null}</View>) : <Empty title="해당 주문이 없습니다" description="결제가 승인된 주문이 상태별로 표시됩니다." />}
@@ -496,5 +515,6 @@ const f = StyleSheet.create({
   notificationList: { flexGrow: 1, paddingVertical: 8, paddingBottom: 36 }, notification: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }, notificationUnread: { backgroundColor: colors.brandPale }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 7 }, dotRead: { backgroundColor: colors.border },
   verificationStatus: { minHeight: 92, flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16 }, evidenceImage: { width: '100%', height: 220, borderRadius: radius.md, backgroundColor: colors.brandPale }, evidencePlaceholder: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.brand, borderRadius: radius.md, backgroundColor: colors.brandPale },
   headerTextAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  qrDetailsAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   feed: { gap: 14 }, compose: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 10 }, composeInput: { minHeight: 76, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, post: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, gap: 12 }, avatarSmall: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, postImage: { width: '100%', height: 220, borderRadius: radius.sm }, socialActions: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }, socialAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, commentPanel: { gap: 10, paddingTop: 4 }, commentItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }, commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentText: { color: colors.ink, fontSize: 13, lineHeight: 19 }, emptyComment: { color: colors.muted, fontSize: 12, paddingVertical: 8 }, commentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, commentInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 14, fontFamily: fonts.regular, color: colors.ink }, commentSubmit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });
