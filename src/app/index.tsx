@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, Platform, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, Platform, TextInput, View } from 'react-native';
 import { BottomNav, ScreenFrame } from '../ui';
 import { AccountSettingsScreen, AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
 import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen, RecommendationScreen } from '../curationScreens';
@@ -110,7 +110,11 @@ export default function AppIndex() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (Keyboard.isVisible()) { Keyboard.dismiss(); return true; }
+      // Android may report that the IME is hidden before the back event reaches JS.
+      if (Keyboard.isVisible() || (subview === 'collaboration' && TextInput.State.currentlyFocusedInput())) {
+        Keyboard.dismiss();
+        return true;
+      }
       if (subview === 'creator-project-edit' || subview === 'store-edit' || (!session && authView === 'store-signup')) return false;
       if (subview) {
         if (subview === 'creator-dna' && creatorOnboardingFlow) setCreatorOnboardingFlow(false);
