@@ -18,6 +18,20 @@ export function authRedirectUrl(flow?: 'signup' | 'recovery') {
   return flow ? `${AUTH_REDIRECT_URL}?flow=${flow}` : AUTH_REDIRECT_URL;
 }
 
+export function authRedirectFromRoute(params: Record<string, string | string[]>) {
+  const url = new URL(AUTH_REDIRECT_URL);
+  for (const key of ['code', 'flow', 'type', 'error', 'error_description', 'access_token', 'refresh_token']) {
+    const raw = params[key];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (value) url.searchParams.set(key, value);
+  }
+  const fragment = params['#'];
+  const hash = Array.isArray(fragment) ? fragment[0] : fragment;
+  if (hash) url.hash = hash;
+  const payload = parseAuthRedirect(url.href);
+  return payload.code || (payload.accessToken && payload.refreshToken) || payload.error ? url.href : null;
+}
+
 function decoded(value: string | null) {
   if (!value) return null;
   try {

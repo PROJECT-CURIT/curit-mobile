@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTH_REDIRECT_URL, authRedirectUrl, parseAuthRedirect } from './authRedirect';
+import { AUTH_REDIRECT_URL, authRedirectFromRoute, authRedirectUrl, parseAuthRedirect } from './authRedirect';
 
 describe('Supabase auth deep-link parser', () => {
   it('uses the registered CURI:T callback URL', () => {
@@ -23,6 +23,16 @@ describe('Supabase auth deep-link parser', () => {
     const parsed = parseAuthRedirect('curit://auth/callback?flow=recovery&code=pkce-code');
     expect(parsed.code).toBe('pkce-code');
     expect(parsed.type).toBe('recovery');
+  });
+
+  it('keeps Expo Router callback fragments when flow is in the query', () => {
+    const url = authRedirectFromRoute({ flow: 'recovery', '#': 'access_token=access&refresh_token=refresh' });
+    expect(parseAuthRedirect(url ?? '')).toMatchObject({ type: 'recovery', accessToken: 'access', refreshToken: 'refresh' });
+  });
+
+  it('does not let route metadata shadow the initial link with credentials', () => {
+    expect(authRedirectFromRoute({ flow: 'recovery' })).toBeNull();
+    expect(authRedirectFromRoute({ access_token: 'incomplete' })).toBeNull();
   });
 
   it('decodes provider errors', () => {

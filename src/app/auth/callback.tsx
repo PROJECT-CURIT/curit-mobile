@@ -3,7 +3,7 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button, CuritText, Field, ScreenFrame } from '../../ui';
-import { AUTH_REDIRECT_URL, parseAuthRedirect } from '../../authRedirect';
+import { authRedirectFromRoute, parseAuthRedirect } from '../../authRedirect';
 import { applyAuthRedirect, completePasswordReset } from '../../supabase';
 import { colors } from '../../theme';
 
@@ -12,15 +12,7 @@ type CallbackState = 'loading' | 'success' | 'reset' | 'reset-complete' | 'error
 export default function AuthCallbackScreen() {
   const incomingUrl = Linking.useURL();
   const searchParams = useLocalSearchParams<Record<string, string | string[]>>();
-  const routedUrl = (() => {
-    const query = new URLSearchParams();
-    for (const key of ['code', 'flow', 'type', 'error', 'error_description', 'access_token', 'refresh_token']) {
-      const raw = searchParams[key];
-      const value = Array.isArray(raw) ? raw[0] : raw;
-      if (value) query.set(key, value);
-    }
-    return query.size ? `${AUTH_REDIRECT_URL}?${query.toString()}` : null;
-  })();
+  const routedUrl = authRedirectFromRoute(searchParams);
   const pendingRedirect = useRef<{ key: string; result: Promise<boolean> } | null>(null);
   const [state, setState] = useState<CallbackState>('loading');
   const [message, setMessage] = useState('인증 정보를 확인하고 있습니다.');
