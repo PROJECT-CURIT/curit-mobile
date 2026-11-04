@@ -311,6 +311,13 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
   const [period, setPeriod] = useState<ExhibitionPeriod>(suggestedExhibitionPeriod);
   const submitting = useRef(false);
   const closeProposal = () => { Keyboard.dismiss(); setProposalOpen(false); };
+  const backFromProposal = () => {
+    if (Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) {
+      Keyboard.dismiss();
+      return;
+    }
+    closeProposal();
+  };
   const submitProposal = () => {
     if (busy || submitting.current || exhibitionPeriodError(period)) return;
     submitting.current = true;
@@ -330,7 +337,7 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
         else { submitting.current = false; setProposalOpen(true); }
       }} />
     </View>
-    {proposalOpen ? <Modal animationType="slide" onRequestClose={closeProposal}>
+    {proposalOpen ? <Modal animationType="slide" onRequestClose={backFromProposal}>
       <ScreenFrame>
         <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Header title="협업 제안" back={closeProposal} />
