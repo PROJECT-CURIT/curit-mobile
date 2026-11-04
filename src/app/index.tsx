@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Keyboard, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, Platform, View } from 'react-native';
 import { BottomNav, ScreenFrame } from '../ui';
 import { AccountSettingsScreen, AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
 import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen, RecommendationScreen } from '../curationScreens';
@@ -9,7 +9,7 @@ import { config } from '../config';
 import { addProjectProduct, currentSession, deleteProjectProduct, friendlyError, loadCreatorProject, loadStoreOnboarding, resendSignupConfirmation, saveCreatorProject, signIn, signOut, signUp, storeOnboardingComplete, updateProjectProduct, type CreatorProjectDetails, type StoreOnboarding } from '../platform';
 import { creatorOnboardingComplete, requestPasswordReset } from '../fullPlatform';
 import { CreatorDnaScreen, CreatorProfileScreen, NotificationsScreen, PickupScreen, QrProductEditorScreen, StorePreferencesScreen, StoreProfileScreen, VerificationScreen } from '../fullPrototypeScreens';
-import { isSupabaseConfigured } from '../supabase';
+import { getSupabase, isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
 import { addPushResponseListener, deactivateNativePush, registerNativePush } from '../pushNotifications';
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role, Session, TabKey } from '../types';
@@ -26,6 +26,7 @@ export default function AppIndex() {
   const [pendingStoreSession, setPendingStoreSession] = useState<Session | null>(null);
   const [pendingStoreOnboarding, setPendingStoreOnboarding] = useState<StoreOnboarding | null>(null);
   const [tab, setTab] = useState<TabKey>('home');
+  const [discoverVisited, setDiscoverVisited] = useState(false);
   const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-preferences' | 'verification' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | 'recommendation' | null>(null);
   const [selectedRecommendation, setSelectedRecommendation] = useState<MatchRecommendation | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
@@ -71,6 +72,18 @@ export default function AppIndex() {
       .catch(() => undefined)
       .finally(() => setLoading(false));
   }, [enterSession]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || Platform.OS === 'web') return;
+    const { auth } = getSupabase();
+    const update = (state: string | null) => {
+      if (state === 'active') void auth.startAutoRefresh();
+      else if (state) void auth.stopAutoRefresh();
+    };
+    update(AppState.currentState ?? null);
+    const subscription = AppState.addEventListener('change', update);
+    return () => { subscription.remove(); void auth.stopAutoRefresh(); };
+  }, []);
 
   useEffect(() => {
     if (!session || session.demo) return;
@@ -161,7 +174,7 @@ export default function AppIndex() {
   const logout = async () => {
     const wasDemo = session?.demo;
     if (!wasDemo && isSupabaseConfigured) await deactivateNativePush().catch(() => undefined);
-    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setTab('home'); setSubview(null);
+    setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setDiscoverVisited(false); setTab('home'); setSubview(null);
     if (!wasDemo && isSupabaseConfigured) await signOut();
   };
 
@@ -270,10 +283,20 @@ export default function AppIndex() {
     if (session.role === 'creator') setSubview('creator-dna');
     else { setStorePreferencesParent('home'); setSubview('store-preferences'); }
   }} onOpenRecommendation={item => { setSelectedRecommendation(item); setSubview('recommendation'); }} onOpenCollaboration={showCollaboration} />
-    : tab === 'discover' ? <MatchingDiscoverScreen role={session.role} demo={session.demo} currentUserName={session.displayName} onOpenCurator={() => setSubview('curator')} onProposalCreated={openCollaboration} />
+    : tab === 'discover' ? null
     : tab === 'chat' ? <ChatHubScreen role={session.role} demo={session.demo} demoItems={session.demo ? demoCollaborations : undefined} onOpenCurator={() => setSubview('curator')} onOpenCollaboration={showCollaboration} />
     : tab === 'management' ? <ManagementScreen role={session.role} demo={session.demo} onOpenQr={() => setSubview('qr-products')} onOpenPickup={() => setSubview('pickup')} onOpenProject={() => setSubview('creator-project')} onOpenSettlements={() => setSubview('settlements')} onOpenCollaboration={showCollaboration} />
     : <MyScreen role={session.role} displayName={session.displayName} onOpenProject={() => setSubview('creator-project')} onOpenProfile={() => setSubview('creator-profile')} onOpenDna={() => setSubview('creator-dna')} onOpenStore={() => setSubview('store-profile')} onOpenPreferences={() => { setStorePreferencesParent('home'); setSubview('store-preferences'); }} onOpenVerification={() => setSubview('verification')} onOpenNotifications={() => setSubview('notifications')} onOpenAccount={() => setSubview('account')} />;
 
-  return <ScreenFrame footer={<BottomNav role={session.role} active={tab} onChange={setTab} />}>{content}</ScreenFrame>;
+  return <ScreenFrame footer={<BottomNav role={session.role} active={tab} onChange={next => {
+    if (next === tab) return;
+    Keyboard.dismiss();
+    if (next === 'discover') setDiscoverVisited(true);
+    setTab(next);
+  }} />}>
+    {content}
+    {discoverVisited ? <View style={tab === 'discover' ? { flex: 1 } : { flex: 1, position: 'absolute', inset: 0, opacity: 0 }} pointerEvents={tab === 'discover' ? 'auto' : 'none'} accessibilityElementsHidden={tab !== 'discover'} importantForAccessibility={tab === 'discover' ? 'auto' : 'no-hide-descendants'}>
+      <MatchingDiscoverScreen role={session.role} demo={session.demo} currentUserName={session.displayName} onOpenCurator={() => setSubview('curator')} onProposalCreated={openCollaboration} />
+    </View> : null}
+  </ScreenFrame>;
 }

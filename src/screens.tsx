@@ -1,5 +1,7 @@
+import * as Notifications from 'expo-notifications';
+import { registerNativePush } from './pushNotifications';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Button, Chip, CuritText, Empty, Field, Header, Icon, SectionTitle } from './ui';
 import { colors, fonts, radius } from './theme';
@@ -386,6 +388,23 @@ export function MyScreen({ role, displayName, onOpenProject, onOpenProfile, onOp
 export function AccountSettingsScreen({ email, role, demo, onBack, onResetPassword, onLogout }: { email: string; role: Role; demo?: boolean; onBack: () => void; onResetPassword: () => Promise<void>; onLogout: () => void | Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [notificationsDenied, setNotificationsDenied] = useState(false);
+  useEffect(() => {
+    if (demo || Platform.OS === 'web') return;
+    let active = true;
+    let wasDenied = false;
+    const check = () => {
+      void Notifications.getPermissionsAsync().then(permission => {
+        if (!active) return;
+        if (wasDenied && permission.granted) void registerNativePush().catch(() => undefined);
+        wasDenied = permission.status === 'denied';
+        setNotificationsDenied(wasDenied);
+      }).catch(() => undefined);
+    };
+    check();
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); });
+    return () => { active = false; subscription.remove(); };
+  }, [demo]);
   const resetPassword = async () => {
     if (demo) { setNotice('둘러보기 계정에서는 비밀번호를 변경할 수 없습니다.'); return; }
     setBusy(true); setNotice('');
@@ -396,6 +415,7 @@ export function AccountSettingsScreen({ email, role, demo, onBack, onResetPasswo
   return <View style={s.flex}><Header title="계정 정보" back={onBack} /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.accountInfoCard}><CuritText weight="bold" style={s.cardTitle}>내 계정</CuritText><View style={s.accountInfoRow}><CuritText style={s.muted}>이메일</CuritText><CuritText weight="semibold" style={s.accountInfoValue}>{email}</CuritText></View><View style={s.accountInfoRow}><CuritText style={s.muted}>계정 유형</CuritText><CuritText weight="semibold">{role === 'creator' ? '크리에이터' : '매장 운영자'}</CuritText></View></View>
     <View style={s.privacyCard}><CuritText weight="semibold">개인정보 표시 범위</CuritText><CuritText style={s.accountDescription}>이메일과 역할, 등록한 작품·공간·협업 정보는 계정 기능 제공에 사용됩니다. 매장 직원에게는 고객의 전체 전화번호 대신 주문번호와 뒤 4자리만 표시합니다.</CuritText></View>
+    {notificationsDenied ? <View style={s.privacyCard}><CuritText weight="semibold">기기 알림이 꺼져 있어요</CuritText><CuritText style={s.accountDescription}>협업과 주문 소식은 앱의 내 소식에서도 확인할 수 있습니다.</CuritText><Button label="기기 설정 열기" variant="secondary" onPress={() => { void Linking.openSettings().catch(error => setNotice(friendlyError(error))); }} /></View> : null}
     <View style={s.accountButtons}><Button label={busy ? '메일 전송 중…' : '비밀번호 재설정 메일 받기'} variant="secondary" disabled={busy} onPress={() => { void resetPassword(); }} /><Button label="로그아웃" variant="ghost" onPress={() => { void onLogout(); }} /></View>
     {notice ? <View style={s.noticeCard}><CuritText style={s.muted}>{notice}</CuritText></View> : null}
   </ScrollView></View>;

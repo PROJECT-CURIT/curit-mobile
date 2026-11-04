@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { readImageUpload } from './mediaUpload';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -322,7 +323,6 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
   const creator = kind === 'creator_activity';
   const [request, setRequest] = useState<VerificationRequest | null>(null);
   const [imageUri, setImageUri] = useState('');
-  const [mimeType, setMimeType] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(!demo);
   const [saving, setSaving] = useState(false);
@@ -339,7 +339,9 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
   const chooseEvidence = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
     const asset = result.canceled ? undefined : result.assets[0];
-    if (asset?.uri) { setImageUri(asset.uri); setMimeType(asset.mimeType || null); setNotice(''); }
+    if (!asset?.uri) return;
+    try { await readImageUpload(asset.uri); setImageUri(asset.uri); setNotice(''); }
+    catch (error) { setNotice(friendlyError(error)); }
   };
   const submit = async () => {
     if (!imageUri) { setNotice('확인 가능한 증빙 이미지를 먼저 선택해 주세요.'); return; }
@@ -349,7 +351,7 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
         setRequest({ id: 'demo-verification', kind, status: 'pending', evidencePath: imageUri, evidenceUrl: imageUri, note: note.trim(), reviewNote: '', submittedAt: new Date().toISOString(), reviewedAt: '' });
         setNotice('검토 요청을 접수했습니다.');
       } else {
-        setRequest(await submitVerificationRequest(kind, imageUri, note, mimeType));
+        setRequest(await submitVerificationRequest(kind, imageUri, note));
         setNotice('증빙을 안전하게 저장하고 검토 요청을 접수했습니다.');
       }
       setImageUri('');
@@ -404,6 +406,10 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
   const [commentsByPost, setCommentsByPost] = useState<Record<string, SocialComment[]>>(demo ? demoSocialComments : {});
   const [commentsLoadingFor, setCommentsLoadingFor] = useState('');
   const [notice, setNotice] = useState('');
+  const [savingPost, setSavingPost] = useState(false);
+  const [savingComment, setSavingComment] = useState(false);
+  const postRequest = useRef(false);
+  const commentRequest = useRef(false);
   const load = async () => { if (demo) return; setLoading(true); try { setItems(await loadSocialFeed()); } catch (error) { setNotice(friendlyError(error)); } finally { setLoading(false); } };
   useEffect(() => {
     if (demo) return;
@@ -413,14 +419,18 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
   }, [demo]);
   const choosePostImage = async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 }); const asset = result.canceled ? undefined : result.assets[0]; if (asset?.uri) setPostImage(asset.uri); };
   const create = async () => {
-    if (!compose.trim()) return;
+    if (!compose.trim() || postRequest.current) return;
     if (demo) {
       const id = `local-post-${Date.now()}`;
       setItems(current => [{ id, creatorId: 'demo-current-user', creatorName: currentUserName, handle: 'curit_user', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
       setCommentsByPost(current => ({ ...current, [id]: [] }));
       setCompose(''); setPostImage(''); setNotice(''); return;
     }
-    try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); } catch (error) { setNotice(friendlyError(error)); }
+    postRequest.current = true;
+    setSavingPost(true); setNotice('');
+    try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); }
+    catch (error) { setNotice(friendlyError(error)); }
+    finally { postRequest.current = false; setSavingPost(false); }
   };
   const toggleFollow = async (item: SocialPost) => {
     if (demo) { setItems(current => current.map(value => value.creatorId === item.creatorId ? { ...value, followed: !item.followed } : value)); return; }
@@ -448,25 +458,32 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
   };
   const addComment = async (item: SocialPost) => {
     const text = comment.trim();
-    if (!text || text.length > 500) return;
+    if (!text || text.length > 500 || commentRequest.current) return;
     if (demo) {
       const next: SocialComment = { id: `local-comment-${Date.now()}`, postId: item.id, userId: 'demo-current-user', displayName: currentUserName, avatarUrl: '', content: text, createdAt: new Date().toISOString() };
       setCommentsByPost(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), next] }));
       setItems(current => current.map(value => value.id === item.id ? { ...value, comments: (commentsByPost[item.id] ?? []).length + 1 } : value));
       setComment(''); setNotice(''); return;
     }
-    await addPostComment(item.id, text);
-    const comments = await loadPostComments(item.id);
-    setCommentsByPost(current => ({ ...current, [item.id]: comments }));
-    setItems(current => current.map(value => value.id === item.id ? { ...value, comments: comments.length } : value));
-    setComment('');
+    commentRequest.current = true;
+    setSavingComment(true); setNotice('');
+    try {
+      await addPostComment(item.id, text);
+      setComment('');
+      const comments = await loadPostComments(item.id);
+      setCommentsByPost(current => ({ ...current, [item.id]: comments }));
+      setItems(current => current.map(value => value.id === item.id ? { ...value, comments: comments.length } : value));
+    } finally {
+      commentRequest.current = false;
+      setSavingComment(false);
+    }
   };
   if (loading) return <ActivityIndicator color={colors.brand} style={f.loader} />;
   return <View style={f.feed}>
     {canPost ? <View style={f.compose}>
-      <TextInput value={compose} onChangeText={setCompose} placeholder="새 작품이나 전시 소식을 알려주세요" placeholderTextColor={colors.subtle} style={f.composeInput} multiline />
+      <TextInput value={compose} onChangeText={setCompose} placeholder="새 작품이나 전시 소식을 알려주세요" placeholderTextColor={colors.subtle} style={f.composeInput} maxLength={2000} editable={!savingPost} multiline />
       {postImage ? <Image source={{ uri: postImage }} style={f.postImage} /> : null}
-      <View style={f.two}><View style={f.flex}><Button label={postImage ? '사진 변경' : '사진 추가'} variant="secondary" onPress={() => { void choosePostImage(); }} /></View><View style={f.flex}><Button label="소식 올리기" disabled={!compose.trim()} onPress={() => { void create(); }} /></View></View>
+      <View style={f.two}><View style={f.flex}><Button label={postImage ? '사진 변경' : '사진 추가'} variant="secondary" onPress={() => { void choosePostImage(); }} /></View><View style={f.flex}><Button label={savingPost ? '등록 중…' : '소식 올리기'} disabled={savingPost || !compose.trim()} onPress={() => { void create(); }} /></View></View>
     </View> : null}
     {items.length ? items.map((item, index) => <View key={item.id} style={f.post}>
       <View style={f.row}>
@@ -486,8 +503,8 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
           <CuritText style={f.commentText}>{value.content}</CuritText>
         </View>) : <CuritText style={f.emptyComment}>첫 댓글을 남겨보세요.</CuritText>}
         <View style={f.commentRow}>
-          <TextInput value={comment} onChangeText={setComment} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} maxLength={500} returnKeyType="send" onSubmitEditing={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }} />
-          <Pressable accessibilityRole="button" disabled={!comment.trim() || comment.trim().length > 500} style={f.commentSubmit} onPress={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
+          <TextInput value={comment} onChangeText={setComment} placeholder="응원 댓글을 남겨주세요" placeholderTextColor={colors.subtle} style={f.commentInput} maxLength={500} editable={!savingComment} returnKeyType="send" onSubmitEditing={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }} />
+          <Pressable accessibilityRole="button" disabled={savingComment || !comment.trim() || comment.trim().length > 500} style={f.commentSubmit} onPress={() => { void addComment(item).catch(error => setNotice(friendlyError(error))); }}><CuritText weight="semibold" style={!comment.trim() ? f.muted : f.brand}>등록</CuritText></Pressable>
         </View>
       </View> : null}
     </View>) : <Empty title="등록된 소식이 없습니다" description="크리에이터의 새 작품과 전시 소식이 여기에 표시됩니다." />}

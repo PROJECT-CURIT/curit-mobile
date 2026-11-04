@@ -356,7 +356,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
     setBusy(true);
     setError('');
     try {
-      const path = demo ? asset.uri : await uploadMedia(asset.uri, 'store', asset.mimeType);
+      const path = demo ? asset.uri : await uploadMedia(asset.uri, 'store');
       setPhotos(current => [...current, { uri: asset.uri, path }]);
     } catch (caught) {
       setError(friendlyError(caught));

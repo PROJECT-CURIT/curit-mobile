@@ -1,3 +1,4 @@
+import { readImageUpload } from './mediaUpload';
 import { getSupabase } from './supabase';
 import { mediaUrl, uploadMedia } from './platform';
 
@@ -61,24 +62,12 @@ export async function loadVerificationRequest(kind: VerificationKind): Promise<V
   };
 }
 
-function verificationExtension(uri: string, mimeType?: string | null) {
-  if (mimeType === 'image/png') return 'png';
-  if (mimeType === 'image/webp') return 'webp';
-  const extension = uri.match(/\.([a-zA-Z0-9]{2,5})(?:\?|$)/)?.[1]?.toLowerCase().replace('jpeg', 'jpg');
-  return extension === 'png' || extension === 'webp' || extension === 'jpg' ? extension : 'jpg';
-}
-
-export async function submitVerificationRequest(kind: VerificationKind, imageUri: string, note: string, mimeType?: string | null) {
+export async function submitVerificationRequest(kind: VerificationKind, imageUri: string, note: string) {
   const userId = await currentUserId();
   const supabase = getSupabase();
-  const extension = verificationExtension(imageUri, mimeType);
+  const { body, extension, contentType } = await readImageUpload(imageUri);
   const evidencePath = `${userId}/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
-  const body = await (await fetch(imageUri)).arrayBuffer();
-  if (body.byteLength > 5 * 1024 * 1024) throw new Error('증빙 이미지는 5MB 이하여야 합니다.');
-  const upload = await supabase.storage.from('verification-evidence').upload(evidencePath, body, {
-    contentType: mimeType || (extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg'),
-    upsert: false,
-  });
+  const upload = await supabase.storage.from('verification-evidence').upload(evidencePath, body, { contentType, upsert: false });
   if (upload.error) throw new Error(upload.error.message);
   const submitted = await supabase.rpc('submit_verification_request', { p_kind: kind, p_evidence_path: evidencePath, p_note: note.trim() });
   if (submitted.error) {

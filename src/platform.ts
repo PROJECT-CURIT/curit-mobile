@@ -1,3 +1,4 @@
+import { readImageUpload } from './mediaUpload';
 import type { QrProduct, Role, Session } from './types';
 import { getSupabase } from './supabase';
 import type { ProjectProduct } from './detailScreens';
@@ -104,28 +105,14 @@ export async function signOut() {
   if (error) throw new Error(error.message);
 }
 
-function imageExtension(uri: string, mimeType?: string | null) {
-  if (mimeType === 'image/png') return 'png';
-  if (mimeType === 'image/webp') return 'webp';
-  const match = uri.match(/\.([a-zA-Z0-9]{2,5})(?:\?|$)/);
-  return ['png', 'webp', 'jpg', 'jpeg'].includes(match?.[1]?.toLowerCase() ?? '')
-    ? match![1]!.toLowerCase().replace('jpeg', 'jpg')
-    : 'jpg';
-}
-
-export async function uploadMedia(uri: string, folder: 'store' | 'project' | 'profile' | 'post', mimeType?: string | null) {
+export async function uploadMedia(uri: string, folder: 'store' | 'project' | 'profile' | 'post') {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   const user = auth.user;
   if (!user) throw new Error('로그인이 필요합니다.');
-  const extension = imageExtension(uri, mimeType);
+  const { body, extension, contentType } = await readImageUpload(uri);
   const path = `${user.id}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
-  const body = await (await fetch(uri)).arrayBuffer();
-  if (body.byteLength > 5 * 1024 * 1024) throw new Error('이미지는 5MB 이하여야 합니다.');
-  const { error } = await supabase.storage.from('curit-media').upload(path, body, {
-    contentType: mimeType || (extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg'),
-    upsert: false,
-  });
+  const { error } = await supabase.storage.from('curit-media').upload(path, body, { contentType, upsert: false });
   if (error) throw new Error(error.message);
   return path;
 }

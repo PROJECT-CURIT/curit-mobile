@@ -84,14 +84,22 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [section, setSection] = useState<'matches' | 'creators' | 'news'>('matches');
+  const [matchError, setMatchError] = useState('');
+  const [matchAttempt, setMatchAttempt] = useState(0);
+  const [directoryAttempt, setDirectoryAttempt] = useState(0);
   const [directory, setDirectory] = useState<{ projects: CreatorDirectoryCard[]; error: string } | null>(null);
   const directoryProjects = demo ? demoDirectoryProjects : (directory?.projects ?? []);
   const directoryLoading = !demo && directory === null;
   const directoryError = demo ? '' : (directory?.error ?? '');
 
   useEffect(() => {
-    void loadMatchRecommendations(role, demo).then(setItems).catch(caught => setNotice(friendlyError(caught))).finally(() => setLoading(false));
-  }, [demo, role]);
+    let active = true;
+    void loadMatchRecommendations(role, demo)
+      .then(value => { if (active) setItems(value); })
+      .catch(caught => { if (active) setMatchError(friendlyError(caught)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [demo, role, matchAttempt]);
   useEffect(() => {
     if (demo) return;
     let active = true;
@@ -101,7 +109,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
       if (active) setDirectory({ projects: [], error: friendlyError(caught) });
     });
     return () => { active = false; };
-  }, [demo]);
+  }, [demo, directoryAttempt]);
   const visible = items.filter(item => {
     const text = [item.title, item.subtitle, item.description, ...item.tags].join(' ').toLocaleLowerCase('ko-KR');
     const queryMatches = text.includes(query.trim().toLocaleLowerCase('ko-KR'));
@@ -132,7 +140,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
     <ScrollView contentContainerStyle={c.discoverScroll} keyboardShouldPersistTaps="handled">
       <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View>
       <View accessibilityRole="tablist" style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: section === value }} key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => setSection(value as 'matches' | 'creators' | 'news')}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
-      {section === 'news' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /> : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects} loading={directoryLoading} error={directoryError} /> : <>
+      {section === 'news' ? <SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /> : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
       {role === 'creator' ? <>
         <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
         <View style={c.filterCard}>
@@ -149,17 +157,17 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
       </> : null}
       <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">조건 일치도는 등록 정보 기준 참고 점수예요</CuritText><CuritText style={c.pinCaption}>취향 키워드·지역·판매 재고·전시 구역을 반영하며, 판매가는 예산과 따로 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
-      {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={() => { void propose(item); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
+      {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : matchError ? <View style={c.error}><CuritText style={c.errorText}>{matchError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={() => { setLoading(true); setMatchError(''); setMatchAttempt(value => value + 1); }} /></View> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={() => { void propose(item); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
       {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
       </>}
     </ScrollView>
   </View>;
 }
 
-function CreatorDirectory({ items, loading, error }: { items: CreatorDirectoryCard[]; loading: boolean; error: string }) {
+function CreatorDirectory({ items, loading, error, onRetry }: { items: CreatorDirectoryCard[]; loading: boolean; error: string; onRetry: () => void }) {
   return <View style={c.creatorDirectory}>
     <View><CuritText weight="bold" style={c.directoryTitle}>작품과 작가</CuritText><CuritText style={c.muted}>다른 크리에이터의 작품 세계와 활동을 살펴보세요.</CuritText></View>
-    {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText></View> : items.length ? items.map(item => <View key={item.id} style={c.creatorCard}>
+    {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={onRetry} /></View> : items.length ? items.map(item => <View key={item.id} style={c.creatorCard}>
       {item.imageSource ? <Image source={item.imageSource} style={c.creatorCardImage} contentFit="cover" /> : item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.creatorCardImage} contentFit="cover" /> : <View style={[c.creatorCardImage, c.cardImagePlaceholder]}><Icon name="discover" color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
       <View style={c.creatorCardBody}><View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.creatorCardTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.artist} · {item.region}</CuritText></View><View style={c.creatorAvatar}><CuritText weight="bold" style={c.brandText}>{item.artist[0]}</CuritText></View></View><View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View><CuritText style={c.pinCaption}>{item.priceRange} · {item.status}</CuritText></View>
     </View>) : <Empty title="공개된 작품이 없습니다" description="크리에이터가 협업 모집을 시작하면 이곳에서 확인할 수 있어요." />}
