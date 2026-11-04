@@ -70,7 +70,7 @@ export default function AuthCallbackScreen() {
     }
   };
 
-  return <ScreenFrame><KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: 'height' })} style={{ flex: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, padding: 28, justifyContent: 'center', gap: 18 }}>
+  return <ScreenFrame><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, padding: 28, justifyContent: 'center', gap: 18 }}>
     {state === 'loading' ? <ActivityIndicator color={colors.brand} size="large" /> : null}
     <CuritText weight="bold" style={{ fontSize: 24 }}>{state === 'success' ? '인증 완료' : state === 'reset' ? '새 비밀번호 설정' : state === 'reset-complete' ? '변경 완료' : state === 'error' ? '인증 확인 필요' : '이메일 인증 중'}</CuritText>
     <CuritText style={{ color: state === 'error' ? colors.danger : colors.muted }}>{message}</CuritText>
