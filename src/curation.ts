@@ -178,7 +178,8 @@ function demoRecommendations(role: Role): MatchRecommendation[] {
 
 async function storeRecommendations(preferenceText = '', all = false, signal?: AbortSignal): Promise<MatchRecommendation[]> {
   const supabase = getSupabase();
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
   if (!auth.user) throw new Error('로그인이 필요합니다.');
   const storeQuery = supabase.from('store_profiles').select('*').eq('owner_id', auth.user.id);
   if (signal) storeQuery.abortSignal(signal);
@@ -236,7 +237,8 @@ async function storeRecommendations(preferenceText = '', all = false, signal?: A
 
 async function creatorRecommendations(preferenceText = '', all = false, signal?: AbortSignal): Promise<MatchRecommendation[]> {
   const supabase = getSupabase();
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
   if (!auth.user) throw new Error('로그인이 필요합니다.');
   const creatorQuery = supabase.from('creator_profiles').select('user_id, introduction, categories, regions').eq('user_id', auth.user.id);
   const projectQuery = supabase.from('projects').select(publicProjectFields).eq('creator_id', auth.user.id).in('status', ['recruiting', 'matched']).order('updated_at', { ascending: false }).limit(1);

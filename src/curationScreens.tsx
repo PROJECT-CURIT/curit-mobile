@@ -24,6 +24,7 @@ import { exhibitionPeriodError, formatExhibitionDateInput, suggestedExhibitionPe
 import { friendlyError, loadPublicProject } from './platform';
 import { storeColors } from './storePreferences';
 import { colors, fonts, radius } from './theme';
+import { loadWithDeadline } from './asyncRequest';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
 import type { CreatorDirectoryEntry, CuratorSendRequest } from './curation';
 import { Button, Chip, CuritText, Empty, Field, Header, Icon, ScreenFrame, SessionLockedContext } from './ui';
@@ -88,18 +89,6 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
 }
 
 const discoverDisplayStep = 8;
-
-async function loadWithDeadline<T>(load: (signal: AbortSignal) => Promise<T>, controller: AbortController) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error('연결이 오래 걸리고 있어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'));
-      controller.abort();
-    }, 10_000);
-  });
-  try { return await Promise.race([load(controller.signal), deadline]); }
-  finally { clearTimeout(timer); }
-}
 
 export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string, period?: ExhibitionPeriod) => Promise<void> }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);

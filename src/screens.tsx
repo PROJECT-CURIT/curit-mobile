@@ -11,6 +11,7 @@ import { friendlyError, issueQrListing, loadManagedOrders, loadManagedQrProducts
 import type { CollaborationSummary, MatchRecommendation, QrProduct, Role } from './types';
 import { demoCollaborationList } from './demoContent';
 import { loadFieldSaleProducts } from './fieldSaleCatalog';
+import { loadWithDeadline } from './asyncRequest';
 
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const demoSettlements: SettlementEntry[] = [
@@ -150,10 +151,12 @@ export function RoleSelectionScreen({ onSelect, onBack }: { onSelect: (role: Rol
 
 function useCommerceSummary(role: Role, demo?: boolean) {
   const [summary, setSummary] = useState({ qrViews: demo ? 203 : 0, salesCount: demo ? 8 : 0, expectedSettlement: demo ? pendingSettlementTotal(demoSettlements, role) : 0, loading: !demo, failed: false });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (demo) return;
     let active = true;
-    void Promise.all([loadSettlements(), loadManagedQrProducts()])
+    const controller = new AbortController();
+    void loadWithDeadline(signal => Promise.all([loadSettlements(signal), loadManagedQrProducts(signal)]), controller)
       .then(([entries, qrProducts]) => {
         if (!active) return;
         const eligible = entries.filter(entry => entry.status !== 'cancelled' && entry.status !== 'held');
@@ -168,9 +171,9 @@ function useCommerceSummary(role: Role, demo?: boolean) {
       .catch(() => {
         if (active) setSummary(current => ({ ...current, loading: false, failed: true }));
       });
-    return () => { active = false; };
-  }, [demo, role]);
-  return summary;
+    return () => { active = false; controller.abort(); };
+  }, [demo, role, attempt]);
+  return { ...summary, reload: () => { setSummary(current => ({ ...current, loading: true, failed: false })); setAttempt(value => value + 1); } };
 }
 
 type HomeProps = {
@@ -188,27 +191,48 @@ export function HomeScreen({ role, ...props }: HomeProps & { role: Role }) {
 function useRecommendations(role: Role, demo?: boolean) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    void loadMatchRecommendations(role, demo).then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
-  }, [demo, role]);
-  return { items, loading };
+    let active = true;
+    const controller = new AbortController();
+    void loadWithDeadline(signal => loadMatchRecommendations(role, demo, '', signal), controller)
+      .then(value => { if (active) setItems(value); })
+      .catch(caught => { if (active) setError(friendlyError(caught)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [demo, role, attempt]);
+  return { items, loading, error, reload: () => { setError(''); setLoading(true); setAttempt(value => value + 1); } };
 }
 
 function useCollaborationList(role: Role, demo?: boolean) {
   const fallback: CollaborationSummary[] = demo ? demoCollaborationList(role) : [];
   const [items, setItems] = useState<CollaborationSummary[]>(fallback);
   const [loading, setLoading] = useState(!demo);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (demo) return;
-    void loadCollaborations(role).then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
-  }, [demo, role]);
-  return { items, loading };
+    let active = true;
+    const controller = new AbortController();
+    void loadWithDeadline(signal => loadCollaborations(role, undefined, signal), controller)
+      .then(value => { if (active) setItems(value); })
+      .catch(caught => { if (active) setError(friendlyError(caught)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [demo, role, attempt]);
+  return { items, loading, error, reload: () => { setError(''); setLoading(true); setAttempt(value => value + 1); } };
+}
+
+function LoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return <View style={s.errorBox}><CuritText accessibilityRole="alert" style={{ color: colors.danger }}>{message}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={onRetry} /></View>;
 }
 
 function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendation, onOpenCollaboration }: HomeProps) {
   const recommended = useRecommendations('creator', demo);
   const collaborations = useCollaborationList('creator', demo);
-  const current = collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
+  const current = collaborations.loading || collaborations.error ? undefined : collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
+  const error = recommended.error || collaborations.error;
   const items = demo
     ? stores.map((store, index) => ({
       targetId: `demo-space-${index}`,
@@ -229,10 +253,11 @@ function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendatio
         <View style={s.flex}><CuritText style={s.curationPrelude}>{displayName} 님의 다음 장면</CuritText><CuritText weight="bold" style={s.curationTitle}>내 작품을 위한{`\n`}오늘의 큐레이션</CuritText></View>
         <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 설정" style={s.preferenceLink} onPress={onOpenPreferences}><CuritText weight="semibold" style={s.preferenceLinkText}>작품 DNA 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
+      {error ? <LoadFailure message={error} onRetry={() => { recommended.reload(); collaborations.reload(); }} /> : null}
       <View style={s.curationSectionTop}><CuritText weight="semibold" style={s.curationSectionTitle}>내 작품과 어울리는 공간</CuritText></View>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
-      <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onOpenRecommendation(item)} />)}</View>
-      {!recommended.loading && !items.length ? <Empty title="추천할 공간을 찾고 있어요" description="작품 DNA와 활동 지역을 저장하면 맞는 매장을 비교해 드립니다." /> : null}
+      {!recommended.error && (demo || !recommended.loading) ? <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onOpenRecommendation(item)} />)}</View> : null}
+      {!recommended.loading && !recommended.error && !items.length ? <Empty title="추천할 공간을 찾고 있어요" description="작품 DNA와 활동 지역을 저장하면 맞는 매장을 비교해 드립니다." /> : null}
       {current ? <Pressable accessibilityRole="button" accessibilityLabel="진행 중인 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
@@ -242,7 +267,8 @@ function StoreHome({ displayName, demo, onOpenPreferences, onOpenRecommendation,
   const summary = useCommerceSummary('store', demo);
   const recommended = useRecommendations('store', demo);
   const collaborations = useCollaborationList('store', demo);
-  const current = collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
+  const current = collaborations.loading || collaborations.error ? undefined : collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
+  const error = recommended.error || collaborations.error || (summary.failed ? '판매·정산 정보를 불러오지 못했어요. 다시 시도해 주세요.' : '');
   const items = demo
     ? projects.map((project, index) => ({ targetId: project.id, targetType: 'project' as const, reasons: project.tags, tags: project.tags, title: project.title, subtitle: `${project.artist} 작가`, description: project.priceRange, score: project.match ?? Math.max(79, 88 - index * 2), image: project.image }))
     : recommended.items.map(item => ({ ...item, image: item.imageUrl ? { uri: item.imageUrl } : undefined }));
@@ -253,12 +279,13 @@ function StoreHome({ displayName, demo, onOpenPreferences, onOpenRecommendation,
         <View style={s.flex}><CuritText weight="bold" style={s.curationTitle}>{displayName}을 위한{`\n`}오늘의 큐레이션</CuritText></View>
         <Pressable accessibilityRole="button" accessibilityLabel="공간 취향과 전시 구역 설정" style={s.preferenceLink} onPress={onOpenPreferences}><CuritText weight="semibold" style={s.preferenceLinkText}>공간 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
+      {error ? <LoadFailure message={error} onRetry={() => { recommended.reload(); collaborations.reload(); summary.reload(); }} /> : null}
       <View style={s.curationSectionTop}><View><CuritText style={s.curationPrelude}>공간의 취향을, 작품으로</CuritText><CuritText weight="semibold" style={s.curationSectionTitle}>현재 공간 추천 작품</CuritText></View></View>
       <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 정보와 공개된 작품 조건을 비교해 추천해요.</CuritText>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
-      <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onOpenRecommendation(item)} />)}</View>
-      {!recommended.loading && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 예산을 저장하면 전시 가능한 작품을 비교해 드립니다." /> : null}
-      {current ? <Pressable accessibilityRole="button" accessibilityLabel="현재 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
+      {!recommended.error && (demo || !recommended.loading) ? <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onOpenRecommendation(item)} />)}</View> : null}
+      {!recommended.loading && !recommended.error && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 예산을 저장하면 전시 가능한 작품을 비교해 드립니다." /> : null}
+      {current ? <Pressable accessibilityRole="button" accessibilityLabel="현재 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : summary.failed ? '성과 정보를 확인할 수 없어요' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
 }
@@ -327,10 +354,12 @@ function CreatorManagement({ demo, onOpenSettlements, onOpenCollaboration }: { d
   const proposalCount = collaborations.items.filter(item => ['proposed', 'negotiating'].includes(item.status)).length;
   const readyCount = collaborations.items.filter(item => item.status === 'approved').length;
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
+  const loadError = collaborations.error || (summary.failed ? '판매·정산 정보를 불러오지 못했어요. 다시 시도해 주세요.' : '');
   return <View style={s.flex}><Header title="협업 관리" /><ScrollView contentContainerStyle={s.scroll}>
-    <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 대기" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="출고 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
+    <View style={s.metricsBox}><Metric value={collaborations.loading || collaborations.error ? '—' : String(proposalCount)} label="제안 대기" /><Metric value={collaborations.loading || collaborations.error ? '—' : String(readyCount)} label="출고 준비" /><Metric value={collaborations.loading || collaborations.error ? '—' : String(exhibitionCount)} label="전시 중" /></View>
+    {loadError ? <LoadFailure message={loadError} onRetry={() => { collaborations.reload(); summary.reload(); }} /> : null}
     <View style={s.quickGrid}><QuickAction icon="management" label="판매·정산" description={summary.loading || summary.failed ? '정산 내역 확인' : `${money(summary.expectedSettlement)} 정산 예정`} onPress={onOpenSettlements} /></View>
-    <SectionTitle title="협업 제안 및 전시" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="creator" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 협업이 없습니다" description="AI 큐레이터의 추천에서 매장에 협업을 제안해 보세요." />}
+    <SectionTitle title="협업 제안 및 전시" />{collaborations.loading ? <ActivityIndicator accessibilityLabel="협업 정보를 불러오고 있어요" color={colors.brand} style={{ marginVertical: 24 }} /> : collaborations.error ? null : active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="creator" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 협업이 없습니다" description="AI 큐레이터의 추천에서 매장에 협업을 제안해 보세요." />}
   </ScrollView></View>;
 }
 
@@ -341,10 +370,12 @@ function StoreManagement({ demo, onOpenQr, onOpenPickup, onOpenSettlements, onOp
   const proposalCount = collaborations.items.filter(item => ['proposed', 'negotiating'].includes(item.status)).length;
   const readyCount = collaborations.items.filter(item => item.status === 'approved').length;
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
+  const loadError = collaborations.error || (summary.failed ? '판매·정산 정보를 불러오지 못했어요. 다시 시도해 주세요.' : '');
   return <View style={s.flex}><Header title="매장 관리" /><ScrollView contentContainerStyle={s.scroll}>
-    <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 확인" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="전시 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
+    <View style={s.metricsBox}><Metric value={collaborations.loading || collaborations.error ? '—' : String(proposalCount)} label="제안 확인" /><Metric value={collaborations.loading || collaborations.error ? '—' : String(readyCount)} label="전시 준비" /><Metric value={collaborations.loading || collaborations.error ? '—' : String(exhibitionCount)} label="전시 중" /></View>
     <View style={s.commerceStrip}><Metric value={summary.loading || summary.failed ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading || summary.failed ? '—' : `${summary.salesCount}건`} label="누적 판매" /><Metric value={summary.loading || summary.failed ? '—' : money(summary.expectedSettlement)} label="정산 예정" /></View>
-    <View style={s.quickGrid}><QuickAction icon="qr" label="QR 상품 관리" description="가격·수량·판매 상태" onPress={onOpenQr} /><QuickAction icon="store" label="수령 관리" description="예약·즉시 수령 전달" onPress={onOpenPickup} /><QuickAction icon="management" label="판매·정산" description="주문·정산 내역" onPress={onOpenSettlements} /></View><SectionTitle title="협업·전시 현황" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="store" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 전시가 없습니다" description="AI 추천에서 작품을 선택해 협업 제안을 보내보세요." />}
+    {loadError ? <LoadFailure message={loadError} onRetry={() => { collaborations.reload(); summary.reload(); }} /> : null}
+    <View style={s.quickGrid}><QuickAction icon="qr" label="QR 상품 관리" description="가격·수량·판매 상태" onPress={onOpenQr} /><QuickAction icon="store" label="수령 관리" description="예약·즉시 수령 전달" onPress={onOpenPickup} /><QuickAction icon="management" label="판매·정산" description="주문·정산 내역" onPress={onOpenSettlements} /></View><SectionTitle title="협업·전시 현황" />{collaborations.loading ? <ActivityIndicator accessibilityLabel="협업 정보를 불러오고 있어요" color={colors.brand} style={{ marginVertical: 24 }} /> : collaborations.error ? null : active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="store" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 전시가 없습니다" description="AI 추천에서 작품을 선택해 협업 제안을 보내보세요." />}
   </ScrollView></View>;
 }
 

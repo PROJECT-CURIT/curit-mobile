@@ -226,7 +226,8 @@ export async function loadStoreOnboarding(userId: string): Promise<StoreOnboardi
 export async function managementRequest(path: string, init?: RequestInit) {
   const supabase = getSupabase();
   const { data, error } = await supabase.auth.getSession();
-  if (error || !data.session?.access_token) throw new Error('로그인이 필요합니다.');
+  if (error) throw error;
+  if (!data.session?.access_token) throw new Error('로그인이 필요합니다.');
   let response: Response;
   try {
     response = await fetch(buildCommerceApiUrl(path), {
@@ -245,8 +246,8 @@ export async function managementRequest(path: string, init?: RequestInit) {
   return result;
 }
 
-export async function loadManagedQrProducts(): Promise<QrProduct[]> {
-  const result = await managementRequest('/api/management/listings');
+export async function loadManagedQrProducts(signal?: AbortSignal): Promise<QrProduct[]> {
+  const result = await managementRequest('/api/management/listings', signal ? { signal } : undefined);
   const listings = [
     ...(Array.isArray(result?.listings) ? result.listings : []),
     ...(Array.isArray(result?.candidates) ? result.candidates : []),
@@ -539,11 +540,13 @@ export type SettlementEntry = {
   createdAt: string;
 };
 
-export async function loadSettlements(): Promise<SettlementEntry[]> {
-  const { data, error } = await getSupabase()
+export async function loadSettlements(signal?: AbortSignal): Promise<SettlementEntry[]> {
+  const query = getSupabase()
     .from('settlement_entries')
     .select('id, order_id, collaboration_id, gross_amount, creator_amount, store_amount, platform_amount, status, scheduled_for, created_at')
     .order('created_at', { ascending: false });
+  if (signal) query.abortSignal(signal);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
     id: String(row.id),
