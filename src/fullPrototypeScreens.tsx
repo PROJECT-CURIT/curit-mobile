@@ -61,6 +61,10 @@ function LoadingScreen({ title, onBack }: { title: string; onBack: () => void })
   return <View style={f.flex}><Header title={title} back={onBack} /><ActivityIndicator color={colors.brand} style={f.loader} /></View>;
 }
 
+function LoadErrorScreen({ title, message, onBack, onRetry }: { title: string; message: string; onBack: () => void; onRetry: () => void }) {
+  return <View style={f.flex}><Header title={title} back={onBack} /><Empty title="정보를 불러오지 못했어요" description={message} /><View style={f.sticky}><Button label="다시 불러오기" onPress={onRetry} /></View></View>;
+}
+
 export function CreatorDnaScreen({ onBack, onNext, demo = false }: { onBack: () => void; onNext?: () => void; demo?: boolean }) {
   const [profile, setProfile] = useState<CreatorProfileData | null>(null);
   const [moods, setMoods] = useState<string[]>([]);
@@ -70,28 +74,40 @@ export function CreatorDnaScreen({ onBack, onNext, demo = false }: { onBack: () 
   const [conditions, setConditions] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile(); void request.then(value => { setProfile(value); setMoods(value.dnaMoods); setColors(value.dnaColors); setSpaces(value.preferredSpaces); setGoals(value.collaborationGoals); setConditions(value.installConditions); }).catch(error => setNotice(friendlyError(error))); }, [demo]);
+  const [attempt, setAttempt] = useState(0);
+  const saveLock = useRef(false);
+  useEffect(() => {
+    let active = true;
+    const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile();
+    void request.then(value => {
+      if (!active) return;
+      setProfile(value); setMoods(value.dnaMoods); setColors(value.dnaColors); setSpaces(value.preferredSpaces); setGoals(value.collaborationGoals); setConditions(value.installConditions);
+    }).catch(error => { if (active) setNotice(friendlyError(error)); });
+    return () => { active = false; };
+  }, [demo, attempt]);
   const save = async () => {
+    if (!profile || saveLock.current) return;
     if (!moods.length || !colorsValue.length || !spaces.length || !goals.length) { setNotice('작품 취향과 협업 방향을 모두 선택해 주세요.'); return; }
+    saveLock.current = true;
     setSaving(true); setNotice('');
     try { if (!demo) await saveCreatorDna({ dnaMoods: moods, dnaColors: colorsValue, preferredSpaces: spaces, collaborationGoals: goals, installConditions: conditions }); onNext?.(); if (!onNext) setNotice('크리에이터 DNA를 저장했습니다.'); }
-    catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
+    catch (error) { setNotice(friendlyError(error)); } finally { saveLock.current = false; setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title="크리에이터 DNA" onBack={onBack} />;
+  if (!profile) return <LoadErrorScreen title="크리에이터 DNA" message={notice} onBack={onBack} onRetry={() => { setNotice(''); setAttempt(value => value + 1); }} />;
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Header title="크리에이터 DNA" back={onBack} />
-    <ScrollView contentContainerStyle={f.scroll} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
       <StepBars labels={['1 작품 DNA', '2 프로필']} current={1} />
       <CuritText weight="bold" style={f.pageTitle}>내 작품에 맞는 공간을 찾아요.</CuritText>
       <CuritText style={f.description}>공간 추천에 반영할 취향과 조건을 정해 주세요.</CuritText>
-      <ChoiceCard title="핵심 분위기 *" options={moodOptions} selected={moods} onToggle={value => toggle(value, moods, setMoods)} />
-      <ChoiceCard title="작품 색감 *" options={colorOptions} selected={colorsValue} onToggle={value => toggle(value, colorsValue, setColors)} />
-      <ChoiceCard title="선호 공간 *" options={spaceOptions} selected={spaces} onToggle={value => toggle(value, spaces, setSpaces)} />
-      <ChoiceCard title="협업 목적 *" options={goalOptions} selected={goals} onToggle={value => toggle(value, goals, setGoals)} />
-      <Field label="설치 · 관리 조건" value={conditions} onChangeText={setConditions} placeholder="예: 습기가 많은 공간은 피하고 싶어요" multiline style={f.textarea} />
-      {notice ? <Notice text={notice} /> : null}
+      <ChoiceCard title="핵심 분위기 *" options={storeChoices(moodOptions, profile.dnaMoods)} selected={moods} disabled={saving} onToggle={value => toggle(value, moods, setMoods)} />
+      <ChoiceCard title="작품 색감 *" options={storeChoices(colorOptions, profile.dnaColors)} selected={colorsValue} disabled={saving} onToggle={value => toggle(value, colorsValue, setColors)} />
+      <ChoiceCard title="선호 공간 *" options={storeChoices(spaceOptions, profile.preferredSpaces)} selected={spaces} disabled={saving} onToggle={value => toggle(value, spaces, setSpaces)} />
+      <ChoiceCard title="협업 목적 *" options={storeChoices(goalOptions, profile.collaborationGoals)} selected={goals} disabled={saving} onToggle={value => toggle(value, goals, setGoals)} />
+      <Field label="설치 · 관리 조건" value={conditions} onChangeText={setConditions} editable={!saving} placeholder="예: 습기가 많은 공간은 피하고 싶어요" multiline style={f.textarea} />
     </ScrollView>
-    <View style={f.sticky}><Button label={saving ? '저장 중…' : onNext ? '다음 · 프로필 설정' : '변경사항 저장'} disabled={saving} onPress={() => { void save(); }} /></View>
+    <View style={f.sticky}>{notice ? <Notice text={notice} /> : null}<Button label={saving ? '저장 중…' : onNext ? '다음 · 프로필 설정' : '변경사항 저장'} disabled={saving} onPress={() => { void save(); }} /></View>
   </KeyboardAvoidingView>;
 }
 
@@ -100,17 +116,31 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
   const [avatarUri, setAvatarUri] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const saveLock = useRef(false);
+  const [savedOptions, setSavedOptions] = useState({ regions: [] as string[], categories: [] as string[] });
   const photo = usePhotoPicker();
-  useEffect(() => { const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile(); void request.then(setProfile).catch(error => setNotice(friendlyError(error))); }, [demo]);
-  const patch = <K extends keyof CreatorProfileData>(key: K, value: CreatorProfileData[K]) => setProfile(current => current ? { ...current, [key]: value } : current);
+  useEffect(() => {
+    let active = true;
+    const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile();
+    void request.then(value => {
+      if (!active) return;
+      setSavedOptions({ regions: value.regions, categories: value.categories });
+      setProfile(value);
+    }).catch(error => { if (active) setNotice(friendlyError(error)); });
+    return () => { active = false; };
+  }, [demo, attempt]);
+  const patch = <K extends keyof CreatorProfileData>(key: K, value: CreatorProfileData[K]) => { if (!saveLock.current) setProfile(current => current ? { ...current, [key]: value } : current); };
   const save = async () => {
+    if (saveLock.current) return;
     if (!profile?.displayName.trim() || !profile.regions.length || !profile.categories.length) { setNotice('활동명, 활동 지역, 작업 분야를 입력해 주세요.'); return; }
+    saveLock.current = true;
     setSaving(true); setNotice('');
     try { const saved = demo ? { ...profile, avatarUrl: avatarUri || profile.avatarUrl, onboardingComplete: true } : await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved); if (!onSaved) setNotice('프로필을 저장했습니다.'); }
-    catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
+    catch (error) { setNotice(friendlyError(error)); } finally { saveLock.current = false; setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title={mode === 'edit' ? '크리에이터 프로필 수정' : '크리에이터 프로필'} onBack={onBack} />;
-  if (!profile) return <View style={f.flex}><Header title="크리에이터 프로필" back={onBack} /><Notice text={notice} /></View>;
+  if (!profile) return <LoadErrorScreen title={mode === 'edit' ? '크리에이터 프로필 수정' : '크리에이터 프로필'} message={notice} onBack={onBack} onRetry={() => { setNotice(''); setAttempt(value => value + 1); }} />;
   if (mode === 'view') return <View style={f.flex}>
     <Header title="크리에이터 프로필" back={onBack} action={<Pressable accessibilityRole="button" hitSlop={10} style={f.headerTextAction} onPress={onEdit}><CuritText weight="semibold" style={f.brand}>수정</CuritText></Pressable>} />
     <ScrollView contentContainerStyle={f.scroll}>
@@ -128,26 +158,34 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
       <CuritText weight="bold" style={f.pageTitle}>나를 소개할 준비</CuritText><CuritText style={f.description}>활동명·지역·분야만 입력하면 시작할 수 있어요.</CuritText>
       <View style={f.photoRow}>{avatarUri || profile.avatarUrl ? <Image source={{ uri: avatarUri || profile.avatarUrl }} style={f.avatarLarge} /> : <View style={f.avatarLarge}><CuritText style={f.muted}>사진</CuritText></View>}<View style={f.flex}><Button label="프로필 사진 선택" variant="secondary" disabled={saving || photo.checking} onPress={() => { void photo.choose(setAvatarUri); }} /><CuritText style={f.hint}>JPG · PNG · WEBP, 최대 5MB</CuritText></View></View>
       {photo.error ? <CuritText accessibilityRole="alert" style={f.danger}>{photo.error}</CuritText> : null}
-      <Field label="활동명 / 브랜드명 *" value={profile.displayName} onChangeText={value => patch('displayName', value)} />
-      <Field label="활동 아이디" value={profile.handle} onChangeText={value => patch('handle', value.replace(/[^a-zA-Z0-9_.]/g, ''))} placeholder="soyeon_craft" autoCapitalize="none" />
-      <Field label="한 줄 소개 · 선택" value={profile.headline} onChangeText={value => patch('headline', value)} />
-      <Field label="작업 이야기" value={profile.introduction} onChangeText={value => patch('introduction', value)} multiline style={f.textarea} />
-      <ChoiceCard title="활동 지역 *" options={regionOptions} selected={profile.regions} onToggle={value => patch('regions', profile.regions.includes(value) ? profile.regions.filter(item => item !== value) : [...profile.regions, value])} />
-      <ChoiceCard title="작업 분야 *" options={categoryOptions} selected={profile.categories} onToggle={value => patch('categories', profile.categories.includes(value) ? profile.categories.filter(item => item !== value) : [...profile.categories, value])} />
-      <Field label="SNS" value={profile.snsUrl} onChangeText={value => patch('snsUrl', value)} placeholder="https://instagram.com/..." autoCapitalize="none" />
-      <Field label="포트폴리오" value={profile.portfolioUrl} onChangeText={value => patch('portfolioUrl', value)} placeholder="https://..." autoCapitalize="none" />
-      {notice ? <Notice text={notice} /> : null}
+      <Field editable={!saving} label="활동명 / 브랜드명 *" value={profile.displayName} onChangeText={value => patch('displayName', value)} />
+      <Field editable={!saving} label="활동 아이디" value={profile.handle} onChangeText={value => patch('handle', value.replace(/[^a-zA-Z0-9_.]/g, ''))} placeholder="soyeon_craft" autoCapitalize="none" />
+      <Field editable={!saving} label="한 줄 소개 · 선택" value={profile.headline} onChangeText={value => patch('headline', value)} />
+      <Field editable={!saving} label="작업 이야기" value={profile.introduction} onChangeText={value => patch('introduction', value)} multiline style={f.textarea} />
+      <ChoiceCard title="활동 지역 *" options={storeChoices(regionOptions, savedOptions.regions)} selected={profile.regions} disabled={saving} onToggle={value => patch('regions', profile.regions.includes(value) ? profile.regions.filter(item => item !== value) : [...profile.regions, value])} />
+      <ChoiceCard title="작업 분야 *" options={storeChoices(categoryOptions, savedOptions.categories)} selected={profile.categories} disabled={saving} onToggle={value => patch('categories', profile.categories.includes(value) ? profile.categories.filter(item => item !== value) : [...profile.categories, value])} />
+      <Field editable={!saving} label="SNS" value={profile.snsUrl} onChangeText={value => patch('snsUrl', value)} placeholder="https://instagram.com/..." autoCapitalize="none" />
+      <Field editable={!saving} label="포트폴리오" value={profile.portfolioUrl} onChangeText={value => patch('portfolioUrl', value)} placeholder="https://..." autoCapitalize="none" />
     </ScrollView>
-    <View style={f.sticky}><Button label={saving ? '저장 중…' : '프로필 저장'} disabled={saving || photo.checking} onPress={() => { void save(); }} /></View>
+    <View style={f.sticky}>{notice ? <Notice text={notice} /> : null}<Button label={saving ? '저장 중…' : '프로필 저장'} disabled={saving || photo.checking} onPress={() => { void save(); }} /></View>
   </KeyboardAvoidingView>;
 }
 
 export function StoreProfileScreen({ userId, onBack, onEdit, onEditPhotos, onPreferences, sample }: { userId: string; onBack: () => void; onEdit: (store: StoreOnboarding) => void; onEditPhotos: (store: StoreOnboarding) => void; onPreferences: () => void; sample?: StoreOnboarding }) {
   const [store, setStore] = useState<StoreOnboarding | null>(null);
   const [notice, setNotice] = useState('');
-  useEffect(() => { const request = sample ? Promise.resolve(sample) : loadStoreOnboarding(userId); void request.then(setStore).catch(error => setNotice(friendlyError(error))); }, [sample, userId]);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const request = sample ? Promise.resolve(sample) : loadStoreOnboarding(userId);
+    void request.then(value => {
+      if (!value) throw new Error('등록된 매장 정보를 찾지 못했어요.');
+      if (active) setStore(value);
+    }).catch(error => { if (active) setNotice(friendlyError(error)); });
+    return () => { active = false; };
+  }, [sample, userId, attempt]);
   if (!store && !notice) return <LoadingScreen title="매장 프로필" onBack={onBack} />;
-  if (!store) return <View style={f.flex}><Header title="매장 프로필" back={onBack} /><Notice text={notice} /></View>;
+  if (!store) return <LoadErrorScreen title="매장 프로필" message={notice} onBack={onBack} onRetry={() => { setNotice(''); setAttempt(value => value + 1); }} />;
   const cover = store.photoPaths[0];
   return <View style={f.flex}><Header title={store.name} back={onBack} action={<Pressable accessibilityRole="button" style={f.headerTextAction} hitSlop={10} onPress={() => onEdit(store)}><CuritText weight="semibold" style={f.brand}>수정</CuritText></Pressable>} /><ScrollView contentContainerStyle={f.scroll}>
     {cover ? <Image source={cover === 'demo-cafe' ? images.cafe : { uri: mediaUrl(cover) }} style={f.storeCover} contentFit="cover" /> : <View style={[f.storeCover, f.placeholder]}><Icon name="store" size={36} color={colors.brand} /><CuritText style={f.muted}>등록된 매장 사진이 없어요</CuritText></View>}
@@ -165,6 +203,7 @@ export function StorePreferencesScreen({ userId, onBack, onSaved, sample }: { us
   const [maxBudget, setMaxBudget] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const saveLock = useRef(false);
   useEffect(() => {
     let active = true;
@@ -177,9 +216,9 @@ export function StorePreferencesScreen({ userId, onBack, onSaved, sample }: { us
       setMaxBudget(String(value.monthlyBudgetMax ?? ''));
     }).catch(error => { if (active) setNotice(friendlyError(error)); });
     return () => { active = false; };
-  }, [sample, userId]);
+  }, [sample, userId, attempt]);
   if (!store && !notice) return <LoadingScreen title="공간 취향 · 전시 구역" onBack={onBack} />;
-  if (!store || !saved) return <View style={f.flex}><Header title="공간 취향 · 전시 구역" back={onBack} /><Notice text={notice} /></View>;
+  if (!store || !saved) return <LoadErrorScreen title="공간 취향 · 전시 구역" message={notice} onBack={onBack} onRetry={() => { setNotice(''); setAttempt(value => value + 1); }} />;
   const zones = store.exhibitionZones.map(zone => zone.type);
   const budgetError = storeBudgetError(minBudget, maxBudget);
   const patch = (value: Partial<StoreOnboarding>) => { if (!saving) { setStore({ ...store, ...value }); setNotice(''); } };
@@ -486,18 +525,23 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
   const [loading, setLoading] = useState(!demo);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const submitLock = useRef(false);
   const evidence = usePhotoPicker();
   useEffect(() => {
     if (demo) return;
     let active = true;
     void loadVerificationRequest(kind)
       .then(value => { if (active) { setRequest(value); setNote(value?.note || ''); } })
-      .catch(error => { if (active) setNotice(friendlyError(error)); })
+      .catch(error => { if (active) setLoadError(friendlyError(error)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [demo, kind]);
+  }, [demo, kind, attempt]);
   const submit = async () => {
+    if (submitLock.current || loading || loadError) return;
     if (!imageUri) { setNotice('확인 가능한 증빙 이미지를 먼저 선택해 주세요.'); return; }
+    submitLock.current = true;
     setSaving(true); setNotice('');
     try {
       if (demo) {
@@ -509,8 +553,9 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
       }
       setImageUri('');
     } catch (error) { setNotice(friendlyError(error)); }
-    finally { setSaving(false); }
+    finally { submitLock.current = false; setSaving(false); }
   };
+  if (loadError) return <LoadErrorScreen title={creator ? '활동 인증' : '매장 운영 인증'} message={loadError} onBack={onBack} onRetry={() => { setLoadError(''); setLoading(true); setAttempt(value => value + 1); }} />;
   const statusLabel = request?.status === 'approved' ? '승인 완료' : request?.status === 'rejected' ? '보완 필요' : request ? '검토 중' : '제출 전';
   const preview = imageUri || request?.evidenceUrl || '';
   return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -522,7 +567,7 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
         {preview ? <Image source={{ uri: preview }} style={f.evidenceImage} contentFit="cover" /> : <View style={f.evidencePlaceholder}><Icon name="store" size={30} color={colors.brand} /><CuritText style={f.hint}>JPG, PNG, WEBP · 최대 5MB</CuritText></View>}
         <Button label={preview ? '증빙 이미지 변경' : '증빙 이미지 선택'} variant="secondary" disabled={saving || evidence.checking} onPress={() => { void evidence.choose(uri => { setImageUri(uri); setNotice(''); }); }} />
         {evidence.error ? <CuritText accessibilityRole="alert" style={f.danger}>{evidence.error}</CuritText> : null}
-        <Field label="검토 참고사항" value={note} onChangeText={setNote} placeholder={creator ? '활동 링크나 확인할 내용을 적어 주세요.' : '매장명과 확인할 내용을 적어 주세요.'} multiline style={f.textarea} />
+        <Field editable={!saving} label="검토 참고사항" value={note} onChangeText={setNote} placeholder={creator ? '활동 링크나 확인할 내용을 적어 주세요.' : '매장명과 확인할 내용을 적어 주세요.'} multiline style={f.textarea} />
         <View style={f.infoBanner}><CuritText weight="semibold">개인정보 안내</CuritText><CuritText style={f.description}>증빙 이미지는 공개 프로필에 노출되지 않으며 인증 검토 목적으로만 비공개 저장됩니다. 주민등록번호 등 불필요한 정보는 가린 뒤 제출해 주세요.</CuritText></View>
         <Button label={saving ? '제출 중…' : request ? '증빙 다시 제출' : '검토 요청하기'} disabled={saving || evidence.checking || !imageUri} onPress={() => { void submit(); }} />
         {request ? <CuritText style={f.hint}>최근 제출: {new Date(request.submittedAt).toLocaleString('ko-KR')}</CuritText> : null}
@@ -723,7 +768,7 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
 }
 
 function StepBars({ labels, current }: { labels: string[]; current: number }) { return <View style={f.stepBars}>{labels.map((label, index) => <View key={label} style={f.flex}><View style={[f.stepLine, index + 1 <= current && f.stepLineActive]} /><CuritText style={index + 1 === current ? f.brand : f.muted}>{label}</CuritText></View>)}</View>; }
-function ChoiceCard({ title, options, selected, onToggle }: { title: string; options: string[]; selected: string[]; onToggle: (value: string) => void }) { return <View style={f.choiceCard}><CuritText weight="semibold">{title}</CuritText><View style={f.wrap}>{options.map(value => <Chip key={value} label={value} active={selected.includes(value)} onPress={() => onToggle(value)} />)}</View></View>; }
+function ChoiceCard({ title, options, selected, onToggle, disabled = false }: { title: string; options: string[]; selected: string[]; onToggle: (value: string) => void; disabled?: boolean }) { return <View style={f.choiceCard}><CuritText weight="semibold">{title}</CuritText><View style={f.wrap}>{options.map(value => <Chip key={value} label={value} active={selected.includes(value)} onPress={disabled ? undefined : () => onToggle(value)} />)}</View></View>; }
 function Notice({ text }: { text: string }) { return <View style={f.notice}><CuritText style={text.includes('못') || text.includes('확인') ? f.danger : f.brand}>{text}</CuritText></View>; }
 function InfoRow({ label, value }: { label: string; value: string }) {
   const multiline = value.length > 22;
