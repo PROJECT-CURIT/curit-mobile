@@ -77,7 +77,10 @@ export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEn
       <CuritText weight="extrabold" style={s.logo}>CURI:T</CuritText>
       <View style={s.loginIntro}><CuritText weight="extrabold" style={s.loginTitle}>{recovery ? '다시 로그인해 주세요.' : '다시 만나 반가워요.'}</CuritText><CuritText style={s.logoCaption}>{recovery ? '같은 계정으로 로그인하면 작성 중이던 화면으로 돌아갈 수 있어요.' : '작품과 공간을 이어가는 나의 자리.'}</CuritText></View>
       <View style={s.form}>
-        <Field label={recovery ? '이전 계정' : '이메일 *'} value={email} onChangeText={setEmail} editable={!recovery} placeholder="이메일 주소" autoCapitalize="none" keyboardType="email-address" />
+        {recovery ? <View style={s.recoveryAccount}>
+          <CuritText weight="semibold" style={s.recoveryLabel}>이전 계정</CuritText>
+          <CuritText selectable textBreakStrategy="simple" style={s.recoveryEmail}>{email}</CuritText>
+        </View> : <Field label="이메일 *" value={email} onChangeText={setEmail} placeholder="이메일 주소" autoCapitalize="none" keyboardType="email-address" />}
         <Field label="비밀번호 *" value={password} onChangeText={setPassword} placeholder="비밀번호" secureTextEntry />
         <View style={[s.loginOptions, { justifyContent: 'flex-end' }]}>
           <Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={() => { void resetPassword(); }}><CuritText style={s.muted}>비밀번호 재설정</CuritText></Pressable>
@@ -604,6 +607,8 @@ const s = StyleSheet.create({
   flex: { flex: 1 }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   auth: { flexGrow: 1, paddingHorizontal: 35, paddingTop: 30, paddingBottom: 34 },
   logo: { color: colors.brand, fontSize: 13, letterSpacing: 1.5 }, loginIntro: { marginTop: 38, marginBottom: 30 }, loginTitle: { fontSize: 26, lineHeight: 34, letterSpacing: -1 }, logoCaption: { color: colors.muted, marginTop: 10 },
+  recoveryAccount: { gap: 8 }, recoveryLabel: { fontSize: 13 },
+  recoveryEmail: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 15, paddingVertical: 13 },
   form: { gap: 16 }, loginOptions: { minHeight: 44, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: -2 }, rememberAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }, checkbox: { width: 18, height: 18, borderWidth: 1, borderColor: colors.subtle, alignItems: 'center', justifyContent: 'center' }, checkboxChecked: { borderColor: colors.brand, backgroundColor: colors.brand }, checkmark: { color: colors.surface, fontSize: 13, lineHeight: 16 }, authTextAction: { minHeight: 44, justifyContent: 'center' },
   muted: { color: colors.muted }, brandText: { color: colors.brand }, signUpRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 20, alignItems: 'center' },
   demoBox: { marginTop: 24, padding: 16, backgroundColor: colors.brandPale, borderRadius: radius.md, gap: 10 }, demoNote: { color: colors.muted, fontSize: 12 }, twoButtons: { flexDirection: 'row', gap: 8 },
