@@ -1,9 +1,11 @@
-import { useState, type ComponentProps, type PropsWithChildren, type ReactNode } from 'react';
+import { createContext, useState, type ComponentProps, type PropsWithChildren, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radius } from './theme';
 import type { Role, TabKey } from './types';
+
+export const SessionLockedContext = createContext(false);
 
 export function CuritText({ children, style, weight = 'regular', ...props }: PropsWithChildren<{ style?: StyleProp<TextStyle>; weight?: keyof typeof fonts } & ComponentProps<typeof Text>>) {
   return <Text {...props} style={[styles.text, { fontFamily: fonts[weight] }, style]}>{children}</Text>;

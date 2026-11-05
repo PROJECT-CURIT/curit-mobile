@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import {
@@ -25,7 +25,7 @@ import { storeColors } from './storePreferences';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
 import type { CreatorDirectoryEntry } from './curation';
-import { Button, Chip, CuritText, Empty, Field, Header, Icon, ScreenFrame } from './ui';
+import { Button, Chip, CuritText, Empty, Field, Header, Icon, ScreenFrame, SessionLockedContext } from './ui';
 
 const statusLabel: Record<CollaborationSummary['status'], string> = {
   proposed: '승인 대기', negotiating: '조건 조율 중', approved: '매장 최종 확인', active: '전시·판매 중', completed: '협업 완료', cancelled: '취소',
@@ -220,6 +220,7 @@ function CreatorDirectory({ items, loading, error, hasMore, hasSearch, demo, onM
 }
 
 function PublicProjectModal({ id, artist, demo, onClose }: { id: string; artist?: string; demo?: boolean; onClose: () => void }) {
+  const sessionLocked = useContext(SessionLockedContext);
   const [result, setResult] = useState<Awaited<ReturnType<typeof loadPublicProject>>>();
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -234,7 +235,7 @@ function PublicProjectModal({ id, artist, demo, onClose }: { id: string; artist?
     return () => { active = false; controller.abort(); };
   }, [attempt, demo, id]);
 
-  return <Modal animationType="fade" onRequestClose={onClose}>
+  return <Modal visible={!sessionLocked} animationType="fade" onRequestClose={onClose}>
     <ScreenFrame>
       {sample ? <CreatorProjectScreen project={{ id, title: sample.title, concept: sample.tags.join(' · '), story: '', region: sample.region, purpose: '', status: sample.status === '모집 중' ? 'recruiting' : 'matched', coverPath: '', coverUrl: '' }} products={[]} artist={sample.artist} fallbackCover={sample.image} onBack={onClose} />
         : result ? <CreatorProjectScreen project={result.project} products={result.products} artist={artist} fallbackCover={result.products[0]?.image ? { uri: result.products[0].image } : undefined} onBack={onClose} />
@@ -377,6 +378,7 @@ export function RecommendationScreen({ item, demo, onBack, onOpenCollaboration }
 }
 
 function RecommendationCard({ item, busy, demo, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; demo?: boolean; onPropose: (period?: ExhibitionPeriod) => void; inset?: boolean }) {
+  const sessionLocked = useContext(SessionLockedContext);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [period, setPeriod] = useState<ExhibitionPeriod>(suggestedExhibitionPeriod);
@@ -416,7 +418,7 @@ function RecommendationCard({ item, busy, demo, onPropose, inset = true }: { ite
       }} />
     </View>
     {detailsOpen ? <PublicProjectModal id={item.targetId} artist={item.subtitle.split(' · ')[0]} demo={demo} onClose={() => setDetailsOpen(false)} /> : null}
-    {proposalOpen ? <Modal animationType="slide" onRequestClose={backFromProposal}>
+    {proposalOpen ? <Modal visible={!sessionLocked} animationType="slide" onRequestClose={backFromProposal}>
       <ScreenFrame>
         <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Header title="협업 제안" back={closeProposal} />

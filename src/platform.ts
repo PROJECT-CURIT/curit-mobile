@@ -105,6 +105,13 @@ export async function signOut() {
   if (error) throw new Error(error.message);
 }
 
+async function activeProjectClient() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) throw new Error(error?.message ?? '로그인이 필요합니다.');
+  return supabase;
+}
+
 export async function uploadMedia(uri: string, folder: 'store' | 'project' | 'profile' | 'post') {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
@@ -454,10 +461,11 @@ export async function loadCreatorProject() {
 }
 
 export async function addProjectProduct(projectId: string, product: Omit<ProjectProduct, 'id'>) {
+  const supabase = await activeProjectClient();
   const imagePath = product.image && !/^(https?:)/.test(product.image)
     ? await uploadMedia(product.image, 'project')
     : product.imagePath;
-  const { error } = await getSupabase().from('project_items').insert({
+  const { error } = await supabase.from('project_items').insert({
     project_id: projectId,
     name: product.name,
     item_type: product.type,
@@ -479,9 +487,10 @@ export async function addProjectProduct(projectId: string, product: Omit<Project
 export type CreatorProjectDetails = Awaited<ReturnType<typeof loadCreatorProject>>['project'];
 
 export async function saveCreatorProject(projectId: string, value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) {
+  const supabase = await activeProjectClient();
   let coverPath = value.coverPath;
   if (value.coverUri && !/^(https?:)/.test(value.coverUri)) coverPath = await uploadMedia(value.coverUri, 'project');
-  const { error } = await getSupabase().from('projects').update({
+  const { error } = await supabase.from('projects').update({
     title: value.title.trim(),
     story: value.story.trim(),
     concept: value.concept.trim(),
@@ -496,10 +505,11 @@ export async function saveCreatorProject(projectId: string, value: Omit<CreatorP
 }
 
 export async function updateProjectProduct(productId: string, product: Omit<ProjectProduct, 'id'>) {
+  const supabase = await activeProjectClient();
   const imagePath = product.image && !/^(https?:)/.test(product.image)
     ? await uploadMedia(product.image, 'project')
     : product.imagePath;
-  const { error } = await getSupabase().from('project_items').update({
+  const { error } = await supabase.from('project_items').update({
     name: product.name.trim(), description: product.description || '', item_type: product.type,
     sale_mode: product.mode === '전시만' ? 'display_only' : 'display_sale', price: product.price, stock: product.stock,
     image_path: imagePath || null, material: product.material || '', width_mm: product.widthMm || null,
@@ -510,7 +520,8 @@ export async function updateProjectProduct(productId: string, product: Omit<Proj
 }
 
 export async function deleteProjectProduct(productId: string) {
-  const { error } = await getSupabase().from('project_items').delete().eq('id', productId);
+  const supabase = await activeProjectClient();
+  const { error } = await supabase.from('project_items').delete().eq('id', productId);
   if (error) throw new Error(error.message);
   return loadCreatorProject();
 }
@@ -550,6 +561,7 @@ export async function loadSettlements(): Promise<SettlementEntry[]> {
 
 export function friendlyError(error: unknown) {
   const raw = message(error);
+  if (/JWT expired|Auth session missing|Session from session_id claim in JWT does not exist|Session not found|Refresh Token Not Found/i.test(raw)) return '로그인 상태가 만료됐어요. 다시 로그인한 뒤 저장해 주세요.';
   if (/failed to fetch|network request failed|networkerror|fetch failed/i.test(raw)) return '연결이 원활하지 않아요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
   if (/Invalid login credentials/i.test(raw)) return '이메일 또는 비밀번호가 맞지 않습니다.';
   if (/User already registered/i.test(raw)) return '이미 가입된 이메일입니다.';

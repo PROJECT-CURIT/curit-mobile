@@ -40,8 +40,17 @@ async function fetchQrCatalog(demo?: boolean) {
   return { items: [...field.items, ...realManagedItems], warning };
 }
 
-export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEnabled, configured }: { onLogin: (email: string, password: string) => Promise<void>; onSignUp: () => void; onDemo: (role: Role) => void; onResetPassword: (email: string) => Promise<void>; demoEnabled: boolean; configured: boolean }) {
-  const [email, setEmail] = useState('');
+export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEnabled, configured, recovery }: {
+  onLogin: (email: string, password: string) => Promise<void>;
+  onSignUp?: () => void;
+  onDemo?: (role: Role) => void;
+  onResetPassword: (email: string) => Promise<void>;
+  demoEnabled?: boolean;
+  configured: boolean;
+  recovery?: { email: string; onExit: () => Promise<void> };
+}) {
+  const [enteredEmail, setEmail] = useState('');
+  const email = recovery?.email ?? enteredEmail;
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -55,23 +64,31 @@ export function LoginScreen({ onLogin, onSignUp, onDemo, onResetPassword, demoEn
     setBusy(true); setError('');
     try { await onResetPassword(email); setError('비밀번호 재설정 메일을 보냈습니다.'); } catch (caught) { setError(caught instanceof Error ? caught.message : '재설정 메일을 보내지 못했습니다.'); } finally { setBusy(false); }
   };
+  const discardDraft = async () => {
+    if (!recovery || busy) return;
+    setBusy(true);
+    try { await recovery.onExit(); } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '로그아웃하지 못했습니다.');
+    } finally { setBusy(false); }
+  };
   return (
     <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView contentContainerStyle={s.auth} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
       <CuritText weight="extrabold" style={s.logo}>CURI:T</CuritText>
-      <View style={s.loginIntro}><CuritText weight="extrabold" style={s.loginTitle}>다시 만나 반가워요.</CuritText><CuritText style={s.logoCaption}>작품과 공간을 이어가는 나의 자리.</CuritText></View>
+      <View style={s.loginIntro}><CuritText weight="extrabold" style={s.loginTitle}>{recovery ? '다시 로그인해 주세요.' : '다시 만나 반가워요.'}</CuritText><CuritText style={s.logoCaption}>{recovery ? '같은 계정으로 로그인하면 작성 중이던 화면으로 돌아갈 수 있어요.' : '작품과 공간을 이어가는 나의 자리.'}</CuritText></View>
       <View style={s.form}>
-        <Field label="이메일 *" value={email} onChangeText={setEmail} placeholder="이메일 주소" autoCapitalize="none" keyboardType="email-address" />
+        <Field label={recovery ? '이전 계정' : '이메일 *'} value={email} onChangeText={setEmail} editable={!recovery} placeholder="이메일 주소" autoCapitalize="none" keyboardType="email-address" />
         <Field label="비밀번호 *" value={password} onChangeText={setPassword} placeholder="비밀번호" secureTextEntry />
         <View style={[s.loginOptions, { justifyContent: 'flex-end' }]}>
           <Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={() => { void resetPassword(); }}><CuritText style={s.muted}>비밀번호 재설정</CuritText></Pressable>
         </View>
         {error ? <CuritText style={{ color: colors.danger }}>{error}</CuritText> : null}
         {!configured ? <CuritText style={s.demoNote}>지금은 로그인 서비스에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.</CuritText> : null}
-        <Button label={busy ? '로그인 중…' : '로그인'} disabled={!configured || !email.trim() || password.length < 8 || busy} onPress={() => { void submit(); }} />
+        <Button label={busy ? '처리 중…' : recovery ? '로그인하고 이어서 작성' : '로그인'} disabled={!configured || !email.trim() || password.length < 8 || busy} onPress={() => { void submit(); }} />
+        {recovery ? <Button label="작성 내용 지우고 로그아웃" variant="secondary" disabled={busy} onPress={() => { void discardDraft(); }} /> : null}
       </View>
-      <View style={s.signUpRow}><CuritText style={s.muted}>CURI:T이 처음인가요?</CuritText><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={onSignUp}><CuritText weight="semibold" style={s.brandText}>회원가입</CuritText></Pressable></View>
-      {demoEnabled ? <View style={s.demoBox}>
+      {onSignUp ? <View style={s.signUpRow}><CuritText style={s.muted}>CURI:T이 처음인가요?</CuritText><Pressable accessibilityRole="button" hitSlop={8} style={s.authTextAction} onPress={onSignUp}><CuritText weight="semibold" style={s.brandText}>회원가입</CuritText></Pressable></View> : null}
+      {demoEnabled && onDemo ? <View style={s.demoBox}>
         <CuritText weight="semibold">서비스 둘러보기</CuritText>
         <CuritText style={s.demoNote}>가입 전에 역할별 주요 화면과 이용 흐름을 확인할 수 있어요.</CuritText>
         <View style={s.twoButtons}><View style={s.flex}><Button label="크리에이터" variant="secondary" onPress={() => onDemo('creator')} /></View><View style={s.flex}><Button label="매장 운영자" onPress={() => onDemo('store')} /></View></View>
