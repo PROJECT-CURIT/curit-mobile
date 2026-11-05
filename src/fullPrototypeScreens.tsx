@@ -1,9 +1,8 @@
-import { readImageUpload } from './mediaUpload';
+import { usePhotoPicker } from './photoPicker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
 import { Button, Chip, CuritText, Empty, Field, Header, Icon, SectionTitle } from './ui';
 import { colors, fonts, radius } from './theme';
@@ -100,13 +99,9 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
   const [avatarUri, setAvatarUri] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const photo = usePhotoPicker();
   useEffect(() => { const request = demo ? Promise.resolve(demoCreatorProfile) : loadCreatorProfile(); void request.then(setProfile).catch(error => setNotice(friendlyError(error))); }, [demo]);
   const patch = <K extends keyof CreatorProfileData>(key: K, value: CreatorProfileData[K]) => setProfile(current => current ? { ...current, [key]: value } : current);
-  const choosePhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
-    const asset = result.canceled ? undefined : result.assets[0];
-    if (asset?.uri) setAvatarUri(asset.uri);
-  };
   const save = async () => {
     if (!profile?.displayName.trim() || !profile.regions.length || !profile.categories.length) { setNotice('활동명, 활동 지역, 작업 분야를 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
@@ -130,7 +125,8 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
     <Header title="크리에이터 프로필 수정" back={onBack} />
     <ScrollView contentContainerStyle={f.scroll} keyboardShouldPersistTaps="handled">
       <CuritText weight="bold" style={f.pageTitle}>나를 소개할 준비</CuritText><CuritText style={f.description}>활동명·지역·분야만 입력하면 시작할 수 있어요.</CuritText>
-      <View style={f.photoRow}><Pressable onPress={() => { void choosePhoto(); }}>{avatarUri || profile.avatarUrl ? <Image source={{ uri: avatarUri || profile.avatarUrl }} style={f.avatarLarge} /> : <View style={f.avatarLarge}><CuritText style={f.muted}>사진</CuritText></View>}</Pressable><View style={f.flex}><Button label="프로필 사진 선택" variant="secondary" onPress={() => { void choosePhoto(); }} /><CuritText style={f.hint}>1:1로 자동 정리됩니다.</CuritText></View></View>
+      <View style={f.photoRow}>{avatarUri || profile.avatarUrl ? <Image source={{ uri: avatarUri || profile.avatarUrl }} style={f.avatarLarge} /> : <View style={f.avatarLarge}><CuritText style={f.muted}>사진</CuritText></View>}<View style={f.flex}><Button label="프로필 사진 선택" variant="secondary" disabled={saving || photo.checking} onPress={() => { void photo.choose(setAvatarUri); }} /><CuritText style={f.hint}>JPG · PNG · WEBP, 최대 5MB</CuritText></View></View>
+      {photo.error ? <CuritText accessibilityRole="alert" style={f.danger}>{photo.error}</CuritText> : null}
       <Field label="활동명 / 브랜드명 *" value={profile.displayName} onChangeText={value => patch('displayName', value)} />
       <Field label="활동 아이디" value={profile.handle} onChangeText={value => patch('handle', value.replace(/[^a-zA-Z0-9_.]/g, ''))} placeholder="soyeon_craft" autoCapitalize="none" />
       <Field label="한 줄 소개 · 선택" value={profile.headline} onChangeText={value => patch('headline', value)} />
@@ -141,7 +137,7 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
       <Field label="포트폴리오" value={profile.portfolioUrl} onChangeText={value => patch('portfolioUrl', value)} placeholder="https://..." autoCapitalize="none" />
       {notice ? <Notice text={notice} /> : null}
     </ScrollView>
-    <View style={f.sticky}><Button label={saving ? '저장 중…' : '프로필 저장'} disabled={saving} onPress={() => { void save(); }} /></View>
+    <View style={f.sticky}><Button label={saving ? '저장 중…' : '프로필 저장'} disabled={saving || photo.checking} onPress={() => { void save(); }} /></View>
   </KeyboardAvoidingView>;
 }
 
@@ -434,6 +430,7 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
   const [loading, setLoading] = useState(!demo);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const evidence = usePhotoPicker();
   useEffect(() => {
     if (demo) return;
     let active = true;
@@ -443,13 +440,6 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [demo, kind]);
-  const chooseEvidence = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
-    const asset = result.canceled ? undefined : result.assets[0];
-    if (!asset?.uri) return;
-    try { await readImageUpload(asset.uri); setImageUri(asset.uri); setNotice(''); }
-    catch (error) { setNotice(friendlyError(error)); }
-  };
   const submit = async () => {
     if (!imageUri) { setNotice('확인 가능한 증빙 이미지를 먼저 선택해 주세요.'); return; }
     setSaving(true); setNotice('');
@@ -473,11 +463,12 @@ export function VerificationScreen({ kind, demo = false, onBack }: { kind: Verif
       {loading ? <ActivityIndicator color={colors.brand} style={f.loader} /> : <>
         <View style={f.verificationStatus}><View style={f.flex}><CuritText weight="bold">{creator ? '크리에이터 활동 확인' : '오프라인 매장 운영 확인'}</CuritText><CuritText style={f.description}>{creator ? '포트폴리오·전시·판매 활동을 확인할 수 있는 자료를 제출해 주세요.' : '사업자등록증 또는 매장 운영 사실을 확인할 수 있는 자료를 제출해 주세요.'}</CuritText></View><Chip label={statusLabel} active={request?.status === 'approved'} /></View>
         {request?.reviewNote ? <View style={f.infoBanner}><CuritText weight="semibold">검토 의견</CuritText><CuritText style={f.description}>{request.reviewNote}</CuritText></View> : null}
-        {preview ? <Image source={{ uri: preview }} style={f.evidenceImage} contentFit="cover" /> : <Pressable accessibilityRole="button" style={f.evidencePlaceholder} onPress={() => { void chooseEvidence(); }}><Icon name="store" size={30} color={colors.brand} /><CuritText weight="semibold">증빙 이미지 선택</CuritText><CuritText style={f.hint}>JPG, PNG, WEBP · 최대 5MB</CuritText></Pressable>}
-        <Button label={preview ? '증빙 이미지 변경' : '증빙 이미지 선택'} variant="secondary" onPress={() => { void chooseEvidence(); }} />
+        {preview ? <Image source={{ uri: preview }} style={f.evidenceImage} contentFit="cover" /> : <View style={f.evidencePlaceholder}><Icon name="store" size={30} color={colors.brand} /><CuritText style={f.hint}>JPG, PNG, WEBP · 최대 5MB</CuritText></View>}
+        <Button label={preview ? '증빙 이미지 변경' : '증빙 이미지 선택'} variant="secondary" disabled={saving || evidence.checking} onPress={() => { void evidence.choose(uri => { setImageUri(uri); setNotice(''); }); }} />
+        {evidence.error ? <CuritText accessibilityRole="alert" style={f.danger}>{evidence.error}</CuritText> : null}
         <Field label="검토 참고사항" value={note} onChangeText={setNote} placeholder={creator ? '활동 링크나 확인할 내용을 적어 주세요.' : '매장명과 확인할 내용을 적어 주세요.'} multiline style={f.textarea} />
         <View style={f.infoBanner}><CuritText weight="semibold">개인정보 안내</CuritText><CuritText style={f.description}>증빙 이미지는 공개 프로필에 노출되지 않으며 인증 검토 목적으로만 비공개 저장됩니다. 주민등록번호 등 불필요한 정보는 가린 뒤 제출해 주세요.</CuritText></View>
-        <Button label={saving ? '제출 중…' : request ? '증빙 다시 제출' : '검토 요청하기'} disabled={saving || !imageUri} onPress={() => { void submit(); }} />
+        <Button label={saving ? '제출 중…' : request ? '증빙 다시 제출' : '검토 요청하기'} disabled={saving || evidence.checking || !imageUri} onPress={() => { void submit(); }} />
         {request ? <CuritText style={f.hint}>최근 제출: {new Date(request.submittedAt).toLocaleString('ko-KR')}</CuritText> : null}
         {notice ? <Notice text={notice} /> : null}
       </>}
@@ -555,6 +546,7 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
   const [postError, setPostError] = useState('');
   const [savingPost, setSavingPost] = useState(false);
   const [savingComment, setSavingComment] = useState(false);
+  const photo = usePhotoPicker();
   const postRequest = useRef(false);
   const commentRequest = useRef(false);
   const commentPageRequests = useRef(new Set<string>());
@@ -565,18 +557,17 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
     void loadSocialFeed().then(value => { if (active) setItems(value); }).catch(error => { if (active) setNotice(friendlyError(error)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [demo]);
-  const choosePostImage = async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 }); const asset = result.canceled ? undefined : result.assets[0]; if (asset?.uri) setPostImage(asset.uri); };
   const create = async () => {
     if (!compose.trim() || postRequest.current) return;
     if (demo) {
       const id = `local-post-${Date.now()}`;
       setItems(current => [{ id, creatorId: 'demo-current-user', creatorName: currentUserName, handle: 'curit_user', avatarUrl: '', content: compose.trim(), imageUrl: postImage, likes: 0, comments: 0, liked: false, followed: true, own: true, createdAt: new Date().toISOString() }, ...current]);
       setCommentsByPost(current => ({ ...current, [id]: [] }));
-      setCompose(''); setPostImage(''); setNotice(''); return;
+      setCompose(''); setPostImage(''); photo.clearError(); setNotice(''); return;
     }
     postRequest.current = true;
     setSavingPost(true); setPostError('');
-    try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); await load(); }
+    try { await createSocialPost(compose, postImage); setCompose(''); setPostImage(''); photo.clearError(); await load(); }
     catch (error) { setPostError(friendlyError(error)); }
     finally { postRequest.current = false; setSavingPost(false); }
   };
@@ -642,7 +633,9 @@ export function SocialFeedSection({ canPost = false, demo = false, currentUserNa
       <CuritText style={f.inputCount}>{compose.length.toLocaleString('ko-KR')} / 2,000자</CuritText>
       {postError ? <Notice text={postError} /> : null}
       {postImage ? <Image source={{ uri: postImage }} style={f.postImage} /> : null}
-      <View style={f.two}><View style={f.flex}><Button label={postImage ? '사진 변경' : '사진 추가'} variant="secondary" onPress={() => { void choosePostImage(); }} /></View><View style={f.flex}><Button label={savingPost ? '등록 중…' : '소식 올리기'} disabled={savingPost || !compose.trim()} onPress={() => { void create(); }} /></View></View>
+      {photo.error ? <CuritText accessibilityRole="alert" style={f.danger}>{photo.error}</CuritText> : null}
+      {postImage ? <Button label="사진 삭제" variant="ghost" disabled={savingPost || photo.checking} onPress={() => { setPostImage(''); photo.clearError(); }} /> : null}
+      <View style={f.two}><View style={f.flex}><Button label={postImage ? '사진 변경' : '사진 추가'} variant="secondary" disabled={savingPost || photo.checking} onPress={() => { void photo.choose(setPostImage); }} /></View><View style={f.flex}><Button label={savingPost ? '등록 중…' : '소식 올리기'} disabled={savingPost || photo.checking || !compose.trim()} onPress={() => { void create(); }} /></View></View>
     </View> : null}
     {items.length ? items.map((item, index) => <View key={item.id} style={f.post}>
       <View style={f.row}>

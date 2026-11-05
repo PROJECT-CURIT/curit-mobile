@@ -1,7 +1,8 @@
-const maxImageBytes = 5 * 1024 * 1024;
+export const maxImageBytes = 5 * 1024 * 1024;
+export const oversizedImageMessage = '이미지는 5MB 이하여야 합니다.';
 
 export function imageUploadType(body: ArrayBuffer) {
-  if (body.byteLength > maxImageBytes) throw new Error('이미지는 5MB 이하여야 합니다.');
+  if (body.byteLength > maxImageBytes) throw new Error(oversizedImageMessage);
   const header = new Uint8Array(body, 0, Math.min(body.byteLength, 12));
   const matches = (signature: number[], offset = 0) =>
     signature.every((byte, index) => header[offset + index] === byte);

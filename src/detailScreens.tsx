@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
+import { usePhotoPicker } from './photoPicker';
 import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
 import { colors, fonts, radius } from './theme';
 import { Button, Chip, CuritText, Field, Header, Icon } from './ui';
@@ -94,6 +94,8 @@ function ProductDetailRow({ label, value }: { label: string; value: string }) {
 
 export function CreatorProjectEditScreen({ project, products, onSaveProject, onSaveProduct, onUpdateProduct, onDeleteProduct, onBack }: { project: CreatorProjectDetails; products: ProjectProduct[]; onSaveProject: (value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) => Promise<void>; onSaveProduct: (item: Omit<ProjectProduct, 'id'>) => Promise<void>; onUpdateProduct: (id: string, item: Omit<ProjectProduct, 'id'>) => Promise<void>; onDeleteProduct: (id: string) => Promise<void>; onBack: () => void }) {
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const productFormY = useRef<number | null>(null);
+  const revealProductForm = useRef(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [formOpen, setFormOpen] = useState(false);
   const emptyDraft: ProductDraft = { name: '', price: '', stock: '', image: '', imagePath: undefined, mode: '전시·판매', type: 'goods', description: '', material: '', widthMm: '', heightMm: '', care: '' };
@@ -109,13 +111,16 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
   const [publish, setPublish] = useState(!['draft', 'archived'].includes(project.status));
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const photo = usePhotoPicker();
+  const { checking, clearError } = photo;
   const back = useCallback(() => {
     if (Keyboard.isVisible()) { Keyboard.dismiss(); return; }
-    if (!saving) {
+    if (!saving && !checking) {
+      clearError();
       if (step === 1) onBack();
       else setStep(step === 3 ? 2 : 1);
     }
-  }, [onBack, saving, step]);
+  }, [onBack, saving, checking, clearError, step]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
@@ -126,30 +131,13 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
     setDraft(emptyDraft);
     setEditingId('');
     setNotice('');
+    photo.clearError();
     setFormOpen(false);
     Keyboard.dismiss();
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
       if (Platform.OS === 'web' && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
     });
-  };
-
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 });
-    const asset = result.canceled ? undefined : result.assets[0];
-    if (!asset?.uri) return;
-    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-      setNotice('5MB 이하의 JPG, PNG 또는 WEBP 이미지를 선택해 주세요.');
-      return;
-    }
-    setNotice('');
-    setDraft(previous => ({ ...previous, image: asset.uri }));
-  };
-
-  const pickCover = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .82 });
-    const asset = result.canceled ? undefined : result.assets[0];
-    if (asset?.uri) setCoverUri(asset.uri);
   };
 
   const projectPayload = (status: CreatorProjectDetails['status']) => ({
@@ -160,14 +148,24 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
   const saveBasic = async () => {
     if (!title.trim() || !concept.trim() || !region.trim()) { setNotice('프로젝트명, 콘셉트, 활동 지역을 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { await onSaveProject(projectPayload(project.status)); setStep(2); }
+    try { await onSaveProject(projectPayload(project.status)); setCoverUri(''); photo.clearError(); setStep(2); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
 
+  const openProductForm = () => {
+    if (formOpen && productFormY.current !== null) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, productFormY.current - 12), animated: true });
+    } else {
+      revealProductForm.current = true;
+      setFormOpen(true);
+    }
+  };
+
   const editProduct = (item: ProjectProduct) => {
+    photo.clearError();
     setEditingId(item.id);
     setDraft({ name: item.name, price: String(item.price), stock: String(item.stock), image: item.image, imagePath: item.imagePath, mode: item.mode, type: item.type, description: item.description || '', material: item.material || '', widthMm: item.widthMm ? String(item.widthMm) : '', heightMm: item.heightMm ? String(item.heightMm) : '', care: item.care || '' });
-    setFormOpen(true); setNotice('');
+    openProductForm(); setNotice('');
   };
 
   const confirmProductDelete = (item: ProjectProduct) => {
@@ -212,13 +210,14 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
         <StepProgress current={step} labels={['1 기본', '2 상품', '3 확인']} />
         {step === 1 ? <>
           <View><CuritText weight="bold" style={d.projectTitle}>프로젝트를 소개해 주세요</CuritText><CuritText style={d.description}>공간 운영자가 협업 여부를 판단할 핵심 정보입니다.</CuritText></View>
-          <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 대표 이미지 선택" style={d.coverPicker} onPress={() => { void pickCover(); }}>{coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>대표 이미지 선택</CuritText></>}</Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 대표 이미지 선택" style={d.coverPicker} disabled={saving || photo.checking} onPress={() => { void photo.choose(setCoverUri); }}>{coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>대표 이미지 선택</CuritText></>}</Pressable>
+          {photo.error ? <CuritText accessibilityRole="alert" style={d.error}>{photo.error}</CuritText> : null}
           <Field label="프로젝트명 *" value={title} onChangeText={setTitle} placeholder="예: 흙의 기억" />
           <Field label="한 줄 콘셉트 *" value={concept} onChangeText={setConcept} placeholder="공간에 전달할 분위기를 적어주세요" />
           <Field label="프로젝트 이야기" value={story} onChangeText={setStory} multiline style={d.textarea} />
           <Field label="활동 지역 *" value={region} onChangeText={setRegion} placeholder="예: 서울·경기" />
           <Field label="협업 목적" value={purpose} onChangeText={setPurpose} placeholder="예: 작품 전시 및 판매" />
-          {notice ? <CuritText style={d.error}>{notice}</CuritText> : null}<Button label={saving ? '저장 중…' : '저장하고 상품 등록'} disabled={saving} onPress={() => { void saveBasic(); }} />
+          {notice ? <CuritText style={d.error}>{notice}</CuritText> : null}<Button label={saving ? '저장 중…' : '저장하고 상품 등록'} disabled={saving || photo.checking} onPress={() => { void saveBasic(); }} />
         </> : null}
 
         {step === 2 ? <>
@@ -235,20 +234,28 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
         </View>
 
         {!formOpen ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`${ordinal(products.length)} 상품 추가`} style={d.addProductButton} onPress={() => setFormOpen(true)}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${ordinal(products.length)} 상품 추가`} style={d.addProductButton} onPress={openProductForm}>
             <CuritText weight="semibold" style={d.status}>＋ {ordinal(products.length)} 상품 추가하기</CuritText>
           </Pressable>
         ) : (
-          <View style={d.productForm}>
-            <View style={d.formHeader}><CuritText weight="bold" style={d.formTitle}>{editingId ? '상품 수정' : `${ordinal(products.length)} 상품 추가`}</CuritText><Pressable accessibilityRole="button" accessibilityLabel="상품 입력 닫기" hitSlop={12} onPress={reset}><CuritText style={d.close}>×</CuritText></Pressable></View>
-            <Pressable accessibilityRole="button" accessibilityLabel={draft.image ? '상품 사진 변경' : '상품 사진 추가'} style={d.photoPicker} onPress={() => { void pickImage(); }}>
+          <View style={d.productForm} onLayout={event => {
+            const { y } = event.nativeEvent.layout;
+            productFormY.current = y;
+            if (revealProductForm.current) {
+              revealProductForm.current = false;
+              scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+            }
+          }}>
+            <View style={d.formHeader}><CuritText weight="bold" style={d.formTitle}>{editingId ? '상품 수정' : `${ordinal(products.length)} 상품 추가`}</CuritText><Pressable accessibilityRole="button" accessibilityLabel="상품 입력 닫기" hitSlop={12} disabled={saving || photo.checking} onPress={reset}><CuritText style={d.close}>×</CuritText></Pressable></View>
+            <Pressable accessibilityRole="button" accessibilityLabel={draft.image ? '상품 사진 변경' : '상품 사진 추가'} style={d.photoPicker} disabled={saving || photo.checking} onPress={() => { void photo.choose(uri => setDraft(previous => ({ ...previous, image: uri }))); }}>
               <View style={d.photoSlot}>
-                {draft.image ? <Image source={{ uri: draft.image }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <Icon name="discover" color={colors.brand} />}
+                {draft.image ? <Image source={{ uri: draft.image }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <Icon name="image" color={colors.brand} />}
               </View>
-              <View style={d.flex}><CuritText weight="semibold">{draft.image ? '상품 사진 변경' : '상품 사진 추가 · 선택'}</CuritText><CuritText style={d.hint}>JPG · PNG · WEBP / 5MB 이하</CuritText></View>
+              <View style={d.flex}><CuritText weight="semibold">{draft.image ? '상품 사진 변경' : '상품 사진 추가'}</CuritText><CuritText style={d.hint}>JPG · PNG · WEBP / 5MB 이하</CuritText></View>
               <Icon name="chevron" size={17} color={colors.brand} />
             </Pressable>
-            {draft.image ? <Pressable accessibilityRole="button" hitSlop={10} style={d.removePhotoAction} onPress={() => setDraft(previous => ({ ...previous, image: '' }))}><CuritText style={d.removePhoto}>사진 삭제</CuritText></Pressable> : null}
+            {photo.error ? <CuritText accessibilityRole="alert" style={d.error}>{photo.error}</CuritText> : null}
+            {draft.image ? <Pressable accessibilityRole="button" hitSlop={10} style={d.removePhotoAction} disabled={saving || photo.checking} onPress={() => { photo.clearError(); setDraft(previous => ({ ...previous, image: '', imagePath: undefined })); }}><CuritText style={d.removePhoto}>사진 삭제</CuritText></Pressable> : null}
 
             <Field label="상품명 *" value={draft.name} onChangeText={name => setDraft(previous => ({ ...previous, name }))} placeholder="예: 검정 머그" />
             <Field label="작품·상품 설명" value={draft.description} onChangeText={description => setDraft(previous => ({ ...previous, description }))} placeholder="작품의 이야기와 특징을 적어주세요" multiline style={d.textarea} />
@@ -259,7 +266,7 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
             <View style={d.twoColumns}><View style={d.flex}><Field label="가로(mm)" value={draft.widthMm} onChangeText={widthMm => setDraft(previous => ({ ...previous, widthMm: widthMm.replace(/\D/g, '') }))} keyboardType="number-pad" /></View><View style={d.flex}><Field label="세로(mm)" value={draft.heightMm} onChangeText={heightMm => setDraft(previous => ({ ...previous, heightMm: heightMm.replace(/\D/g, '') }))} keyboardType="number-pad" /></View></View>
             <Field label="관리·설치 주의사항" value={draft.care} onChangeText={care => setDraft(previous => ({ ...previous, care }))} placeholder="파손·오염·설치 조건을 적어주세요" />
             {notice ? <CuritText style={d.error}>{notice}</CuritText> : null}
-            <Button label={saving ? '저장 중…' : editingId ? '수정사항 저장' : '상품 저장'} disabled={saving} onPress={() => { void saveProduct(); }} />
+            <Button label={saving ? '저장 중…' : editingId ? '수정사항 저장' : '상품 저장'} disabled={saving || photo.checking} onPress={() => { void saveProduct(); }} />
           </View>
         )}
         <View style={d.editNotice}><CuritText style={d.hint}>이미 확정된 협업의 가격·공급 조건은 바뀌지 않으며, 변경 내용은 이후 제안부터 적용됩니다.</CuritText></View>
@@ -304,6 +311,8 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
   const [zoneWidth, setZoneWidth] = useState(initial?.exhibitionZones[0]?.widthCm?.toString() ?? '');
   const [zoneHeight, setZoneHeight] = useState(initial?.exhibitionZones[0]?.heightCm?.toString() ?? '');
   const [busy, setBusy] = useState(false);
+  const storePhoto = usePhotoPicker();
+  const { checking: checkingPhoto, clearError: clearPhotoError } = storePhoto;
   const [error, setError] = useState('');
   const firstValid = Boolean(name.trim() && address.trim() && intro.trim() && audience.trim());
   const budgetValid = (!budgetMin || !budgetMax || Number(budgetMin) <= Number(budgetMax))
@@ -330,7 +339,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
   });
 
   const next = async () => {
-    if (!stepValid || busy) return;
+    if (!stepValid || busy || checkingPhoto) return;
     setBusy(true);
     setError('');
     try {
@@ -348,30 +357,19 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
     }
   };
 
-  const pickStorePhoto = async () => {
-    if (photos.length >= 5 || busy) return;
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 });
-    const asset = result.canceled ? undefined : result.assets[0];
-    if (!asset?.uri) return;
-    setBusy(true);
-    setError('');
-    try {
-      const path = demo ? asset.uri : await uploadMedia(asset.uri, 'store');
-      setPhotos(current => [...current, { uri: asset.uri, path }]);
-    } catch (caught) {
-      setError(friendlyError(caught));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const pickStorePhoto = () => storePhoto.choose(async uri => {
+    const path = demo ? uri : await uploadMedia(uri, 'store');
+    setPhotos(current => [...current, { uri, path }]);
+  });
 
   const back = useCallback(() => {
     if (Keyboard.isVisible()) { Keyboard.dismiss(); return; }
-    if (!busy) {
+    if (!busy && !checkingPhoto) {
+      clearPhotoError();
       if (step === 1) onBack();
       else setStep(value => value - 1);
     }
-  }, [busy, onBack, step]);
+  }, [busy, checkingPhoto, clearPhotoError, onBack, step]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
@@ -408,8 +406,9 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
         {step === 3 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장 사진을 등록해 주세요</CuritText>
           <CuritText style={d.description}>전체 공간과 전시 후보 구역이 보이는 사진을 1장 이상 등록해 주세요.</CuritText>
-          <View style={d.photoGrid}>{photos.map((photo, index) => <View key={photo.path} style={d.storePhotoWrap}><Image source={photo.path === 'demo-cafe' ? images.cafe : { uri: photo.uri }} style={d.storePhoto} contentFit="cover" /><Pressable accessibilityLabel={`${index + 1}번째 매장 사진 삭제`} accessibilityRole="button" style={d.photoDelete} onPress={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))}><View style={d.photoDeleteCircle}><CuritText style={d.photoDeleteText}>×</CuritText></View></Pressable></View>)}{photos.length < 5 ? <Pressable accessibilityRole="button" style={d.storePhotoAdd} onPress={() => { void pickStorePhoto(); }}><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>사진 추가</CuritText></Pressable> : null}</View>
+          <View style={d.photoGrid}>{photos.map((photo, index) => <View key={photo.path} style={d.storePhotoWrap}><Image source={photo.path === 'demo-cafe' ? images.cafe : { uri: photo.uri }} style={d.storePhoto} contentFit="cover" /><Pressable accessibilityLabel={`${index + 1}번째 매장 사진 삭제`} accessibilityRole="button" style={d.photoDelete} disabled={busy || checkingPhoto} onPress={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))}><View style={d.photoDeleteCircle}><CuritText style={d.photoDeleteText}>×</CuritText></View></Pressable></View>)}{photos.length < 5 ? <Pressable accessibilityRole="button" style={d.storePhotoAdd} disabled={busy || checkingPhoto} onPress={() => { void pickStorePhoto(); }}><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>{checkingPhoto ? '사진 처리 중…' : '사진 추가'}</CuritText></Pressable> : null}</View>
           <CuritText style={d.hint}>JPG · PNG · WEBP, 파일당 5MB 이하 · 최대 5장</CuritText>
+          {storePhoto.error ? <CuritText accessibilityRole="alert" style={d.error}>{storePhoto.error}</CuritText> : null}
         </> : null}
         {step === 4 ? <>
           <CuritText weight="bold" style={d.projectTitle}>전시 가능한 구역을 선택해 주세요</CuritText>
@@ -425,7 +424,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
         </> : null}
         {error ? <CuritText style={d.error}>{error}</CuritText> : null}
       </ScrollView>
-      <View style={d.stickyFooter}><Button label={busy ? '저장 중…' : step === 5 ? '매장 등록 완료' : `다음: ${['', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step]}`} disabled={!stepValid || busy} onPress={() => { void next(); }} /></View>
+      <View style={d.stickyFooter}><Button label={busy ? '저장 중…' : step === 5 ? '매장 등록 완료' : `다음: ${['', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step]}`} disabled={!stepValid || busy || checkingPhoto} onPress={() => { void next(); }} /></View>
     </KeyboardAvoidingView>
   );
 }

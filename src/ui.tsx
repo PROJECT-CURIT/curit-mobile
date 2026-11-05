@@ -35,6 +35,7 @@ export function Header({ title, subtitle, back, action }: { title: string; subti
 }
 
 const paths: Record<string, string> = {
+  image: 'M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 5h14v9.5l-3.1-3.1-4.9 4.9-2.5-2.5L5 17.3V5Zm14 14H6.1l2.4-2.4 2.5 2.5 4.9-4.9 3.1 3.1V19ZM8 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z',
   home: 'M3 11.5 12 4l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z',
   discover: 'M11 19a8 8 0 1 1 5.3-2l4.8 4.8-1.4 1.4-4.8-4.8A8 8 0 0 1 11 19Zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z',
   chat: 'M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 6h12v2H6zm0-3h12v2H6z',
