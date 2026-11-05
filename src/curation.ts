@@ -1,5 +1,6 @@
 import { dispatchCollaborationPush, mediaUrl } from './platform';
 import { getSupabase } from './supabase';
+import { randomUUID } from 'expo-crypto';
 import { calculateMatchScore } from './matchScoring';
 import type {
   CollaborationItem,
@@ -283,9 +284,9 @@ async function creatorRecommendations(preferenceText = '', all = false, signal?:
   return all ? ranked : ranked.slice(0, 6);
 }
 
-export async function loadMatchRecommendations(role: Role, demo = false, preferenceText = '') {
+export async function loadMatchRecommendations(role: Role, demo = false, preferenceText = '', signal?: AbortSignal) {
   if (demo) return demoRecommendations(role);
-  return role === 'store' ? storeRecommendations(preferenceText) : creatorRecommendations(preferenceText);
+  return role === 'store' ? storeRecommendations(preferenceText, false, signal) : creatorRecommendations(preferenceText, false, signal);
 }
 
 export async function loadDiscoveryCandidates(role: Role, demo: boolean | undefined, signal: AbortSignal) {
@@ -320,14 +321,17 @@ export async function loadCreatorDirectory(signal?: AbortSignal): Promise<Creato
   return results;
 }
 
-async function ensureCuratorThread(role: Role) {
+async function ensureCuratorThread(role: Role, signal?: AbortSignal) {
   const supabase = getSupabase();
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth, error } = await supabase.auth.getUser();
+  if (error) throw error;
   if (!auth.user) throw new Error('로그인이 필요합니다.');
-  const result = await supabase.from('curator_threads').upsert(
+  const query = supabase.from('curator_threads').upsert(
     { user_id: auth.user.id, role, title: role === 'store' ? 'CURI:T AI 큐레이터' : 'AI 콘셉트 큐레이터' },
     { onConflict: 'user_id,role' },
-  ).select('id').single<{ id: string }>();
+  ).select('id');
+  if (signal) query.abortSignal(signal);
+  const result = await query.single<{ id: string }>();
   if (result.error) throw new Error(result.error.message);
   return result.data.id;
 }
@@ -350,15 +354,27 @@ function welcome(role: Role) {
     : { content: '안녕하세요. 작품 DNA와 활동 지역, 매장 공간 조건을 비교해 실제 협업 가능한 공간을 찾아드릴게요.', actions: ['내 작품과 어울리는 매장을 추천해 주세요', '협업과 출고 흐름을 알려주세요', '판매와 정산을 알려주세요'] };
 }
 
-export async function loadCuratorMessages(role: Role): Promise<CuratorMessage[]> {
+export async function loadCuratorMessages(role: Role, signal?: AbortSignal): Promise<CuratorMessage[]> {
   const supabase = getSupabase();
-  const threadId = await ensureCuratorThread(role);
-  const result = await supabase.from('curator_messages').select('id, sender, content, metadata, created_at').eq('thread_id', threadId).order('created_at');
+  const threadId = await ensureCuratorThread(role, signal);
+  const query = supabase.from('curator_messages').select('id, sender, content, metadata, created_at').eq('thread_id', threadId).order('created_at').order('sender', { ascending: false });
+  if (signal) query.abortSignal(signal);
+  const result = await query;
   if (result.error) throw new Error(result.error.message);
   if (result.data.length) return result.data.map(row => mapCuratorMessage(row as Record<string, unknown>));
   const first = welcome(role);
-  const inserted = await supabase.from('curator_messages').insert({ thread_id: threadId, sender: 'assistant', content: first.content, metadata: { actions: first.actions } }).select('id, sender, content, metadata, created_at').single();
-  if (inserted.error) throw new Error(inserted.error.message);
+  const insert = supabase.from('curator_messages').insert({ id: threadId, thread_id: threadId, sender: 'assistant', content: first.content, metadata: { actions: first.actions } }).select('id, sender, content, metadata, created_at');
+  if (signal) insert.abortSignal(signal);
+  const inserted = await insert.single();
+  if (inserted.error) {
+    if (inserted.error.code === '23505') {
+      const existing = supabase.from('curator_messages').select('id, sender, content, metadata, created_at').eq('thread_id', threadId).eq('id', threadId);
+      if (signal) existing.abortSignal(signal);
+      const saved = await existing.single();
+      if (!saved.error) return [mapCuratorMessage(saved.data)];
+    }
+    throw new Error(inserted.error.message);
+  }
   return [mapCuratorMessage(inserted.data as Record<string, unknown>)];
 }
 
@@ -389,24 +405,55 @@ function answerFor(role: Role, prompt: string, recommendations: MatchRecommendat
   };
 }
 
-export async function sendCuratorMessage(role: Role, content: string) {
+export type CuratorSendRequest = { userMessageId: string; assistantMessageId: string };
+
+export function createCuratorSendRequest(): CuratorSendRequest {
+  return { userMessageId: randomUUID(), assistantMessageId: randomUUID() };
+}
+
+export async function sendCuratorMessage(role: Role, content: string, request = createCuratorSendRequest(), signal?: AbortSignal) {
   const text = content.trim();
   if (!text) throw new Error('메시지를 입력해 주세요.');
+  if (text.length > 4000) throw new Error('메시지는 4,000자까지 입력해 주세요.');
   const supabase = getSupabase();
-  const threadId = await ensureCuratorThread(role);
-  const userInsert = await supabase.from('curator_messages').insert({ thread_id: threadId, sender: 'user', content: text }).select('id, sender, content, metadata, created_at').single();
-  if (userInsert.error) throw new Error(userInsert.error.message);
+  const threadId = await ensureCuratorThread(role, signal);
+  const fields = 'id, sender, content, metadata, created_at';
+  const savedExchange = async () => {
+    const query = supabase.from('curator_messages').select(fields).eq('thread_id', threadId).in('id', [request.userMessageId, request.assistantMessageId]);
+    if (signal) query.abortSignal(signal);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    if (!data?.length) return null;
+    const user = data.find(row => row.id === request.userMessageId && row.sender === 'user' && row.content === text);
+    const assistant = data.find(row => row.id === request.assistantMessageId && row.sender === 'assistant');
+    if (!user || !assistant) throw new Error('대화 저장 상태를 확인하지 못했어요. 대화를 다시 불러와 주세요.');
+    return [mapCuratorMessage(user), mapCuratorMessage(assistant)];
+  };
+  const existing = await savedExchange();
+  if (existing) return existing;
   const recommendationRequested = /추천|어울|찾|매칭|후보/.test(text);
-  const recommendations = recommendationRequested ? await loadMatchRecommendations(role, false, text) : [];
+  const recommendations = recommendationRequested ? await loadMatchRecommendations(role, false, text, signal) : [];
   const answer = answerFor(role, text, recommendations);
-  const assistantInsert = await supabase.from('curator_messages').insert({
-    thread_id: threadId,
-    sender: 'assistant',
-    content: answer.content,
-    metadata: { recommendations: recommendations.slice(0, 3), actions: answer.actions },
-  }).select('id, sender, content, metadata, created_at').single();
-  if (assistantInsert.error) throw new Error(assistantInsert.error.message);
-  return [mapCuratorMessage(userInsert.data as Record<string, unknown>), mapCuratorMessage(assistantInsert.data as Record<string, unknown>)];
+  // One insert keeps the question and its answer atomic. Stable IDs also let a
+  // retry recover a committed exchange whose original response was lost.
+  const insert = supabase.from('curator_messages').insert([
+    { id: request.userMessageId, thread_id: threadId, sender: 'user', content: text, metadata: {} },
+    { id: request.assistantMessageId, thread_id: threadId, sender: 'assistant', content: answer.content, metadata: { recommendations: recommendations.slice(0, 3), actions: answer.actions } },
+  ]).select(fields);
+  if (signal) insert.abortSignal(signal);
+  const inserted = await insert;
+  if (inserted.error) {
+    if (inserted.error.code === '23505') {
+      const saved = await savedExchange();
+      if (saved) return saved;
+    }
+    throw new Error(inserted.error.message);
+  }
+  return [request.userMessageId, request.assistantMessageId].map(id => {
+    const row = inserted.data.find(value => value.id === id);
+    if (!row) throw new Error('대화 저장 결과를 확인하지 못했어요. 다시 시도해 주세요.');
+    return mapCuratorMessage(row);
+  });
 }
 
 export async function createCollaborationProposal(recommendation: MatchRecommendation, message: string, period?: { startsOn: string; endsOn: string }) {

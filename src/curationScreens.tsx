@@ -3,6 +3,7 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pre
 import { Image } from 'expo-image';
 import {
   createCollaborationProposal,
+  createCuratorSendRequest,
   loadCollaborationMessages,
   loadCollaborations,
   loadCollaborationItems,
@@ -24,7 +25,7 @@ import { friendlyError, loadPublicProject } from './platform';
 import { storeColors } from './storePreferences';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
-import type { CreatorDirectoryEntry } from './curation';
+import type { CreatorDirectoryEntry, CuratorSendRequest } from './curation';
 import { Button, Chip, CuritText, Empty, Field, Header, Icon, ScreenFrame, SessionLockedContext } from './ui';
 
 const statusLabel: Record<CollaborationSummary['status'], string> = {
@@ -55,11 +56,18 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
   const [loadedItems, setLoadedItems] = useState<CollaborationSummary[]>([]);
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   const items = demo ? (demoItems ?? demoCollaborationList(role)) : loadedItems;
   useEffect(() => {
     if (demo) return;
-    void loadCollaborations(role).then(setLoadedItems).catch(caught => setError(friendlyError(caught))).finally(() => setLoading(false));
-  }, [demo, role]);
+    let active = true;
+    const controller = new AbortController();
+    void loadWithDeadline(signal => loadCollaborations(role, undefined, signal), controller)
+      .then(value => { if (active) setLoadedItems(value); })
+      .catch(caught => { if (active) setError(friendlyError(caught)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [demo, role, attempt]);
   return <View style={c.flex}>
     <Header title="채팅" />
     <ScrollView contentContainerStyle={c.hubScroll}>
@@ -70,7 +78,7 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
       </Pressable>
       <View style={c.listHeading}><CuritText weight="bold">함께하는 대화</CuritText><CuritText style={c.muted}>{items.length}</CuritText></View>
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : null}
-      {error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText></View> : null}
+      {error ? <View style={[c.error, { gap: 10 }]}><CuritText accessibilityRole="alert" style={c.errorText}>{error}</CuritText><Button label="대화 다시 불러오기" variant="secondary" onPress={() => { setError(''); setLoading(true); setAttempt(value => value + 1); }} /></View> : null}
       {!loading && !error && !items.length ? <Empty title="아직 협업 대화가 없어요" description="AI 큐레이터의 추천에서 협업을 제안하면 상대방과 대화를 시작할 수 있어요." /> : items.map(item => <Pressable accessibilityRole="button" accessibilityLabel={`${item.counterpartName} ${item.projectTitle} 협업 대화 열기`} key={item.id} style={c.chatRow} onPress={() => onOpenCollaboration(item)}>
         <View style={c.contactAvatar}><CuritText weight="bold">{item.counterpartName[0] || 'C'}</CuritText></View>
         <View style={c.flex}><View style={c.between}><CuritText weight="semibold" style={c.chatName}>{item.counterpartName}</CuritText><CuritText style={c.time}>{new Date(item.updatedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</CuritText></View><View style={c.chatProjectRow}><CuritText style={c.project} numberOfLines={1}>{item.projectTitle}</CuritText><View style={c.chatStatus}><View style={c.chatStatusDot} /><CuritText style={c.chatStatusText}>{statusLabel[item.status]}</CuritText></View></View><CuritText style={c.muted} numberOfLines={1}>{String(item.terms.message || '조건과 일정을 확인해 주세요.')}</CuritText></View>
@@ -271,24 +279,36 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
   const [sending, setSending] = useState(false);
   const [proposalTarget, setProposalTarget] = useState('');
   const [notice, setNotice] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const sendLock = useRef(false);
+  const sendController = useRef<AbortController | null>(null);
+  const pendingSend = useRef<{ text: string; request: CuratorSendRequest } | null>(null);
+  useEffect(() => () => { sendController.current?.abort(); }, []);
   useEffect(() => {
     if (demo) return;
-    void Promise.all([loadCuratorMessages(role), loadMatchRecommendations(role)])
+    let active = true;
+    const controller = new AbortController();
+    void loadWithDeadline(signal => Promise.all([loadCuratorMessages(role, signal), loadMatchRecommendations(role, false, '', signal)]), controller)
       .then(([savedMessages, currentRecommendations]) => {
+        if (!active) return;
         const currentByTarget = new Map(currentRecommendations.map(item => [`${item.targetType}:${item.targetId}`, item]));
         setMessages(savedMessages.map(message => ({
           ...message,
           recommendations: message.recommendations.map(saved => currentByTarget.get(`${saved.targetType}:${saved.targetId}`) ?? saved),
         })));
       })
-      .catch(caught => setNotice(friendlyError(caught)))
-      .finally(() => setLoading(false));
-  }, [demo, role]);
+      .catch(caught => { if (active) setLoadError(friendlyError(caught)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [demo, role, attempt]);
 
   const submit = async (text = input) => {
     const value = text.trim();
-    if (!value || sending) return;
-    setSending(true); setNotice(''); setInput('');
+    if (!value || loading || loadError || sendLock.current) return;
+    if (value.length > 4000) { setNotice('메시지는 4,000자까지 입력해 주세요.'); return; }
+    sendLock.current = true;
+    setSending(true); setNotice('');
     try {
       if (demo) {
         const recs = /추천|어울|찾|매칭/.test(value) ? await loadMatchRecommendations(role, true) : [];
@@ -298,14 +318,23 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
           { id: `da-${Date.now()}`, sender: 'assistant', content: recs.length ? `${recs[0]?.title}이(가) 조건 일치도 ${recs[0]?.score}점으로 가장 높아요. 추천 이유와 실제 협업 조건을 확인해 보세요.` : '협업은 제안, 크리에이터 승인, 매장 최종 확정 순서로 진행됩니다.', recommendations: recs.slice(0, 3), actions: recs.length ? ['다른 후보도 비교해 주세요'] : [role === 'store' ? '우리 공간에 어울리는 작품을 추천해 주세요' : '내 작품과 어울리는 매장을 추천해 주세요'], createdAt: now },
         ]);
       } else {
-        const appended = await sendCuratorMessage(role, value);
-        setMessages(current => [...current, ...appended]);
+        if (!pendingSend.current || pendingSend.current.text !== value) pendingSend.current = { text: value, request: createCuratorSendRequest() };
+        const request = pendingSend.current.request;
+        const controller = new AbortController();
+        sendController.current = controller;
+        const appended = await loadWithDeadline(signal => sendCuratorMessage(role, value, request, signal), controller);
+        setMessages(current => {
+          const existing = new Set(current.map(message => message.id));
+          return [...current, ...appended.filter(message => !existing.has(message.id))];
+        });
+        pendingSend.current = null;
       }
-    } catch (caught) { setNotice(friendlyError(caught)); } finally { setSending(false); }
+      setInput(current => current === text ? '' : current);
+    } catch (caught) { setNotice(friendlyError(caught)); } finally { sendController.current = null; sendLock.current = false; setSending(false); }
   };
 
   const propose = async (item: MatchRecommendation, period?: ExhibitionPeriod) => {
-    if (proposalTarget) return;
+    if (loading || loadError || proposalTarget) return;
     setProposalTarget(item.targetId); setNotice('');
     try {
       if (demo) {
@@ -334,14 +363,15 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
           <View style={[c.bubble, message.sender === 'user' ? c.userBubble : c.aiBubble]}><CuritText style={message.sender === 'user' ? c.userText : undefined}>{message.content}</CuritText></View>
         </View>
         {message.recommendations.map(item => <RecommendationCard key={`${message.id}-${item.targetId}`} item={item} demo={demo} busy={proposalTarget === item.targetId} onPropose={period => { void propose(item, period); }} />)}
-        {message.actions.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.actionRow}>{message.actions.map(action => <Chip key={action} label={action} onPress={() => { void submit(action); }} />)}</ScrollView> : null}
+        {message.actions.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.actionRow}>{message.actions.map(action => <Chip key={action} label={action} onPress={sending || loading || loadError ? undefined : () => { void submit(action); }} />)}</ScrollView> : null}
       </View>)}
       {sending ? <View style={c.typing}><ActivityIndicator size="small" color={colors.brand} /><CuritText style={c.muted}>등록 데이터와 조건을 비교하고 있어요…</CuritText></View> : null}
-      {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
     </ScrollView>
     <View style={c.composerWrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.topicRow}>{topics.map(topic => <Chip key={topic} label={topic.replace('해 주세요', '')} onPress={() => setInput(topic)} />)}</ScrollView>
-      <View style={c.composer}><TextInput value={input} onChangeText={setInput} onSubmitEditing={() => { void submit(); }} editable={!sending} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="메시지 보내기" disabled={!input.trim() || sending} style={[c.send, (!input.trim() || sending) && c.sendDisabled]} onPress={() => { void submit(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
+      {loadError ? <View style={[c.error, { marginHorizontal: 12, marginVertical: 4, gap: 8 }]}><CuritText accessibilityRole="alert" style={c.errorText}>{loadError}</CuritText><Button label="대화 다시 불러오기" variant="secondary" onPress={() => { setLoadError(''); setLoading(true); setAttempt(value => value + 1); }} /></View> : null}
+      {notice ? <View accessibilityLiveRegion="polite" style={[c.notice, { marginHorizontal: 12, marginBottom: 8 }]}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.topicRow}>{topics.map(topic => <Chip key={topic} label={topic.replace('해 주세요', '')} onPress={sending ? undefined : () => setInput(topic)} />)}</ScrollView>
+      <View style={c.composer}><TextInput accessibilityLabel="큐레이터에게 보낼 메시지" maxLength={4000} value={input} onChangeText={setInput} onSubmitEditing={() => { void submit(); }} editable={!sending} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="메시지 보내기" accessibilityState={{ disabled: !input.trim() || sending || loading || Boolean(loadError) }} disabled={!input.trim() || sending || loading || Boolean(loadError)} style={[c.send, (!input.trim() || sending || loading || Boolean(loadError)) && c.sendDisabled]} onPress={() => { void submit(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
     </View>
   </KeyboardAvoidingView>;
 }
