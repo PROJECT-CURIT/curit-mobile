@@ -356,73 +356,100 @@ export async function dispatchCollaborationPush(collaborationId: string) {
   });
 }
 
+const projectDetailFields = 'id, title, story, concept, region, purpose, status, cover_path';
+
+async function loadProjectProducts(projectId: string, signal?: AbortSignal): Promise<ProjectProduct[]> {
+  const query = getSupabase()
+    .from('project_items')
+    .select('id, name, description, price, stock, image_path, sale_mode, item_type, material, width_mm, height_mm, pickup_mode, care')
+    .eq('project_id', projectId)
+    .order('created_at');
+  if (signal) query.abortSignal(signal);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(item => ({
+    id: String(item.id),
+    name: String(item.name),
+    price: Number(item.price),
+    stock: Number(item.stock),
+    image: item.image_path ? mediaUrl(String(item.image_path)) : '',
+    imagePath: item.image_path ? String(item.image_path) : undefined,
+    mode: item.sale_mode === 'display_only' ? '전시만' : '전시·판매',
+    type: item.item_type === 'artwork' ? 'artwork' : 'goods',
+    description: String(item.description || ''),
+    material: String(item.material || ''),
+    widthMm: item.width_mm === null ? null : Number(item.width_mm),
+    heightMm: item.height_mm === null ? null : Number(item.height_mm),
+    pickupMode: item.pickup_mode === 'exhibition' ? 'exhibition' : 'immediate',
+    care: String(item.care || ''),
+  }));
+}
+
+type ProjectDetailRow = {
+  id: string;
+  title: string | null;
+  story: string | null;
+  concept: string | null;
+  region: string | null;
+  purpose: string | null;
+  status: string | null;
+  cover_path: string | null;
+};
+
+function projectDetail(row: ProjectDetailRow) {
+  return {
+    id: row.id,
+    title: row.title || '',
+    story: row.story || '',
+    concept: row.concept || '',
+    region: row.region || '',
+    purpose: row.purpose || '',
+    status: (row.status || 'draft') as 'draft' | 'recruiting' | 'matched' | 'archived',
+    coverPath: row.cover_path || '',
+    coverUrl: row.cover_path ? mediaUrl(row.cover_path) : '',
+  };
+}
+
+export async function loadPublicProject(projectId: string, signal: AbortSignal) {
+  const { data, error } = await getSupabase().from('projects')
+    .select(projectDetailFields)
+    .eq('id', projectId)
+    .in('status', ['recruiting', 'matched'])
+    .abortSignal(signal)
+    .maybeSingle<ProjectDetailRow>();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { project: projectDetail(data), products: await loadProjectProducts(projectId, signal) };
+}
+
 export async function loadCreatorProject() {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
   let { data: project, error } = await supabase
     .from('projects')
-    .select('id, title, story, concept, region, purpose, status, cover_path, creator_share_percent')
+    .select(`${projectDetailFields}, creator_share_percent`)
     .eq('creator_id', auth.user.id)
     .order('updated_at', { ascending: false })
     .limit(1)
-    .maybeSingle<{
-      id: string;
-      title: string | null;
-      story: string | null;
-      concept: string | null;
-      region: string | null;
-      purpose: string | null;
-      status: string | null;
-      cover_path: string | null;
-      creator_share_percent: number | null;
-    }>();
+    .maybeSingle<ProjectDetailRow & { creator_share_percent: number | null }>();
   if (error) throw new Error(error.message);
   if (!project) {
     const result = await supabase
       .from('projects')
       .insert({ creator_id: auth.user.id, title: '최종 프로젝트', concept: '프로젝트 정보와 상품을 등록해 주세요.', region: '서울', status: 'draft' })
-      .select('id, title, story, concept, region, purpose, status, cover_path, creator_share_percent')
+      .select(`${projectDetailFields}, creator_share_percent`)
       .single();
     if (result.error) throw new Error(result.error.message);
     project = result.data;
   }
-  const items = await supabase
-    .from('project_items')
-    .select('id, name, description, price, stock, image_path, sale_mode, item_type, material, width_mm, height_mm, pickup_mode, care')
-    .eq('project_id', project.id)
-    .order('created_at');
-  if (items.error) throw new Error(items.error.message);
   return {
     projectId: project.id,
     project: {
-      id: String(project.id),
-      title: String(project.title || ''),
-      story: String(project.story || ''),
-      concept: String(project.concept || ''),
-      region: String(project.region || ''),
-      purpose: String(project.purpose || ''),
-      status: String(project.status || 'draft') as 'draft' | 'recruiting' | 'matched' | 'archived',
-      coverPath: project.cover_path ? String(project.cover_path) : '',
-      coverUrl: project.cover_path ? mediaUrl(String(project.cover_path)) : '',
+      ...projectDetail(project),
       creatorSharePercent: Number(project.creator_share_percent || 80),
     },
-    products: (items.data ?? []).map((item) => ({
-      id: String(item.id),
-      name: String(item.name),
-      price: Number(item.price),
-      stock: Number(item.stock),
-      image: item.image_path ? mediaUrl(String(item.image_path)) : '',
-      imagePath: item.image_path ? String(item.image_path) : undefined,
-      mode: item.sale_mode === 'display_only' ? '전시만' as const : '전시·판매' as const,
-      type: item.item_type === 'artwork' ? 'artwork' as const : 'goods' as const,
-      description: String(item.description || ''),
-      material: String(item.material || ''),
-      widthMm: item.width_mm === null ? null : Number(item.width_mm),
-      heightMm: item.height_mm === null ? null : Number(item.height_mm),
-      pickupMode: item.pickup_mode === 'exhibition' ? 'exhibition' as const : 'immediate' as const,
-      care: String(item.care || ''),
-    })),
+    products: await loadProjectProducts(project.id),
   };
 }
 

@@ -16,10 +16,11 @@ import {
   transitionCollaboration,
 } from './curation';
 import { SocialFeedSection } from './fullPrototypeScreens';
+import { CreatorProjectScreen } from './detailScreens';
 import { projects } from './data';
 import { demoCollaborationList, nextDemoCollaborationStatus } from './demoContent';
 import { exhibitionPeriodError, formatExhibitionDateInput, suggestedExhibitionPeriod, type ExhibitionPeriod } from './exhibitionPeriod';
-import { friendlyError } from './platform';
+import { friendlyError, loadPublicProject } from './platform';
 import { storeColors } from './storePreferences';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
@@ -80,7 +81,7 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
 
 const discoverDisplayStep = 8;
 
-async function loadDiscoverResults<T>(load: (signal: AbortSignal) => Promise<T>, controller: AbortController) {
+async function loadWithDeadline<T>(load: (signal: AbortSignal) => Promise<T>, controller: AbortController) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -118,7 +119,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-    void loadDiscoverResults(signal => loadDiscoveryCandidates(role, demo, signal), controller)
+    void loadWithDeadline(signal => loadDiscoveryCandidates(role, demo, signal), controller)
       .then(value => { if (active) setItems(value); })
       .catch(caught => { if (active) setMatchError(friendlyError(caught)); })
       .finally(() => { if (active) setLoading(false); });
@@ -128,7 +129,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
     if (demo || !directoryVisited) return;
     let active = true;
     const controller = new AbortController();
-    void loadDiscoverResults(loadCreatorDirectory, controller).then(projects => {
+    void loadWithDeadline(loadCreatorDirectory, controller).then(projects => {
       if (active) setDirectory({ projects, error: '' });
     }).catch(caught => {
       if (active) setDirectory({ projects: [], error: friendlyError(caught) });
@@ -178,7 +179,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
         setSection(value as 'matches' | 'creators' | 'news');
       }}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
       {newsVisited ? <View style={section !== 'news' ? { display: 'none' } : undefined} accessibilityElementsHidden={section !== 'news'} importantForAccessibility={section === 'news' ? 'auto' : 'no-hide-descendants'}><SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /></View> : null}
-      {section === 'news' ? null : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects.slice(0, directoryDisplayCount)} hasMore={visibleDirectoryProjects.length > directoryDisplayCount} onMore={() => setDirectoryDisplayCount(count => count + discoverDisplayStep)} hasSearch={Boolean(directoryQuery.trim())} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
+      {section === 'news' ? null : section === 'creators' ? <CreatorDirectory demo={demo} items={visibleDirectoryProjects.slice(0, directoryDisplayCount)} hasMore={visibleDirectoryProjects.length > directoryDisplayCount} onMore={() => setDirectoryDisplayCount(count => count + discoverDisplayStep)} hasSearch={Boolean(directoryQuery.trim())} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
       {role === 'creator' ? <>
         <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
         <View style={c.filterCard}>
@@ -196,7 +197,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
       <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">조건 일치도는 등록 정보 기준 참고 점수예요</CuritText><CuritText style={c.pinCaption}>취향 키워드·지역·판매 재고·전시 구역을 반영하며, 판매가는 예산과 따로 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
       <View style={c.listHeading}><CuritText weight="bold">{query.trim() || region !== '전체' || dnaFilters.length ? '검색 결과' : '맞춤 추천'}</CuritText>{!loading && !matchError ? <CuritText style={c.muted}>{visible.length}개</CuritText> : null}</View>
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : matchError ? <View style={c.error}><CuritText style={c.errorText}>{matchError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={() => { setLoading(true); setMatchError(''); setMatchAttempt(value => value + 1); }} /></View> : visible.length ? <>
-        {visible.slice(0, matchDisplayCount).map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={period => { void propose(item, period); }} /></View>)}
+        {visible.slice(0, matchDisplayCount).map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} demo={demo} inset={false} busy={busy === item.targetId} onPropose={period => { void propose(item, period); }} /></View>)}
         {visible.length > matchDisplayCount ? <Button label="후보 더 보기" variant="secondary" onPress={() => setMatchDisplayCount(count => count + discoverDisplayStep)} /> : null}
       </> : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
       {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
@@ -205,15 +206,46 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   </View>;
 }
 
-function CreatorDirectory({ items, loading, error, hasMore, hasSearch, onMore, onRetry }: { items: CreatorDirectoryCard[]; loading: boolean; error: string; hasMore: boolean; hasSearch: boolean; onMore: () => void; onRetry: () => void }) {
+function CreatorDirectory({ items, loading, error, hasMore, hasSearch, demo, onMore, onRetry }: { items: CreatorDirectoryCard[]; loading: boolean; error: string; hasMore: boolean; hasSearch: boolean; demo?: boolean; onMore: () => void; onRetry: () => void }) {
+  const [selected, setSelected] = useState<CreatorDirectoryCard | null>(null);
   return <View style={c.creatorDirectory}>
     <View><CuritText weight="bold" style={c.directoryTitle}>작품과 작가</CuritText><CuritText style={c.muted}>다른 크리에이터의 작품 세계와 활동을 살펴보세요.</CuritText></View>
-    {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={onRetry} /></View> : items.length ? items.map(item => <View key={item.id} style={c.creatorCard}>
+    {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={onRetry} /></View> : items.length ? items.map(item => <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 프로젝트 상세`} key={item.id} style={c.creatorCard} onPress={() => { Keyboard.dismiss(); setSelected(item); }}>
       {item.imageSource ? <Image source={item.imageSource} style={c.creatorCardImage} contentFit="cover" /> : item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.creatorCardImage} contentFit="cover" /> : <View style={[c.creatorCardImage, c.cardImagePlaceholder]}><Icon name="discover" color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
-      <View style={c.creatorCardBody}><View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.creatorCardTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.artist} · {item.region}</CuritText></View><View style={c.creatorAvatar}><CuritText weight="bold" style={c.brandText}>{item.artist[0]}</CuritText></View></View><View style={c.tags}>{item.tags.slice(0, 4).map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View><CuritText style={c.pinCaption}>{item.priceRange} · {item.status}</CuritText></View>
-    </View>) : <Empty title={hasSearch ? '조건에 맞는 작품이 없어요' : '공개된 작품이 없습니다'} description={hasSearch ? '작가명이나 작품 이름을 바꿔 검색해 보세요.' : '크리에이터가 협업 모집을 시작하면 이곳에서 확인할 수 있어요.'} />}
+      <View style={c.creatorCardBody}><View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.creatorCardTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.artist} · {item.region}</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></View><View style={c.tags}>{item.tags.slice(0, 4).map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View><CuritText style={c.pinCaption}>{item.priceRange} · {item.status}</CuritText></View>
+    </Pressable>) : <Empty title={hasSearch ? '조건에 맞는 작품이 없어요' : '공개된 작품이 없습니다'} description={hasSearch ? '작가명이나 작품 이름을 바꿔 검색해 보세요.' : '크리에이터가 협업 모집을 시작하면 이곳에서 확인할 수 있어요.'} />}
     {hasMore ? <Button label="작품 더 보기" variant="secondary" onPress={onMore} /> : null}
+    {selected ? <PublicProjectModal id={selected.id} artist={selected.artist} demo={demo} onClose={() => setSelected(null)} /> : null}
   </View>;
+}
+
+function PublicProjectModal({ id, artist, demo, onClose }: { id: string; artist?: string; demo?: boolean; onClose: () => void }) {
+  const [result, setResult] = useState<Awaited<ReturnType<typeof loadPublicProject>>>();
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const sample = demo ? projects.find(project => project.id === id) : undefined;
+  useEffect(() => {
+    if (demo) return;
+    const controller = new AbortController();
+    let active = true;
+    void loadWithDeadline(signal => loadPublicProject(id, signal), controller)
+      .then(value => { if (active) setResult(value); })
+      .catch(caught => { if (active) setError(friendlyError(caught)); });
+    return () => { active = false; controller.abort(); };
+  }, [attempt, demo, id]);
+
+  return <Modal animationType="fade" onRequestClose={onClose}>
+    <ScreenFrame>
+      {sample ? <CreatorProjectScreen project={{ id, title: sample.title, concept: sample.tags.join(' · '), story: '', region: sample.region, purpose: '', status: sample.status === '모집 중' ? 'recruiting' : 'matched', coverPath: '', coverUrl: '' }} products={[]} artist={sample.artist} fallbackCover={sample.image} onBack={onClose} />
+        : result ? <CreatorProjectScreen project={result.project} products={result.products} artist={artist} fallbackCover={result.products[0]?.image ? { uri: result.products[0].image } : undefined} onBack={onClose} />
+        : <>
+          <Header title="전시 프로젝트" back={onClose} />
+          {error ? <View style={c.discoverScroll}><Empty title="프로젝트를 불러오지 못했어요" description={error} /><Button label="다시 불러오기" variant="secondary" onPress={() => { setError(''); setAttempt(value => value + 1); }} /></View>
+            : result === null || demo ? <Empty title="현재 공개된 프로젝트가 아니에요" description="공개 상태가 변경됐을 수 있어요. 탐색 목록으로 돌아가 다른 작품을 확인해 주세요." />
+            : <ActivityIndicator accessibilityLabel="프로젝트를 불러오고 있어요" color={colors.brand} style={c.loader} />}
+        </>}
+    </ScreenFrame>
+  </Modal>;
 }
 
 function demoWelcome(role: Role): CuratorMessage {
@@ -294,7 +326,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
           {message.sender === 'assistant' ? <View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View> : null}
           <View style={[c.bubble, message.sender === 'user' ? c.userBubble : c.aiBubble]}><CuritText style={message.sender === 'user' ? c.userText : undefined}>{message.content}</CuritText></View>
         </View>
-        {message.recommendations.map(item => <RecommendationCard key={`${message.id}-${item.targetId}`} item={item} busy={proposalTarget === item.targetId} onPropose={period => { void propose(item, period); }} />)}
+        {message.recommendations.map(item => <RecommendationCard key={`${message.id}-${item.targetId}`} item={item} demo={demo} busy={proposalTarget === item.targetId} onPropose={period => { void propose(item, period); }} />)}
         {message.actions.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.actionRow}>{message.actions.map(action => <Chip key={action} label={action} onPress={() => { void submit(action); }} />)}</ScrollView> : null}
       </View>)}
       {sending ? <View style={c.typing}><ActivityIndicator size="small" color={colors.brand} /><CuritText style={c.muted}>등록 데이터와 조건을 비교하고 있어요…</CuritText></View> : null}
@@ -332,14 +364,15 @@ export function RecommendationScreen({ item, demo, onBack, onOpenCollaboration }
   return <View style={c.flex}>
     <Header title={item.targetType === 'project' ? '추천 작품' : '추천 공간'} subtitle="추천 이유와 협업 조건" back={onBack} />
     <ScrollView contentContainerStyle={c.discoverScroll}>
-      <RecommendationCard item={item} busy={busy} inset={false} onPropose={period => { void propose(period); }} />
+      <RecommendationCard item={item} demo={demo} busy={busy} inset={false} onPropose={period => { void propose(period); }} />
       {error ? <View style={c.error}><CuritText accessibilityRole="alert" style={c.errorText}>{error}</CuritText></View> : null}
     </ScrollView>
   </View>;
 }
 
-function RecommendationCard({ item, busy, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; onPropose: (period?: ExhibitionPeriod) => void; inset?: boolean }) {
+function RecommendationCard({ item, busy, demo, onPropose, inset = true }: { item: MatchRecommendation; busy: boolean; demo?: boolean; onPropose: (period?: ExhibitionPeriod) => void; inset?: boolean }) {
   const [proposalOpen, setProposalOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [period, setPeriod] = useState<ExhibitionPeriod>(suggestedExhibitionPeriod);
   const submitting = useRef(false);
   const dateInputActive = useRef(false);
@@ -359,10 +392,14 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
     closeProposal();
     onPropose(period);
   };
+  const cover = item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>{item.targetType === 'store' ? '매장 사진 없음' : '이미지 준비 중'}</CuritText></View>;
+  const heading = <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.recommendationTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}점</CuritText></View>{item.targetType === 'project' ? <Icon name="chevron" size={17} color={colors.brand} /> : null}</View>;
   return <View style={[c.recommendation, !inset && c.recommendationWide]}>
-    {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>{item.targetType === 'store' ? '매장 사진 없음' : '이미지 준비 중'}</CuritText></View>}
+    {item.targetType === 'project' ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 프로젝트 상세`} onPress={() => { Keyboard.dismiss(); setDetailsOpen(true); }}>
+      {cover}<View style={c.recommendationHeading}>{heading}</View>
+    </Pressable> : cover}
     <View style={c.recommendationBody}>
-      <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.recommendationTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}점</CuritText></View></View>
+      {item.targetType === 'store' ? heading : null}
       <CuritText style={c.description}>{item.description}</CuritText>
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
@@ -372,6 +409,7 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
         else { submitting.current = false; setProposalOpen(true); }
       }} />
     </View>
+    {detailsOpen ? <PublicProjectModal id={item.targetId} artist={item.subtitle.split(' · ')[0]} demo={demo} onClose={() => setDetailsOpen(false)} /> : null}
     {proposalOpen ? <Modal animationType="slide" onRequestClose={backFromProposal}>
       <ScreenFrame>
         <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -653,7 +691,7 @@ const c = StyleSheet.create({
   hubScroll: { flexGrow: 1, padding: 20, paddingBottom: 36 }, curatorPin: { minHeight: 82, borderRadius: radius.lg, backgroundColor: colors.brandSoft, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }, curatorAvatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }, smallAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, pinCaption: { color: colors.muted, fontSize: 11, marginTop: 3 }, pinAction: { color: colors.brand, fontSize: 11 }, listHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 6 }, chatRow: { minHeight: 88, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }, contactAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, chatName: { fontSize: 16 }, chatProjectRow: { minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 }, project: { flexShrink: 1, color: colors.brand, fontSize: 11, marginVertical: 3 }, chatStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.brandSoft }, chatStatusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.brand }, chatStatusText: { color: colors.brand, fontSize: 9 }, time: { color: colors.subtle, fontSize: 9 }, loader: { marginVertical: 40 }, error: { padding: 14, borderRadius: radius.sm, backgroundColor: '#FFF2EF', marginVertical: 16 }, errorText: { color: colors.danger },
   chatScroll: { padding: 16, paddingBottom: 28, gap: 12 }, messageBlock: { gap: 10 }, bubbleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 }, bubbleRowUser: { justifyContent: 'flex-end' }, bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11 }, aiBubble: { backgroundColor: colors.brandPale, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: colors.brand, borderTopRightRadius: 4 }, userText: { color: colors.surface }, actionRow: { gap: 7, paddingLeft: 42, paddingBottom: 4 }, typing: { flexDirection: 'row', gap: 9, alignItems: 'center', marginLeft: 42 }, notice: { padding: 12, backgroundColor: colors.brandSoft, borderRadius: radius.sm },
   composerWrap: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, paddingTop: 8 }, topicRow: { gap: 7, paddingHorizontal: 12, paddingBottom: 8 }, composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }, composerMore: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, composerMoreText: { color: colors.brand, fontSize: 20, lineHeight: 22 }, input: { flex: 1, minHeight: 46, borderRadius: 23, backgroundColor: '#F7F7F7', borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, fontFamily: fonts.regular, color: colors.ink }, send: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }, sendDisabled: { backgroundColor: colors.border }, sendText: { color: colors.surface, fontSize: 20 },
-  recommendation: { marginLeft: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface }, recommendationWide: { marginLeft: 0 }, recommendationImage: { width: '100%', height: 148 }, recommendationBody: { padding: 14, gap: 10 }, recommendationTitle: { fontSize: 17 }, score: { minWidth: 48, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft, alignItems: 'center' }, description: { color: colors.muted, lineHeight: 21 }, reasonBox: { borderRadius: radius.sm, padding: 10, backgroundColor: colors.brandPale, gap: 6 }, reasonRow: { flexDirection: 'row', gap: 7 }, check: { color: colors.brand }, reasonText: { flex: 1, fontSize: 12, color: colors.muted }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { fontSize: 10, color: colors.brand, backgroundColor: colors.brandSoft, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 }, cardImagePlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 7, padding: 12 },
+  recommendation: { marginLeft: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface }, recommendationWide: { marginLeft: 0 }, recommendationImage: { width: '100%', height: 148 }, recommendationBody: { padding: 14, gap: 10 }, recommendationHeading: { paddingHorizontal: 14, paddingTop: 14 }, recommendationTitle: { fontSize: 17 }, score: { minWidth: 48, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft, alignItems: 'center' }, description: { color: colors.muted, lineHeight: 21 }, reasonBox: { borderRadius: radius.sm, padding: 10, backgroundColor: colors.brandPale, gap: 6 }, reasonRow: { flexDirection: 'row', gap: 7 }, check: { color: colors.brand }, reasonText: { flex: 1, fontSize: 12, color: colors.muted }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { fontSize: 10, color: colors.brand, backgroundColor: colors.brandSoft, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 }, cardImagePlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center', gap: 7, padding: 12 },
   detailScroll: { flexGrow: 1, padding: 16, paddingBottom: 24 }, compactSummary: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, overflow: 'hidden', marginBottom: 12 }, summaryHeader: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 9 }, summaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, inlineStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 }, summaryTitle: { flexShrink: 1, fontSize: 14 }, summaryMeta: { color: colors.muted, fontSize: 10, marginTop: 3 }, summaryToggle: { color: colors.brand, fontSize: 10 }, summaryBody: { borderTopWidth: 1, borderTopColor: colors.border, padding: 14, gap: 12 }, conditionToggle: { minHeight: 46, borderRadius: radius.sm, backgroundColor: colors.brandSoft, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, conditionBody: { gap: 10, paddingTop: 2 }, conditionLabel: { fontSize: 13, marginTop: 2 }, termRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 18 }, termLabel: { color: colors.muted, fontSize: 12 }, termValue: { flex: 1, textAlign: 'right', fontSize: 12 }, flowHint: { color: colors.brand, fontSize: 11, backgroundColor: colors.brandSoft, padding: 10, borderRadius: radius.sm }, itemCard: { gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 10 }, itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, itemQuantity: { minHeight: 30, paddingLeft: 4 }, dim: { opacity: 0.35 }, itemImage: { width: 52, height: 52, borderRadius: radius.sm }, itemPlaceholder: { backgroundColor: colors.brandPale, alignItems: 'center', justifyContent: 'center' }, quantity: { flexDirection: 'row', alignItems: 'center', gap: 2 }, quantityTap: { width: 44, height: 48, alignItems: 'center', justifyContent: 'center' }, quantityButton: { fontSize: 20, color: colors.brand }, termInput: { minHeight: 76, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, fontFamily: fonts.regular, color: colors.ink, textAlignVertical: 'top' }, quickReply: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: 12, backgroundColor: colors.surface }, quickReplyText: { color: colors.muted, fontSize: 11 }, collabBubble: { maxWidth: '82%', borderRadius: 15, padding: 12, marginBottom: 8 }, ownCollabBubble: { backgroundColor: colors.brand, alignSelf: 'flex-end', borderTopRightRadius: 4 }, otherCollabBubble: { backgroundColor: colors.brandPale, alignSelf: 'flex-start', borderTopLeftRadius: 4 }, actionButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }, actionButton: { minWidth: '47%', flexGrow: 1 },
-  headerAi: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, discoverScroll: { padding: 18, paddingBottom: 36 }, exploreTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 8, marginBottom: 18 }, exploreTab: { flex: 1, alignItems: 'center', paddingVertical: 13 }, exploreTabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, searchBox: { minHeight: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#F8F8F8', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 }, searchInput: { flex: 1, minHeight: 46, color: colors.ink, fontFamily: fonts.regular }, directoryTitle: { fontSize: 19, lineHeight: 28, marginBottom: 6 }, filterCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', marginBottom: 10, backgroundColor: colors.surface }, filterHeader: { minHeight: 56, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, filterHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 9 }, filterCount: { minWidth: 20, height: 20, borderRadius: 10, textAlign: 'center', lineHeight: 20, color: colors.surface, backgroundColor: colors.brand, fontSize: 10 }, filterEyebrow: { color: colors.muted, fontSize: 11, lineHeight: 17 }, filterBody: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 12, gap: 12 }, filterGroup: { gap: 7 }, filterOptionsHorizontal: { gap: 7, paddingHorizontal: 14 }, resetFilter: { minHeight: 36, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 14 }, explainBanner: { borderRadius: radius.md, backgroundColor: colors.brandSoft, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }, discoverCard: { marginBottom: 14 }, creatorDirectory: { gap: 14 }, creatorCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface }, creatorCardImage: { width: '100%', height: 150 }, creatorCardBody: { padding: 14, gap: 9 }, creatorCardTitle: { fontSize: 17 }, creatorAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft },
+  headerAi: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, discoverScroll: { padding: 18, paddingBottom: 36 }, exploreTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 8, marginBottom: 18 }, exploreTab: { flex: 1, alignItems: 'center', paddingVertical: 13 }, exploreTabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand }, searchBox: { minHeight: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#F8F8F8', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 }, searchInput: { flex: 1, minHeight: 46, color: colors.ink, fontFamily: fonts.regular }, directoryTitle: { fontSize: 19, lineHeight: 28, marginBottom: 6 }, filterCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', marginBottom: 10, backgroundColor: colors.surface }, filterHeader: { minHeight: 56, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, filterHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 9 }, filterCount: { minWidth: 20, height: 20, borderRadius: 10, textAlign: 'center', lineHeight: 20, color: colors.surface, backgroundColor: colors.brand, fontSize: 10 }, filterEyebrow: { color: colors.muted, fontSize: 11, lineHeight: 17 }, filterBody: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 12, gap: 12 }, filterGroup: { gap: 7 }, filterOptionsHorizontal: { gap: 7, paddingHorizontal: 14 }, resetFilter: { minHeight: 36, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 14 }, explainBanner: { borderRadius: radius.md, backgroundColor: colors.brandSoft, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }, discoverCard: { marginBottom: 14 }, creatorDirectory: { gap: 14 }, creatorCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface }, creatorCardImage: { width: '100%', height: 150 }, creatorCardBody: { padding: 14, gap: 9 }, creatorCardTitle: { fontSize: 17 },
 });

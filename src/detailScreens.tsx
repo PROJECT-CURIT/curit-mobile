@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
-import { Image } from 'expo-image';
+import { Image, type ImageSource } from 'expo-image';
 import { usePhotoPicker } from './photoPicker';
 import { friendlyError, mediaUrl, saveStoreOnboarding, saveStorePhotos, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
 import { colors, fonts, radius } from './theme';
@@ -34,29 +34,40 @@ export const initialCreatorProducts: ProjectProduct[] = [
 
 const ordinal = (index: number) => ['첫 번째', '두 번째', '세 번째', '네 번째'][index] ?? `${index + 1}번째`;
 
-export function CreatorProjectScreen({ project, products, onBack, onEdit }: { project: CreatorProjectDetails; products: ProjectProduct[]; onBack: () => void; onEdit: () => void }) {
+export function CreatorProjectScreen({ project, products, onBack, onEdit, artist, fallbackCover }: {
+  project: Omit<CreatorProjectDetails, 'creatorSharePercent'> & { creatorSharePercent?: number };
+  products: ProjectProduct[];
+  onBack: () => void;
+  onEdit?: () => void;
+  artist?: string;
+  fallbackCover?: number | ImageSource;
+}) {
   const [openProductId, setOpenProductId] = useState<string | null>(null);
+  const cover = project.coverUrl ? { uri: project.coverUrl } : fallbackCover;
   return (
     <View style={d.flex}>
-      <Header title="내 전시 프로젝트" back={onBack} />
+      <Header title={onEdit ? '내 전시 프로젝트' : '전시 프로젝트'} back={onBack} />
       <ScrollView contentContainerStyle={d.detailScroll} showsVerticalScrollIndicator={false}>
-        {project.coverUrl ? <Image source={{ uri: project.coverUrl }} style={d.projectCover} contentFit="cover" /> : null}
+        {cover ? <Image source={cover} style={d.projectCover} contentFit="cover" /> : null}
         <CuritText weight="medium" style={d.status}>{project.status === 'recruiting' ? '매칭 모집 중' : project.status === 'matched' ? '매칭 완료' : project.status === 'archived' ? '비공개' : '작성 중'}</CuritText>
         <CuritText weight="bold" style={d.projectTitle}>{project.title || '제목 없는 프로젝트'}</CuritText>
-        <CuritText style={d.description}>{project.concept || project.story || '프로젝트 이야기를 등록해 주세요.'}</CuritText>
-        <CuritText style={d.meta}>{project.region || '지역 협의'}</CuritText>
-        <CuritText style={d.status}>협업 목적 · {project.purpose || '작품 전시 및 판매'}</CuritText>
+        {project.concept || project.story || onEdit ? <CuritText style={d.description}>{project.concept || project.story || '프로젝트 이야기를 등록해 주세요.'}</CuritText> : null}
+        <CuritText style={d.meta}>{[artist, project.region || '지역 협의'].filter(Boolean).join(' · ')}</CuritText>
+        {!onEdit && project.story && project.concept && project.story !== project.concept ? <CuritText style={d.description}>{project.story}</CuritText> : null}
+        {project.purpose || onEdit ? <CuritText style={d.status}>협업 목적 · {project.purpose || '작품 전시 및 판매'}</CuritText> : null}
 
         <View style={d.productHeading}>
           <CuritText weight="bold" style={d.sectionTitle}>상품 {products.length}개</CuritText>
-          <CuritText style={d.hint}>상품을 눌러 상세 확인</CuritText>
+          {products.length > 0 ? <CuritText style={d.hint}>상품을 눌러 상세 확인</CuritText> : null}
         </View>
+        {!onEdit && products.length === 0 ? <CuritText style={d.muted}>등록된 작품·굿즈가 없어요.</CuritText> : null}
         <View style={d.productStack}>
           {products.map((item, index) => (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${item.name} 상세 ${openProductId === item.id ? '접기' : '펼치기'}`}
               accessibilityState={{ expanded: openProductId === item.id }}
+              aria-expanded={openProductId === item.id}
               key={item.id}
               style={d.detailProductCard}
               onPress={() => setOpenProductId(current => current === item.id ? null : item.id)}
@@ -65,8 +76,8 @@ export function CreatorProjectScreen({ project, products, onBack, onEdit }: { pr
                 {item.image ? <Image source={{ uri: item.image }} style={d.detailThumb} contentFit="cover" /> : <View style={d.ordinalBox}><CuritText weight="bold" style={d.ordinalText}>{String(index + 1).padStart(2, '0')}</CuritText></View>}
                 <View style={d.flex}>
                   <CuritText weight="semibold" style={d.productName}>{item.name}</CuritText>
-                  <CuritText style={d.productMeta}>{item.mode === '전시만' ? '전시 전용' : `${item.price.toLocaleString()}원`} · 재고 {item.stock}개</CuritText>
-                  <CuritText style={d.pickup}>{item.type === 'goods' ? '결제 후 현장 수령' : '구매 예약 · 전시 종료 후 수령'}</CuritText>
+                  <CuritText style={d.productMeta}>{item.mode === '전시만' ? '전시 전용' : `${item.price.toLocaleString()}원`}{onEdit ? ` · 재고 ${item.stock}개` : item.mode === '전시·판매' && item.stock === 0 ? ' · 품절' : ''}</CuritText>
+                  {item.mode === '전시·판매' && (onEdit || item.stock > 0) ? <CuritText style={d.pickup}>{(item.pickupMode ?? (item.type === 'goods' ? 'immediate' : 'exhibition')) === 'immediate' ? '결제 후 현장 수령' : '구매 예약 · 전시 종료 후 수령'}</CuritText> : null}
                 </View>
                 <CuritText weight="bold" style={d.plus}>{openProductId === item.id ? '−' : '＋'}</CuritText>
               </View>
@@ -81,10 +92,12 @@ export function CreatorProjectScreen({ project, products, onBack, onEdit }: { pr
             </Pressable>
           ))}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="판매 위탁 조건 수정" style={d.conditionCard} onPress={onEdit}><CuritText weight="bold">판매 · 위탁 조건</CuritText><View style={d.row}><CuritText style={d.muted}>작가 배분 {project.creatorSharePercent}%</CuritText><Icon name="chevron" size={16} color={colors.brand} /></View></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 공개 상태 수정" style={d.publishRow} onPress={onEdit}><CuritText>프로젝트 공개</CuritText><CuritText weight="semibold" style={d.status}>{project.status === 'draft' || project.status === 'archived' ? '비공개' : '공개 중'} →</CuritText></Pressable>
+        {onEdit ? <>
+          <Pressable accessibilityRole="button" accessibilityLabel="판매 위탁 조건 수정" style={d.conditionCard} onPress={onEdit}><CuritText weight="bold">판매 · 위탁 조건</CuritText><View style={d.row}><CuritText style={d.muted}>작가 배분 {project.creatorSharePercent}%</CuritText><Icon name="chevron" size={16} color={colors.brand} /></View></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 공개 상태 수정" style={d.publishRow} onPress={onEdit}><CuritText>프로젝트 공개</CuritText><CuritText weight="semibold" style={d.status}>{project.status === 'draft' || project.status === 'archived' ? '비공개' : '공개 중'} →</CuritText></Pressable>
+        </> : null}
       </ScrollView>
-      <View style={d.stickyFooter}><Button label="프로젝트 수정" onPress={onEdit} /></View>
+      {onEdit ? <View style={d.stickyFooter}><Button label="프로젝트 수정" onPress={onEdit} /></View> : null}
     </View>
   );
 }
