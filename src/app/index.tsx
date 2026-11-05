@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, Platform, TextInput, View } from 'react-native';
 import { BottomNav, Button, Empty, Header, ScreenFrame, SessionLockedContext } from '../ui';
 import { AccountSettingsScreen, AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
@@ -20,6 +20,8 @@ type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirma
 
 export default function AppIndex() {
   const [session, setSession] = useState<Session | null>(null);
+  const activeUserId = useRef<string | null>(null);
+  useEffect(() => { activeUserId.current = session?.userId ?? null; }, [session?.userId]);
   const [sessionLocked, setSessionLocked] = useState(false);
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [authView, setAuthView] = useState<AuthView>('login');
@@ -328,9 +330,10 @@ export default function AppIndex() {
   };
 
   const finishStoreEdit = (store: StoreOnboarding) => {
+    if (!session || activeUserId.current !== session.userId) return;
     setStoreOnboarding(store);
-    setSession(current => current ? { ...current, displayName: store.name.trim() } : current);
-    setSubview('store-profile');
+    setSession(current => current?.userId === session.userId ? { ...current, displayName: store.name.trim() } : current);
+    setSubview(current => current === 'store-edit' || current === 'store-photos' ? 'store-profile' : current);
   };
 
   if (loading) return <ScreenFrame><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.brand} /></View></ScreenFrame>;
@@ -346,16 +349,17 @@ export default function AppIndex() {
   function renderAuthenticated(session: Session) {
     if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => { setCreatorOnboardingFlow(false); setSubview(null); }} onNext={creatorOnboardingFlow ? () => { setCreatorOnboardingFlow(false); setSubview('creator-profile-edit'); } : undefined} /></ScreenFrame>;
     if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" project={creatorProject} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} onOpenProject={() => setSubview('creator-project')} /></ScreenFrame>;
-    if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={profile => {
-      setSession(current => current ? { ...current, displayName: profile.displayName } : current);
-      setSubview('creator-profile');
+    if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={(profile, stillEditing) => {
+      if (activeUserId.current !== session.userId) return;
+      setSession(current => current?.userId === session.userId ? { ...current, displayName: profile.displayName } : current);
+      if (stillEditing) setSubview(current => current === 'creator-profile-edit' ? 'creator-profile' : current);
     }} /></ScreenFrame>;
     if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onBack={() => setSubview(null)} onEdit={store => { setStoreOnboarding(store); setSubview('store-edit'); }} onEditPhotos={store => { setStoreOnboarding(store); setSubview('store-photos'); }} onPreferences={() => { setStorePreferencesParent('profile'); setSubview('store-preferences'); }} /></ScreenFrame>;
     if ((subview === 'store-edit' || subview === 'store-photos') && storeOnboarding) {
       const photosOnly = subview === 'store-photos';
       return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={{ ...storeOnboarding, step: photosOnly ? 3 : 1 }} photosOnly={photosOnly} onBack={() => setSubview('store-profile')} onComplete={finishStoreEdit} /></ScreenFrame>;
     }
-    if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onSaved={setStoreOnboarding} onBack={() => setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null)} /></ScreenFrame>;
+    if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onSaved={store => { if (activeUserId.current === session.userId) setStoreOnboarding(store); }} onBack={() => setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null)} /></ScreenFrame>;
     if (subview === 'verification') return <ScreenFrame><VerificationScreen kind={session.role === 'creator' ? 'creator_activity' : 'store_operation'} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
     if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo}
       onOpenCollaboration={id => {

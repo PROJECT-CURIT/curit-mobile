@@ -111,13 +111,18 @@ export function CreatorDnaScreen({ onBack, onNext, demo = false }: { onBack: () 
   </KeyboardAvoidingView>;
 }
 
-export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProject, onSaved, demo = false }: { mode: 'view' | 'edit'; project?: CreatorProjectDetails; onBack: () => void; onEdit?: () => void; onOpenProject?: () => void; onSaved?: (profile: CreatorProfileData) => void; demo?: boolean }) {
+export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProject, onSaved, demo = false }: { mode: 'view' | 'edit'; project?: CreatorProjectDetails; onBack: () => void; onEdit?: () => void; onOpenProject?: () => void; onSaved?: (profile: CreatorProfileData, stillEditing: boolean) => void; demo?: boolean }) {
   const [profile, setProfile] = useState<CreatorProfileData | null>(null);
   const [avatarUri, setAvatarUri] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const saveLock = useRef(false);
+  const stillEditing = useRef(mode === 'edit');
+  useEffect(() => {
+    stillEditing.current = mode === 'edit';
+    return () => { stillEditing.current = false; };
+  }, [mode]);
   const [savedOptions, setSavedOptions] = useState({ regions: [] as string[], categories: [] as string[] });
   const photo = usePhotoPicker();
   useEffect(() => {
@@ -136,7 +141,7 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
     if (!profile?.displayName.trim() || !profile.regions.length || !profile.categories.length) { setNotice('활동명, 활동 지역, 작업 분야를 입력해 주세요.'); return; }
     saveLock.current = true;
     setSaving(true); setNotice('');
-    try { const saved = demo ? { ...profile, avatarUrl: avatarUri || profile.avatarUrl, onboardingComplete: true } : await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved); if (!onSaved) setNotice('프로필을 저장했습니다.'); }
+    try { const saved = demo ? { ...profile, avatarUrl: avatarUri || profile.avatarUrl, onboardingComplete: true } : await saveCreatorProfile({ ...profile, avatarUri }, true); setProfile(saved); onSaved?.(saved, stillEditing.current); if (!onSaved) setNotice('프로필을 저장했습니다.'); }
     catch (error) { setNotice(friendlyError(error)); } finally { saveLock.current = false; setSaving(false); }
   };
   if (!profile && !notice) return <LoadingScreen title={mode === 'edit' ? '크리에이터 프로필 수정' : '크리에이터 프로필'} onBack={onBack} />;
