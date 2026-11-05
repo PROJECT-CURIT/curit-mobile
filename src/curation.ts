@@ -22,6 +22,8 @@ type ProjectRow = {
   region: string;
   purpose: string;
   status: string;
+  cover_path?: string | null;
+  updated_at?: string;
 };
 
 type ProjectItemRow = {
@@ -63,10 +65,65 @@ export type CreatorDirectoryEntry = {
   artist: string;
   region: string;
   tags: string[];
+  searchTerms?: string[];
   priceRange: string;
   status: string;
   imageUrl?: string;
 };
+
+const catalogPageSize = 80;
+const publicProjectFields = 'id, creator_id, title, story, concept, region, purpose, status, cover_path, updated_at';
+type CatalogQuery = PromiseLike<{ data: unknown; error: { message: string } | null }> & {
+  abortSignal(signal: AbortSignal): void;
+  order(column: 'id'): void;
+  limit(count: number): void;
+  gt(column: 'id', value: string): void;
+};
+
+async function catalogRows<Row extends { id: string }>(queryForPage: () => CatalogQuery, all: boolean, signal?: AbortSignal) {
+  const rows: Row[] = [];
+  let after: string | undefined;
+  do {
+    const query = queryForPage();
+    if (signal) query.abortSignal(signal);
+    if (all) {
+      query.order('id');
+      query.limit(catalogPageSize);
+      if (after) query.gt('id', after);
+    }
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as Row[];
+    rows.push(...page);
+    after = all && page.length === catalogPageSize ? page.at(-1)?.id : undefined;
+  } while (after);
+  return rows;
+}
+
+async function projectMetadata(projects: ProjectRow[], signal?: AbortSignal) {
+  const supabase = getSupabase();
+  const creatorIds = [...new Set(projects.map(project => project.creator_id))];
+  const projectIds = projects.map(project => project.id);
+  const profilesQuery = supabase.from('profiles').select('id, display_name').in('id', creatorIds);
+  const creatorsQuery = supabase.from('creator_profiles').select('user_id, categories').in('user_id', creatorIds);
+  if (signal) { profilesQuery.abortSignal(signal); creatorsQuery.abortSignal(signal); }
+  const [profiles, creators, items] = await Promise.all([
+    profilesQuery,
+    creatorsQuery,
+    catalogRows<ProjectItemRow & { id: string }>(() => supabase.from('project_items').select('id, project_id, name, price, stock, image_path, material, sale_mode').in('project_id', projectIds), true, signal),
+  ]);
+  const error = profiles.error || creators.error;
+  if (error) throw new Error(error.message);
+  const names = new Map((profiles.data ?? []).map(row => [String(row.id), String(row.display_name || '크리에이터')]));
+  const categories = new Map((creators.data ?? []).map(row => [String(row.user_id), (row.categories ?? []) as string[]]));
+  const byProject = new Map<string, ProjectItemRow[]>();
+  for (const item of items) {
+    const list = byProject.get(item.project_id);
+    if (list) list.push(item);
+    else byProject.set(item.project_id, [item]);
+  }
+  return { names, categories, byProject };
+}
 
 const STOP_WORDS = new Set(['그리고', '또는', '위한', '있는', '없는', '합니다', '해요', '공간', '작품', '전시', '판매']);
 
@@ -118,86 +175,87 @@ function demoRecommendations(role: Role): MatchRecommendation[] {
   ];
 }
 
-async function storeRecommendations(preferenceText = ''): Promise<MatchRecommendation[]> {
+async function storeRecommendations(preferenceText = '', all = false, signal?: AbortSignal): Promise<MatchRecommendation[]> {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
-  const storeResult = await supabase.from('store_profiles').select('*').eq('owner_id', auth.user.id).single<StoreRow>();
-  if (storeResult.error) throw new Error(storeResult.error.message);
-  const projectsResult = await supabase.from('projects').select('id, creator_id, title, story, concept, region, purpose, status').in('status', ['recruiting', 'matched']);
-  if (projectsResult.error) throw new Error(projectsResult.error.message);
-  const projects = (projectsResult.data ?? []) as ProjectRow[];
-  if (!projects.length) return [];
-  const creatorIds = [...new Set(projects.map(project => project.creator_id))];
-  const projectIds = projects.map(project => project.id);
-  const [profilesResult, creatorsResult, itemsResult, collaborationsResult] = await Promise.all([
-    supabase.from('profiles').select('id, display_name').in('id', creatorIds),
-    supabase.from('creator_profiles').select('user_id, introduction, categories, regions').in('user_id', creatorIds),
-    supabase.from('project_items').select('project_id, name, price, stock, image_path, material, sale_mode').in('project_id', projectIds),
-    supabase.from('collaborations').select('id, project_id, status').eq('store_id', storeResult.data.id).in('project_id', projectIds),
+  const storeQuery = supabase.from('store_profiles').select('*').eq('owner_id', auth.user.id);
+  if (signal) storeQuery.abortSignal(signal);
+  const [storeResult, projects] = await Promise.all([
+    storeQuery.single<StoreRow>(),
+    catalogRows<ProjectRow>(() => supabase.from('projects').select(publicProjectFields).in('status', ['recruiting', 'matched']), all, signal),
   ]);
-  if (profilesResult.error || creatorsResult.error || itemsResult.error || collaborationsResult.error) throw new Error(profilesResult.error?.message ?? creatorsResult.error?.message ?? itemsResult.error?.message ?? collaborationsResult.error?.message ?? '추천 데이터를 불러오지 못했습니다.');
-  const names = new Map((profilesResult.data ?? []).map(row => [String(row.id), String(row.display_name)]));
-  const creators = new Map(((creatorsResult.data ?? []) as CreatorProfileRow[]).map(row => [row.user_id, row]));
-  const items = (itemsResult.data ?? []) as ProjectItemRow[];
-  const collaborations = new Map((collaborationsResult.data ?? []).map(row => [String(row.project_id), { id: String(row.id), status: row.status as CollaborationStatus }]));
+  if (storeResult.error) throw new Error(storeResult.error.message);
+  if (!projects.length) return [];
   const store = storeResult.data;
   const storeTerms = terms([store.category, store.introduction, store.target_audience, ...store.mood_tags, ...store.purpose_tags, preferenceText]);
-
-  return projects.map((project): MatchRecommendation | null => {
-    const creator = creators.get(project.creator_id);
-    const projectItems = items.filter(item => item.project_id === project.id && item.stock > 0 && item.sale_mode === 'display_sale');
-    if (!projectItems.length) return null;
-    const projectTerms = terms([project.title, project.story, project.concept, project.purpose, project.region, ...(creator?.categories ?? []), ...projectItems.flatMap(item => [item.name, item.material])]);
-    const matched = overlap(storeTerms, projectTerms);
-    const regionFit = regionsOverlap(project.region, store.address);
-    const installFit = store.exhibition_zones.length > 0;
-    const score = calculateMatchScore({ matchedTermCount: matched.length, regionFit, hasAvailableItems: true, hasExhibitionZones: installFit });
-    const reasons = [
-      matched.length ? `${matched.slice(0, 3).map(displayTerm).join('·')} 키워드가 등록 정보에서 겹쳐요` : '취향 키워드가 적어 작품을 직접 확인해 주세요',
-      `${projectItems.length}개 판매 가능 상품에 재고가 있어요`,
-      installFit ? `${store.exhibition_zones.length}개 전시 구역을 등록했어요` : '전시 구역을 등록하면 배치 가능성을 더 확인할 수 있어요',
-      regionFit ? '작가 활동 지역과 매장 지역이 겹쳐요' : '지역 조건은 협업 제안 전에 확인해 주세요',
-    ].filter(Boolean).slice(0, 3);
-    return {
-      targetId: project.id,
-      targetType: 'project' as const,
-      title: project.title,
-      subtitle: `${names.get(project.creator_id) ?? '크리에이터'} · ${project.region || '지역 협의'}`,
-      description: project.concept || project.story || '작품과 굿즈 전시 협업을 제안할 수 있어요.',
-      score,
-      reasons,
-      tags: [...new Set([...(creator?.categories ?? []), ...matched])].slice(0, 4),
-      imageUrl: projectItems[0]?.image_path ? mediaUrl(projectItems[0].image_path) : undefined,
-      priceRange: priceLabel(projectItems),
-      collaborationId: collaborations.get(project.id)?.id,
-      collaborationStatus: collaborations.get(project.id)?.status,
-    };
-  }).filter((item): item is MatchRecommendation => Boolean(item)).sort((a, b) => b.score - a.score).slice(0, 6);
+  const collaborationRows = await catalogRows<{ id: string; project_id: string; status: CollaborationStatus }>(
+    () => supabase.from('collaborations').select('id, project_id, status').eq('store_id', store.id), true, signal,
+  );
+  const collaborations = new Map(collaborationRows.map(row => [row.project_id, row]));
+  const ranked: MatchRecommendation[] = [];
+  for (let start = 0; start < projects.length; start += catalogPageSize) {
+    const batch = projects.slice(start, start + catalogPageSize);
+    const { names, categories, byProject } = await projectMetadata(batch, signal);
+    for (const project of batch) {
+      const creatorCategories = categories.get(project.creator_id) ?? [];
+      const projectItems = (byProject.get(project.id) ?? []).filter(item => item.stock > 0 && item.sale_mode === 'display_sale');
+      if (!projectItems.length) continue;
+      const projectTerms = terms([project.title, project.story, project.concept, project.purpose, project.region, ...creatorCategories, ...projectItems.flatMap(item => [item.name, item.material])]);
+      const matched = overlap(storeTerms, projectTerms);
+      const regionFit = regionsOverlap(project.region, store.address);
+      const installFit = store.exhibition_zones.length > 0;
+      const score = calculateMatchScore({ matchedTermCount: matched.length, regionFit, hasAvailableItems: true, hasExhibitionZones: installFit });
+      const reasons = [
+        matched.length ? `${matched.slice(0, 3).map(displayTerm).join('·')} 키워드가 등록 정보에서 겹쳐요` : '취향 키워드가 적어 작품을 직접 확인해 주세요',
+        `${projectItems.length}개 판매 가능 상품에 재고가 있어요`,
+        installFit ? `${store.exhibition_zones.length}개 전시 구역을 등록했어요` : '전시 구역을 등록하면 배치 가능성을 더 확인할 수 있어요',
+        regionFit ? '작가 활동 지역과 매장 지역이 겹쳐요' : '지역 조건은 협업 제안 전에 확인해 주세요',
+      ].filter(Boolean).slice(0, 3);
+      ranked.push({
+        targetId: project.id,
+        targetType: 'project' as const,
+        title: project.title,
+        subtitle: `${names.get(project.creator_id) ?? '크리에이터'} · ${project.region || '지역 협의'}`,
+        description: project.concept || project.story || '작품과 굿즈 전시 협업을 제안할 수 있어요.',
+        score,
+        reasons,
+        tags: [...new Set([...creatorCategories, ...matched])],
+        searchTerms: projectItems.flatMap(item => [item.name, item.material]),
+        imageUrl: projectItems[0]?.image_path ? mediaUrl(projectItems[0].image_path) : undefined,
+        priceRange: priceLabel(projectItems),
+        collaborationId: collaborations.get(project.id)?.id,
+        collaborationStatus: collaborations.get(project.id)?.status,
+      });
+    }
+  }
+  ranked.sort((a, b) => b.score - a.score || a.targetId.localeCompare(b.targetId));
+  return all ? ranked : ranked.slice(0, 6);
 }
 
-async function creatorRecommendations(preferenceText = ''): Promise<MatchRecommendation[]> {
+async function creatorRecommendations(preferenceText = '', all = false, signal?: AbortSignal): Promise<MatchRecommendation[]> {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
-  const [creatorResult, projectResult, storesResult, itemsResult] = await Promise.all([
-    supabase.from('creator_profiles').select('user_id, introduction, categories, regions').eq('user_id', auth.user.id).maybeSingle<CreatorProfileRow>(),
-    supabase.from('projects').select('id, creator_id, title, story, concept, region, purpose, status').eq('creator_id', auth.user.id).in('status', ['recruiting', 'matched']).order('updated_at', { ascending: false }).limit(1).maybeSingle<ProjectRow>(),
-    supabase.from('store_profiles').select('*').eq('onboarding_complete', true),
-    supabase.from('project_items').select('project_id, name, price, stock, image_path, material, sale_mode').eq('sale_mode', 'display_sale').gt('stock', 0),
+  const creatorQuery = supabase.from('creator_profiles').select('user_id, introduction, categories, regions').eq('user_id', auth.user.id);
+  const projectQuery = supabase.from('projects').select(publicProjectFields).eq('creator_id', auth.user.id).in('status', ['recruiting', 'matched']).order('updated_at', { ascending: false }).limit(1);
+  if (signal) { creatorQuery.abortSignal(signal); projectQuery.abortSignal(signal); }
+  const [creatorResult, projectResult, stores, collaborationRows] = await Promise.all([
+    creatorQuery.maybeSingle<CreatorProfileRow>(),
+    projectQuery.maybeSingle<ProjectRow>(),
+    catalogRows<StoreRow>(() => supabase.from('store_profiles').select('id, name, category, address, introduction, target_audience, mood_tags, purpose_tags, photo_paths, exhibition_zones').eq('onboarding_complete', true), all, signal),
+    catalogRows<{ id: string; store_id: string; status: CollaborationStatus }>(() => supabase.from('collaborations').select('id, store_id, status').eq('creator_id', auth.user.id), true, signal),
   ]);
-  if (creatorResult.error || projectResult.error || storesResult.error || itemsResult.error) throw new Error(creatorResult.error?.message ?? projectResult.error?.message ?? storesResult.error?.message ?? itemsResult.error?.message ?? '추천 데이터를 불러오지 못했습니다.');
+  const error = creatorResult.error || projectResult.error;
+  if (error) throw new Error(error.message);
   const creator = creatorResult.data;
   const project = projectResult.data;
-  const ownItems = project ? ((itemsResult.data ?? []) as ProjectItemRow[]).filter(item => item.project_id === project.id) : [];
+  const ownItems = project
+    ? await catalogRows<ProjectItemRow & { id: string }>(() => supabase.from('project_items').select('id, project_id, name, price, stock, image_path, material, sale_mode').eq('project_id', project.id).eq('sale_mode', 'display_sale').gt('stock', 0), true, signal)
+    : [];
   const creatorTerms = terms([creator?.introduction ?? '', ...(creator?.categories ?? []), ...(creator?.regions ?? []), project?.story ?? '', project?.concept ?? '', ...ownItems.flatMap(item => [item.name, item.material]), preferenceText]);
-  const stores = (storesResult.data ?? []) as StoreRow[];
-  const collaborationsResult = stores.length
-    ? await supabase.from('collaborations').select('id, store_id, status').eq('creator_id', auth.user.id).in('store_id', stores.map(store => store.id))
-    : { data: [], error: null };
-  if (collaborationsResult.error) throw new Error(collaborationsResult.error.message);
-  const collaborations = new Map((collaborationsResult.data ?? []).map(row => [String(row.store_id), { id: String(row.id), status: row.status as CollaborationStatus }]));
-  return stores.map(store => {
+  const collaborations = new Map(collaborationRows.map(row => [row.store_id, row]));
+  const ranked = stores.map(store => {
     const storeTerms = terms([store.category, store.address, store.introduction, store.target_audience, ...store.mood_tags, ...store.purpose_tags]);
     const matched = overlap(creatorTerms, storeTerms);
     const regionFit = regionsOverlap((creator?.regions ?? []).join(' '), store.address);
@@ -216,11 +274,13 @@ async function creatorRecommendations(preferenceText = ''): Promise<MatchRecomme
         regionFit ? '활동 지역과 매장 지역이 겹쳐요' : '지역 조건은 협업 제안 전에 확인해 주세요',
       ],
       tags: [...new Set([...store.mood_tags, store.category, ...zones])].filter((tag): tag is string => Boolean(tag)),
+      searchTerms: [...store.purpose_tags, ...store.exhibition_zones.map(zone => zone.type ?? '')],
       imageUrl: store.photo_paths[0] ? mediaUrl(store.photo_paths[0]) : undefined,
       collaborationId: collaborations.get(store.id)?.id,
       collaborationStatus: collaborations.get(store.id)?.status,
     };
-  }).sort((a, b) => b.score - a.score).slice(0, 6);
+  }).sort((a, b) => b.score - a.score || a.targetId.localeCompare(b.targetId));
+  return all ? ranked : ranked.slice(0, 6);
 }
 
 export async function loadMatchRecommendations(role: Role, demo = false, preferenceText = '') {
@@ -228,52 +288,36 @@ export async function loadMatchRecommendations(role: Role, demo = false, prefere
   return role === 'store' ? storeRecommendations(preferenceText) : creatorRecommendations(preferenceText);
 }
 
-export async function loadCreatorDirectory(): Promise<CreatorDirectoryEntry[]> {
+export async function loadDiscoveryCandidates(role: Role, demo: boolean | undefined, signal: AbortSignal) {
+  if (demo) return demoRecommendations(role);
+  return role === 'store' ? storeRecommendations('', true, signal) : creatorRecommendations('', true, signal);
+}
+
+export async function loadCreatorDirectory(signal?: AbortSignal): Promise<CreatorDirectoryEntry[]> {
   const supabase = getSupabase();
-  const projectsResult = await supabase
-    .from('projects')
-    .select('id, creator_id, title, region, status, cover_path, concept, purpose')
-    .in('status', ['recruiting', 'matched'])
-    .order('updated_at', { ascending: false })
-    .limit(50);
-  if (projectsResult.error) throw new Error(projectsResult.error.message);
-  const rows = projectsResult.data ?? [];
-  if (!rows.length) return [];
-  const projectIds = rows.map(row => String(row.id));
-  const creatorIds = [...new Set(rows.map(row => String(row.creator_id)))];
-  const [profilesResult, creatorsResult, itemsResult] = await Promise.all([
-    supabase.from('profiles').select('id, display_name').in('id', creatorIds),
-    supabase.from('creator_profiles').select('user_id, categories').in('user_id', creatorIds),
-    supabase.from('project_items').select('project_id, price, image_path, stock, sale_mode').in('project_id', projectIds),
-  ]);
-  const error = profilesResult.error || creatorsResult.error || itemsResult.error;
-  if (error) throw new Error(error.message);
-  const profiles = new Map((profilesResult.data ?? []).map(row => [String(row.id), String(row.display_name || '크리에이터')]));
-  const creators = new Map<string, string[]>((creatorsResult.data ?? []).map(row => [String(row.user_id), Array.isArray(row.categories) ? row.categories.map(String) : []]));
-  const itemsByProject = new Map<string, { price: number; imagePath: string; stock: number; saleMode: string }[]>();
-  for (const row of itemsResult.data ?? []) {
-    const list = itemsByProject.get(String(row.project_id)) ?? [];
-    list.push({ price: Number(row.price), imagePath: String(row.image_path ?? ''), stock: Number(row.stock), saleMode: String(row.sale_mode ?? '') });
-    itemsByProject.set(String(row.project_id), list);
+  const rows = await catalogRows<ProjectRow>(() => supabase.from('projects').select(publicProjectFields).in('status', ['recruiting', 'matched']), true, signal);
+  const results: CreatorDirectoryEntry[] = [];
+  rows.sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? '') || a.id.localeCompare(b.id));
+  for (let start = 0; start < rows.length; start += catalogPageSize) {
+    const batch = rows.slice(start, start + catalogPageSize);
+    const { names, categories, byProject } = await projectMetadata(batch, signal);
+    for (const row of batch) {
+      const items = byProject.get(row.id) ?? [];
+      const coverPath = row.cover_path || items.find(item => item.image_path)?.image_path;
+      results.push({
+        id: row.id,
+        title: row.title,
+        artist: names.get(row.creator_id) ?? '크리에이터',
+        region: row.region || '활동 지역 협의',
+        tags: [...new Set(categories.get(row.creator_id) ?? [])].filter(Boolean),
+        searchTerms: [row.concept, row.purpose, ...items.map(item => item.name)],
+        priceRange: priceLabel(items.filter(item => item.sale_mode === 'display_sale' && item.stock > 0)),
+        status: row.status === 'matched' ? '협업 진행 중' : '협업 모집 중',
+        imageUrl: coverPath ? mediaUrl(coverPath) : undefined,
+      });
+    }
   }
-  return rows.map(row => {
-    const projectItems = itemsByProject.get(String(row.id)) ?? [];
-    const prices = projectItems.filter(item => item.saleMode === 'display_sale' && item.stock > 0).map(item => item.price).filter(value => Number.isFinite(value) && value > 0);
-    const min = prices.length ? Math.min(...prices).toLocaleString('ko-KR') : '';
-    const max = prices.length ? Math.max(...prices).toLocaleString('ko-KR') : '';
-    const coverPath = String(row.cover_path ?? '') || projectItems.find(item => item.imagePath)?.imagePath || '';
-    const tags = [...new Set(creators.get(String(row.creator_id)) ?? [])].filter(Boolean).slice(0, 4);
-    return {
-      id: String(row.id),
-      title: String(row.title),
-      artist: profiles.get(String(row.creator_id)) ?? '크리에이터',
-      region: String(row.region || '활동 지역 협의'),
-      tags,
-      priceRange: prices.length ? min === max ? `${min}원` : `${min}~${max}원` : '가격 협의',
-      status: String(row.status) === 'matched' ? '협업 진행 중' : '협업 모집 중',
-      imageUrl: coverPath ? mediaUrl(coverPath) : undefined,
-    };
-  });
+  return results;
 }
 
 async function ensureCuratorThread(role: Role) {

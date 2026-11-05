@@ -8,6 +8,7 @@ import {
   loadCollaborationItems,
   loadCreatorDirectory,
   loadCuratorMessages,
+  loadDiscoveryCandidates,
   loadMatchRecommendations,
   sendCollaborationMessage,
   sendCuratorMessage,
@@ -77,18 +78,26 @@ export function ChatHubScreen({ role, demo, demoItems, onOpenCurator, onOpenColl
   </View>;
 }
 
-async function loadDiscoverResults<T>(request: Promise<T>) {
+const discoverDisplayStep = 8;
+
+async function loadDiscoverResults<T>(load: (signal: AbortSignal) => Promise<T>, controller: AbortController) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('연결이 오래 걸리고 있어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.')), 10_000);
+    timer = setTimeout(() => {
+      reject(new Error('연결이 오래 걸리고 있어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'));
+      controller.abort();
+    }, 10_000);
   });
-  try { return await Promise.race([request, deadline]); }
+  try { return await Promise.race([load(controller.signal), deadline]); }
   finally { clearTimeout(timer); }
 }
 
 export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCurator, onProposalCreated }: { role: Role; demo?: boolean; currentUserName?: string; onOpenCurator: () => void; onProposalCreated: (id: string, period?: ExhibitionPeriod) => Promise<void> }) {
   const [items, setItems] = useState<MatchRecommendation[]>([]);
   const [query, setQuery] = useState('');
+  const [directoryQuery, setDirectoryQuery] = useState('');
+  const [matchDisplayCount, setMatchDisplayCount] = useState(discoverDisplayStep);
+  const [directoryDisplayCount, setDirectoryDisplayCount] = useState(discoverDisplayStep);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [region, setRegion] = useState('전체');
   const [dnaFilters, setDnaFilters] = useState<string[]>([]);
@@ -100,6 +109,7 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   const [matchError, setMatchError] = useState('');
   const [matchAttempt, setMatchAttempt] = useState(0);
   const [directoryAttempt, setDirectoryAttempt] = useState(0);
+  const [directoryVisited, setDirectoryVisited] = useState(false);
   const [directory, setDirectory] = useState<{ projects: CreatorDirectoryCard[]; error: string } | null>(null);
   const directoryProjects = demo ? demoDirectoryProjects : (directory?.projects ?? []);
   const directoryLoading = !demo && directory === null;
@@ -107,24 +117,26 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
 
   useEffect(() => {
     let active = true;
-    void loadDiscoverResults(loadMatchRecommendations(role, demo))
+    const controller = new AbortController();
+    void loadDiscoverResults(signal => loadDiscoveryCandidates(role, demo, signal), controller)
       .then(value => { if (active) setItems(value); })
       .catch(caught => { if (active) setMatchError(friendlyError(caught)); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [demo, role, matchAttempt]);
   useEffect(() => {
-    if (demo) return;
+    if (demo || !directoryVisited) return;
     let active = true;
-    void loadDiscoverResults(loadCreatorDirectory()).then(projects => {
+    const controller = new AbortController();
+    void loadDiscoverResults(loadCreatorDirectory, controller).then(projects => {
       if (active) setDirectory({ projects, error: '' });
     }).catch(caught => {
       if (active) setDirectory({ projects: [], error: friendlyError(caught) });
     });
-    return () => { active = false; };
-  }, [demo, directoryAttempt]);
+    return () => { active = false; controller.abort(); };
+  }, [demo, directoryAttempt, directoryVisited]);
   const visible = items.filter(item => {
-    const text = [item.title, item.subtitle, item.description, ...item.tags].join(' ').toLocaleLowerCase('ko-KR');
+    const text = [item.title, item.subtitle, item.description, ...item.tags, ...(item.searchTerms ?? [])].join(' ').toLocaleLowerCase('ko-KR');
     const queryMatches = text.includes(query.trim().toLocaleLowerCase('ko-KR'));
     const regionMatches = role !== 'creator' || region === '전체' || region === '전국 / 온라인'
       || region.split(/[·/]/).some(value => value.trim() && text.includes(value.trim().toLocaleLowerCase('ko-KR')));
@@ -134,9 +146,12 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
     });
     return queryMatches && regionMatches && dnaMatches;
   });
-  const visibleDirectoryProjects = directoryProjects.filter(item => [item.title, item.artist, item.region, ...item.tags].join(' ').toLocaleLowerCase('ko-KR').includes(query.trim().toLocaleLowerCase('ko-KR')));
-  const toggleDna = (value: string) => setDnaFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
-  const resetFilters = () => { setRegion('전체'); setDnaFilters([]); };
+  const visibleDirectoryProjects = directoryProjects.filter(item => [item.title, item.artist, item.region, ...item.tags, ...(item.searchTerms ?? [])].join(' ').toLocaleLowerCase('ko-KR').includes(directoryQuery.trim().toLocaleLowerCase('ko-KR')));
+  const toggleDna = (value: string) => {
+    setDnaFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
+    setMatchDisplayCount(discoverDisplayStep);
+  };
+  const resetFilters = () => { setRegion('전체'); setDnaFilters([]); setMatchDisplayCount(discoverDisplayStep); };
   const propose = async (item: MatchRecommendation, period?: ExhibitionPeriod) => {
     if (busy) return;
     setBusy(item.targetId); setNotice('');
@@ -151,15 +166,19 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
   return <View style={c.flex}>
     <Header title={role === 'creator' ? '매장 탐색' : '전시 탐색'} action={<Pressable accessibilityRole="button" accessibilityLabel="AI 큐레이터 열기" hitSlop={10} onPress={onOpenCurator}><View style={c.headerAi}><CuritText weight="bold" style={c.brandText}>AI</CuritText></View></Pressable>} />
     <ScrollView style={c.flex} contentContainerStyle={c.discoverScroll} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardShouldPersistTaps="handled">
-      {section !== 'news' ? <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder={role === 'creator' && section === 'matches' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View> : null}
+      {section !== 'news' ? <View style={c.searchBox}><Icon name="discover" size={17} color={colors.muted} /><TextInput value={section === 'creators' ? directoryQuery : query} onChangeText={value => {
+        if (section === 'creators') { setDirectoryQuery(value); setDirectoryDisplayCount(discoverDisplayStep); }
+        else { setQuery(value); setMatchDisplayCount(discoverDisplayStep); }
+      }} placeholder={role === 'creator' && section === 'matches' ? '매장명, 지역, 공간 DNA 검색' : '작가명, 작품명, 태그 검색'} placeholderTextColor={colors.subtle} style={c.searchInput} /></View> : null}
       <View accessibilityRole="tablist" style={c.exploreTabs}>{(role === 'creator' ? [['matches', '매장'], ['creators', '작품·작가'], ['news', '소식']] : [['matches', '전시 프로젝트'], ['news', '크리에이터 소식']]).map(([value, label]) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: section === value }} key={value} style={[c.exploreTab, section === value && c.exploreTabActive]} onPress={() => {
         if (section === value) return;
         Keyboard.dismiss();
         if (value === 'news') setNewsVisited(true);
+        if (value === 'creators') setDirectoryVisited(true);
         setSection(value as 'matches' | 'creators' | 'news');
       }}><CuritText weight={section === value ? 'semibold' : 'regular'} style={section === value ? c.brandText : c.muted}>{label}</CuritText></Pressable>)}</View>
       {newsVisited ? <View style={section !== 'news' ? { display: 'none' } : undefined} accessibilityElementsHidden={section !== 'news'} importantForAccessibility={section === 'news' ? 'auto' : 'no-hide-descendants'}><SocialFeedSection canPost={role === 'creator'} demo={demo} currentUserName={currentUserName} /></View> : null}
-      {section === 'news' ? null : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
+      {section === 'news' ? null : section === 'creators' ? <CreatorDirectory items={visibleDirectoryProjects.slice(0, directoryDisplayCount)} hasMore={visibleDirectoryProjects.length > directoryDisplayCount} onMore={() => setDirectoryDisplayCount(count => count + discoverDisplayStep)} hasSearch={Boolean(directoryQuery.trim())} loading={directoryLoading} error={directoryError} onRetry={() => { setDirectory(null); setDirectoryAttempt(value => value + 1); }} /> : <>
       {role === 'creator' ? <>
         <CuritText weight="bold" style={c.directoryTitle}>작품과 어울리는 공간</CuritText>
         <View style={c.filterCard}>
@@ -168,28 +187,32 @@ export function MatchingDiscoverScreen({ role, demo, currentUserName, onOpenCura
             <View style={c.filterHeaderAction}>{region !== '전체' || dnaFilters.length ? <CuritText style={c.filterCount}>{(region !== '전체' ? 1 : 0) + dnaFilters.length}</CuritText> : null}<View style={{ transform: [{ rotate: filtersOpen ? '-90deg' : '90deg' }] }}><Icon name="chevron" size={17} color={colors.brand} /></View></View>
           </Pressable>
           {filtersOpen ? <View style={c.filterBody}>
-            <View style={c.filterGroup}><CuritText style={c.filterEyebrow}>지역</CuritText><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.filterOptionsHorizontal}>{['전체', '서울', '경기', '인천', '강원', '충청', '전라', '경상', '제주', '전국 / 온라인'].map(value => <Chip key={value} label={value} active={region === value} onPress={() => setRegion(value)} />)}</ScrollView></View>
+            <View style={c.filterGroup}><CuritText style={c.filterEyebrow}>지역</CuritText><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.filterOptionsHorizontal}>{['전체', '서울', '경기', '인천', '강원', '충청', '전라', '경상', '제주', '전국 / 온라인'].map(value => <Chip key={value} label={value} active={region === value} onPress={() => { setRegion(value); setMatchDisplayCount(discoverDisplayStep); }} />)}</ScrollView></View>
             {dnaFilterGroups.map(([label, values]) => <View key={label} style={c.filterGroup}><CuritText style={c.filterEyebrow}>{label}</CuritText><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.filterOptionsHorizontal}>{values.map(value => <Chip key={value} label={value} active={dnaFilters.includes(value)} onPress={() => toggleDna(value)} />)}</ScrollView></View>)}
             <Pressable accessibilityRole="button" style={c.resetFilter} onPress={resetFilters}><CuritText style={c.muted}>선택 초기화</CuritText></Pressable>
           </View> : null}
         </View>
       </> : null}
       <Pressable accessibilityRole="button" accessibilityLabel="추천 점수 설명을 AI 큐레이터에게 묻기" style={c.explainBanner} onPress={onOpenCurator}><View style={c.smallAvatar}><CuritText weight="bold" style={c.brandText}>T</CuritText></View><View style={c.flex}><CuritText weight="semibold">조건 일치도는 등록 정보 기준 참고 점수예요</CuritText><CuritText style={c.pinCaption}>취향 키워드·지역·판매 재고·전시 구역을 반영하며, 판매가는 예산과 따로 확인합니다.</CuritText></View><Icon name="chevron" size={17} color={colors.brand} /></Pressable>
-      <View style={c.listHeading}><CuritText weight="bold">맞춤 추천</CuritText><CuritText style={c.muted}>{visible.length}개</CuritText></View>
-      {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : matchError ? <View style={c.error}><CuritText style={c.errorText}>{matchError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={() => { setLoading(true); setMatchError(''); setMatchAttempt(value => value + 1); }} /></View> : visible.length ? visible.map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={period => { void propose(item, period); }} /></View>) : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
+      <View style={c.listHeading}><CuritText weight="bold">{query.trim() || region !== '전체' || dnaFilters.length ? '검색 결과' : '맞춤 추천'}</CuritText>{!loading && !matchError ? <CuritText style={c.muted}>{visible.length}개</CuritText> : null}</View>
+      {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : matchError ? <View style={c.error}><CuritText style={c.errorText}>{matchError}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={() => { setLoading(true); setMatchError(''); setMatchAttempt(value => value + 1); }} /></View> : visible.length ? <>
+        {visible.slice(0, matchDisplayCount).map(item => <View key={item.targetId} style={c.discoverCard}><RecommendationCard item={item} inset={false} busy={busy === item.targetId} onPropose={period => { void propose(item, period); }} /></View>)}
+        {visible.length > matchDisplayCount ? <Button label="후보 더 보기" variant="secondary" onPress={() => setMatchDisplayCount(count => count + discoverDisplayStep)} /> : null}
+      </> : <Empty title="조건에 맞는 후보가 없어요" description="검색어를 바꾸거나 등록한 공간·작품 DNA를 보완해 주세요." />}
       {notice ? <View style={c.notice}><CuritText style={notice.includes('못') || notice.includes('오류') ? c.errorText : c.brandText}>{notice}</CuritText></View> : null}
       </>}
     </ScrollView>
   </View>;
 }
 
-function CreatorDirectory({ items, loading, error, onRetry }: { items: CreatorDirectoryCard[]; loading: boolean; error: string; onRetry: () => void }) {
+function CreatorDirectory({ items, loading, error, hasMore, hasSearch, onMore, onRetry }: { items: CreatorDirectoryCard[]; loading: boolean; error: string; hasMore: boolean; hasSearch: boolean; onMore: () => void; onRetry: () => void }) {
   return <View style={c.creatorDirectory}>
     <View><CuritText weight="bold" style={c.directoryTitle}>작품과 작가</CuritText><CuritText style={c.muted}>다른 크리에이터의 작품 세계와 활동을 살펴보세요.</CuritText></View>
     {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : error ? <View style={c.error}><CuritText style={c.errorText}>{error}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={onRetry} /></View> : items.length ? items.map(item => <View key={item.id} style={c.creatorCard}>
       {item.imageSource ? <Image source={item.imageSource} style={c.creatorCardImage} contentFit="cover" /> : item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.creatorCardImage} contentFit="cover" /> : <View style={[c.creatorCardImage, c.cardImagePlaceholder]}><Icon name="discover" color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
-      <View style={c.creatorCardBody}><View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.creatorCardTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.artist} · {item.region}</CuritText></View><View style={c.creatorAvatar}><CuritText weight="bold" style={c.brandText}>{item.artist[0]}</CuritText></View></View><View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View><CuritText style={c.pinCaption}>{item.priceRange} · {item.status}</CuritText></View>
-    </View>) : <Empty title="공개된 작품이 없습니다" description="크리에이터가 협업 모집을 시작하면 이곳에서 확인할 수 있어요." />}
+      <View style={c.creatorCardBody}><View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.creatorCardTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.artist} · {item.region}</CuritText></View><View style={c.creatorAvatar}><CuritText weight="bold" style={c.brandText}>{item.artist[0]}</CuritText></View></View><View style={c.tags}>{item.tags.slice(0, 4).map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View><CuritText style={c.pinCaption}>{item.priceRange} · {item.status}</CuritText></View>
+    </View>) : <Empty title={hasSearch ? '조건에 맞는 작품이 없어요' : '공개된 작품이 없습니다'} description={hasSearch ? '작가명이나 작품 이름을 바꿔 검색해 보세요.' : '크리에이터가 협업 모집을 시작하면 이곳에서 확인할 수 있어요.'} />}
+    {hasMore ? <Button label="작품 더 보기" variant="secondary" onPress={onMore} /> : null}
   </View>;
 }
 
