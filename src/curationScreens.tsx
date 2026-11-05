@@ -240,7 +240,13 @@ function PublicProjectModal({ id, artist, demo, onClose }: { id: string; artist?
         : result ? <CreatorProjectScreen project={result.project} products={result.products} artist={artist} fallbackCover={result.products[0]?.image ? { uri: result.products[0].image } : undefined} onBack={onClose} />
         : <>
           <Header title="전시 프로젝트" back={onClose} />
-          {error ? <View style={c.discoverScroll}><Empty title="프로젝트를 불러오지 못했어요" description={error} /><Button label="다시 불러오기" variant="secondary" onPress={() => { setError(''); setAttempt(value => value + 1); }} /></View>
+          {error ? <ScrollView style={c.flex} contentContainerStyle={c.detailScroll}>
+            <View style={c.error} accessibilityRole="alert">
+              <CuritText weight="semibold" style={c.errorText}>프로젝트를 불러오지 못했어요</CuritText>
+              <CuritText style={c.errorText}>{error}</CuritText>
+            </View>
+            <Button label="다시 불러오기" variant="secondary" onPress={() => { setError(''); setAttempt(value => value + 1); }} />
+          </ScrollView>
             : result === null || demo ? <Empty title="현재 공개된 프로젝트가 아니에요" description="공개 상태가 변경됐을 수 있어요. 탐색 목록으로 돌아가 다른 작품을 확인해 주세요." />
             : <ActivityIndicator accessibilityLabel="프로젝트를 불러오고 있어요" color={colors.brand} style={c.loader} />}
         </>}
