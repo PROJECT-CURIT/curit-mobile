@@ -141,14 +141,16 @@ export function CreatorProfileScreen({ mode, project, onBack, onEdit, onOpenProj
   </KeyboardAvoidingView>;
 }
 
-export function StoreProfileScreen({ userId, onBack, onEdit, onPreferences, demo = false }: { userId: string; onBack: () => void; onEdit: () => void; onPreferences: () => void; demo?: boolean }) {
+export function StoreProfileScreen({ userId, onBack, onEdit, onEditPhotos, onPreferences, sample }: { userId: string; onBack: () => void; onEdit: (store: StoreOnboarding) => void; onEditPhotos: (store: StoreOnboarding) => void; onPreferences: () => void; sample?: StoreOnboarding }) {
   const [store, setStore] = useState<StoreOnboarding | null>(null);
   const [notice, setNotice] = useState('');
-  useEffect(() => { const request = demo ? Promise.resolve(demoStoreOnboarding) : loadStoreOnboarding(userId); void request.then(setStore).catch(error => setNotice(friendlyError(error))); }, [demo, userId]);
+  useEffect(() => { const request = sample ? Promise.resolve(sample) : loadStoreOnboarding(userId); void request.then(setStore).catch(error => setNotice(friendlyError(error))); }, [sample, userId]);
   if (!store && !notice) return <LoadingScreen title="매장 프로필" onBack={onBack} />;
   if (!store) return <View style={f.flex}><Header title="매장 프로필" back={onBack} /><Notice text={notice} /></View>;
-  return <View style={f.flex}><Header title={store.name} back={onBack} action={<Pressable accessibilityRole="button" style={f.headerTextAction} hitSlop={10} onPress={onEdit}><CuritText weight="semibold" style={f.brand}>수정</CuritText></Pressable>} /><ScrollView contentContainerStyle={f.scroll}>
-    {demo ? <Image source={images.cafe} style={f.storeCover} contentFit="cover" /> : store.photoPaths[0] ? <Image source={{ uri: store.photoPaths[0].startsWith('http') ? store.photoPaths[0] : mediaUrl(store.photoPaths[0]) }} style={f.storeCover} contentFit="cover" /> : <View style={[f.storeCover, f.placeholder]}><Icon name="store" size={36} color={colors.brand} /></View>}
+  const cover = store.photoPaths[0];
+  return <View style={f.flex}><Header title={store.name} back={onBack} action={<Pressable accessibilityRole="button" style={f.headerTextAction} hitSlop={10} onPress={() => onEdit(store)}><CuritText weight="semibold" style={f.brand}>수정</CuritText></Pressable>} /><ScrollView contentContainerStyle={f.scroll}>
+    {cover ? <Image source={cover === 'demo-cafe' ? images.cafe : { uri: mediaUrl(cover) }} style={f.storeCover} contentFit="cover" /> : <View style={[f.storeCover, f.placeholder]}><Icon name="store" size={36} color={colors.brand} /><CuritText style={f.muted}>등록된 매장 사진이 없어요</CuritText></View>}
+    <Button label={cover ? '매장 사진 수정' : '매장 사진 추가'} variant="secondary" onPress={() => onEditPhotos(store)} />
     <CuritText weight="bold" style={f.pageTitle}>{store.name}</CuritText><CuritText style={f.description}>{store.category} · {store.address}</CuritText><CuritText style={f.longText}>{store.introduction}</CuritText>
     <View style={f.infoCard}><InfoRow label="주 고객층" value={store.targetAudience} /><InfoRow label="월 예산" value={`${(store.monthlyBudgetMin || 0).toLocaleString()}~${(store.monthlyBudgetMax || 0).toLocaleString()}원`} /><InfoRow label="전시 구역" value={store.exhibitionZones.map(zone => zone.type).join(' · ')} /></View>
     <SectionTitle title="공간 취향" action="수정" onPress={onPreferences} /><View style={f.wrap}>{[...store.moodTags, ...store.purposeTags].map(value => <Chip key={value} label={value} />)}</View>

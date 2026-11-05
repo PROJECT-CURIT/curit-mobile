@@ -31,7 +31,7 @@ export default function AppIndex() {
   const [pickupParent, setPickupParent] = useState<'settlements' | 'notifications' | null>(null);
   const [pickupOrderId, setPickupOrderId] = useState<string>();
   const [qrParent, setQrParent] = useState<'pickup' | 'collaboration' | null>(null);
-  const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-preferences' | 'verification' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | 'recommendation' | null>(null);
+  const [subview, setSubview] = useState<'qr-products' | 'qr-editor' | 'pickup' | 'creator-dna' | 'creator-profile' | 'creator-profile-edit' | 'creator-project' | 'creator-project-edit' | 'store-profile' | 'store-edit' | 'store-photos' | 'store-preferences' | 'verification' | 'notifications' | 'settlements' | 'account' | 'curator' | 'collaboration' | 'recommendation' | null>(null);
   const [selectedRecommendation, setSelectedRecommendation] = useState<MatchRecommendation | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<CollaborationSummary | null>(null);
   const [noticeCollaborationId, setNoticeCollaborationId] = useState<string | null>(null);
@@ -155,7 +155,7 @@ export default function AppIndex() {
         Keyboard.dismiss();
         return true;
       }
-      if (subview === 'creator-project-edit' || subview === 'store-edit' || (!session && authView === 'store-signup')) return false;
+      if (subview === 'creator-project-edit' || subview === 'store-edit' || subview === 'store-photos' || (!session && authView === 'store-signup')) return false;
       if (subview) {
         if (subview === 'creator-dna' && creatorOnboardingFlow) setCreatorOnboardingFlow(false);
         const parentSubview = subview === 'pickup'
@@ -304,6 +304,12 @@ export default function AppIndex() {
     showCollaboration(item);
   };
 
+  const finishStoreEdit = (store: StoreOnboarding) => {
+    setStoreOnboarding(store);
+    setSession(current => current ? { ...current, displayName: store.name.trim() } : current);
+    setSubview('store-profile');
+  };
+
   if (loading) return <ScreenFrame><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.brand} /></View></ScreenFrame>;
   if (!session) return <ScreenFrame>{authView === 'login'
     ? <LoginScreen onLogin={login} onSignUp={() => setAuthView('role')} onDemo={demoLogin} onResetPassword={async email => { try { await requestPasswordReset(email); } catch (error) { throw new Error(friendlyError(error)); } }} demoEnabled={config.demoMode} configured={isSupabaseConfigured} />
@@ -313,12 +319,15 @@ export default function AppIndex() {
         ? <AccountSignupScreen role={signupRole} onBack={() => setAuthView('role')} onSubmit={createAccount} />
         : authView === 'confirmation'
           ? <EmailConfirmationScreen email={confirmationEmail} onLogin={() => setAuthView('login')} onResend={() => resendSignupConfirmation(confirmationEmail)} />
-          : <StoreSignupScreen initial={pendingStoreOnboarding} onBack={() => { void leaveStoreOnboarding(); }} onComplete={storeName => { if (pendingStoreSession) { setSession({ ...pendingStoreSession, displayName: storeName }); setPendingStoreSession(null); setPendingStoreOnboarding(null); setAuthView('login'); } }} />}</ScreenFrame>;
+          : <StoreSignupScreen initial={pendingStoreOnboarding} onBack={() => { void leaveStoreOnboarding(); }} onComplete={store => { if (pendingStoreSession) { setStoreOnboarding(store); setSession({ ...pendingStoreSession, displayName: store.name.trim() }); setPendingStoreSession(null); setPendingStoreOnboarding(null); setAuthView('login'); } }} />}</ScreenFrame>;
   if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => { setCreatorOnboardingFlow(false); setSubview(null); }} onNext={creatorOnboardingFlow ? () => { setCreatorOnboardingFlow(false); setSubview('creator-profile-edit'); } : undefined} /></ScreenFrame>;
   if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" project={creatorProject} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} onOpenProject={() => setSubview('creator-project')} /></ScreenFrame>;
   if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={() => setSubview('creator-profile')} /></ScreenFrame>;
-  if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen demo={session.demo} userId={session.userId} onBack={() => setSubview(null)} onEdit={() => setSubview('store-edit')} onPreferences={() => { setStorePreferencesParent('profile'); setSubview('store-preferences'); }} /></ScreenFrame>;
-  if (subview === 'store-edit') return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={storeOnboarding ? { ...storeOnboarding, step: 1 } : null} onBack={() => setSubview('store-profile')} onComplete={storeName => { setSession(current => current ? { ...current, displayName: storeName } : current); if (session.demo) { setStoreOnboarding(current => current ? { ...current, name: storeName, complete: true, step: 5 } : demoStoreOnboarding); setSubview('store-profile'); } else void hydrateStore(session.userId).then(() => setSubview('store-profile')); }} /></ScreenFrame>;
+  if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onBack={() => setSubview(null)} onEdit={store => { setStoreOnboarding(store); setSubview('store-edit'); }} onEditPhotos={store => { setStoreOnboarding(store); setSubview('store-photos'); }} onPreferences={() => { setStorePreferencesParent('profile'); setSubview('store-preferences'); }} /></ScreenFrame>;
+  if ((subview === 'store-edit' || subview === 'store-photos') && storeOnboarding) {
+    const photosOnly = subview === 'store-photos';
+    return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={{ ...storeOnboarding, step: photosOnly ? 3 : 1 }} photosOnly={photosOnly} onBack={() => setSubview('store-profile')} onComplete={finishStoreEdit} /></ScreenFrame>;
+  }
   if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen demo={session.demo} userId={session.userId} onBack={() => { if (!session.demo) void hydrateStore(session.userId); setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null); }} /></ScreenFrame>;
   if (subview === 'verification') return <ScreenFrame><VerificationScreen kind={session.role === 'creator' ? 'creator_activity' : 'store_operation'} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo}

@@ -148,6 +148,18 @@ export async function saveStoreOnboarding(value: StoreOnboarding) {
   if (error) throw new Error(error.message);
 }
 
+export async function saveStorePhotos(photoPaths: string[]) {
+  const supabase = getSupabase();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('로그인이 필요합니다.');
+  const { error } = await supabase.from('store_profiles')
+    .update({ photo_paths: photoPaths })
+    .eq('owner_id', auth.user.id)
+    .select('id')
+    .single();
+  if (error) throw new Error(error.message);
+}
+
 export async function storeOnboardingComplete(userId: string) {
   const { data, error } = await getSupabase()
     .from('store_profiles')

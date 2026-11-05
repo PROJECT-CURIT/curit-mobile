@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import { usePhotoPicker } from './photoPicker';
-import { friendlyError, mediaUrl, saveStoreOnboarding, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
+import { friendlyError, mediaUrl, saveStoreOnboarding, saveStorePhotos, uploadMedia, type CreatorProjectDetails, type StoreOnboarding } from './platform';
 import { colors, fonts, radius } from './theme';
 import { Button, Chip, CuritText, Field, Header, Icon } from './ui';
 import { images } from './data';
@@ -290,7 +290,7 @@ function ProductType({ active, title, caption, onPress }: { active: boolean; tit
   return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[d.typeCard, active && d.typeCardActive]} onPress={onPress}><CuritText weight="semibold" style={active ? d.status : undefined}>{title}</CuritText><CuritText style={d.hint}>{caption}</CuritText></Pressable>;
 }
 
-export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }: { initial?: StoreOnboarding | null; onBack: () => void; onComplete: (storeName: string) => void; demo?: boolean }) {
+export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, photosOnly = false }: { initial?: StoreOnboarding | null; onBack: () => void; onComplete: (store: StoreOnboarding) => void; demo?: boolean; photosOnly?: boolean }) {
   const [step, setStep] = useState(initial?.step ?? 1);
   const [introOpen, setIntroOpen] = useState(true);
   const [audienceOpen, setAudienceOpen] = useState(false);
@@ -303,26 +303,26 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
   const [purposes, setPurposes] = useState<string[]>(initial?.purposeTags ?? []);
   const [budgetMin, setBudgetMin] = useState(initial?.monthlyBudgetMin?.toString() ?? '');
   const [budgetMax, setBudgetMax] = useState(initial?.monthlyBudgetMax?.toString() ?? '');
-  const [photos, setPhotos] = useState<{ uri: string; path: string }[]>(() => {
-    const saved = (initial?.photoPaths ?? []).map(path => ({ uri: mediaUrl(path), path }));
-    return demo && saved.length === 0 ? [{ uri: '', path: 'demo-cafe' }] : saved;
-  });
+  const [photos, setPhotos] = useState<{ uri: string; path?: string }[]>(() =>
+    (initial?.photoPaths ?? []).map(path => ({ uri: demo && path === 'demo-cafe' ? '' : mediaUrl(path), path })),
+  );
   const [zones, setZones] = useState<string[]>((initial?.exhibitionZones ?? []).map(zone => zone.type));
   const [zoneWidth, setZoneWidth] = useState(initial?.exhibitionZones[0]?.widthCm?.toString() ?? '');
   const [zoneHeight, setZoneHeight] = useState(initial?.exhibitionZones[0]?.heightCm?.toString() ?? '');
   const [busy, setBusy] = useState(false);
+  const savingStep = useRef(false);
   const storePhoto = usePhotoPicker();
   const { checking: checkingPhoto, clearError: clearPhotoError } = storePhoto;
   const [error, setError] = useState('');
   const firstValid = Boolean(name.trim() && address.trim() && intro.trim() && audience.trim());
   const budgetValid = (!budgetMin || !budgetMax || Number(budgetMin) <= Number(budgetMax))
     && [budgetMin, budgetMax].every(value => !value || Number(value) <= 2_147_483_647);
-  const stepValid = step === 1 ? firstValid : step === 2 ? moods.length > 0 && purposes.length > 0 && budgetValid : step === 3 ? photos.length > 0 : step === 4 ? zones.length > 0 : true;
+  const stepValid = step === 1 ? firstValid : step === 2 ? moods.length > 0 && purposes.length > 0 && budgetValid : step === 4 ? zones.length > 0 : true;
 
   const toggle = (value: string, current: string[], update: (next: string[]) => void) =>
     update(current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
 
-  const payload = (nextStep: number, complete = initial?.complete ?? false) => ({
+  const payload = (nextStep: number, complete: boolean, photoPaths: string[]): StoreOnboarding => ({
     name,
     category,
     address,
@@ -332,44 +332,60 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
     purposeTags: purposes,
     monthlyBudgetMin: budgetMin ? Number(budgetMin) : null,
     monthlyBudgetMax: budgetMax ? Number(budgetMax) : null,
-    photoPaths: photos.map(photo => photo.path),
+    photoPaths,
     exhibitionZones: zones.map(type => ({ type, widthCm: zoneWidth ? Number(zoneWidth) : null, heightCm: zoneHeight ? Number(zoneHeight) : null })),
     step: nextStep,
     complete,
   });
 
   const next = async () => {
-    if (!stepValid || busy || checkingPhoto) return;
+    if (!stepValid || savingStep.current || checkingPhoto) return;
+    savingStep.current = true;
     setBusy(true);
     setError('');
     try {
-      if (step === 5) {
-        if (!demo) await saveStoreOnboarding(payload(5, true));
-        onComplete(name.trim());
+      const savedPhotos = [...photos];
+      if (step === 3 && !demo) {
+        for (const [index, photo] of photos.entries()) {
+          if (photo.path) continue;
+          savedPhotos[index] = { ...photo, path: await uploadMedia(photo.uri, 'store') };
+          // Keep successful uploads available if a later upload or save needs retrying.
+          setPhotos([...savedPhotos]);
+        }
+      }
+      const photoPaths = savedPhotos.flatMap(photo => photo.path ? [photo.path] : []);
+      if (photosOnly && initial) {
+        const updated = { ...initial, step: 5, photoPaths };
+        if (!demo) await saveStorePhotos(updated.photoPaths);
+        onComplete(updated);
+      } else if (step === 5) {
+        const updated = payload(5, true, photoPaths);
+        if (!demo) await saveStoreOnboarding(updated);
+        onComplete(updated);
       } else {
-        if (!demo) await saveStoreOnboarding(payload(step + 1));
+        if (!demo) await saveStoreOnboarding(payload(step + 1, initial?.complete ?? false, photoPaths));
         setStep(value => value + 1);
       }
     } catch (caught) {
       setError(friendlyError(caught));
     } finally {
+      savingStep.current = false;
       setBusy(false);
     }
   };
 
-  const pickStorePhoto = () => storePhoto.choose(async uri => {
-    const path = demo ? uri : await uploadMedia(uri, 'store');
-    setPhotos(current => [...current, { uri, path }]);
+  const pickStorePhoto = () => storePhoto.choose(uri => {
+    setPhotos(current => [...current, { uri, path: demo ? uri : undefined }]);
   });
 
   const back = useCallback(() => {
     if (Keyboard.isVisible()) { Keyboard.dismiss(); return; }
     if (!busy && !checkingPhoto) {
       clearPhotoError();
-      if (step === 1) onBack();
+      if (photosOnly || step === 1) onBack();
       else setStep(value => value - 1);
     }
-  }, [busy, checkingPhoto, clearPhotoError, onBack, step]);
+  }, [busy, checkingPhoto, clearPhotoError, onBack, photosOnly, step]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
@@ -377,9 +393,9 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
   }, [back]);
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Header title="매장 공간 등록" subtitle={`${step}/5 · ${['기본 정보', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step - 1]}`} back={back} />
+      <Header title={photosOnly ? '매장 사진 수정' : '매장 공간 등록'} subtitle={photosOnly ? undefined : `${step}/5 · ${['기본 정보', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step - 1]}`} back={back} />
       <ScrollView style={d.flex} contentContainerStyle={d.signupScroll} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
-        <StepProgress current={step} />
+        {photosOnly ? null : <StepProgress current={step} />}
         {step === 1 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장을 소개해 주세요</CuritText>
           <CuritText style={d.description}>기본 정보를 입력하면 맞는 크리에이터를 찾아드려요.</CuritText>
@@ -405,8 +421,14 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
         </> : null}
         {step === 3 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장 사진을 등록해 주세요</CuritText>
-          <CuritText style={d.description}>전체 공간과 전시 후보 구역이 보이는 사진을 1장 이상 등록해 주세요.</CuritText>
-          <View style={d.photoGrid}>{photos.map((photo, index) => <View key={photo.path} style={d.storePhotoWrap}><Image source={photo.path === 'demo-cafe' ? images.cafe : { uri: photo.uri }} style={d.storePhoto} contentFit="cover" /><Pressable accessibilityLabel={`${index + 1}번째 매장 사진 삭제`} accessibilityRole="button" style={d.photoDelete} disabled={busy || checkingPhoto} onPress={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))}><View style={d.photoDeleteCircle}><CuritText style={d.photoDeleteText}>×</CuritText></View></Pressable></View>)}{photos.length < 5 ? <Pressable accessibilityRole="button" style={d.storePhotoAdd} disabled={busy || checkingPhoto} onPress={() => { void pickStorePhoto(); }}><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>{checkingPhoto ? '사진 처리 중…' : '사진 추가'}</CuritText></Pressable> : null}</View>
+          <CuritText style={d.description}>대표 사진으로 공간을 소개해 주세요. 사진은 나중에 매장 프로필에서 추가할 수 있어요.</CuritText>
+          <View style={d.photoGrid}>
+            {photos.map((photo, index) => <View key={photo.path || photo.uri} style={d.storePhotoWrap}><Image source={photo.path === 'demo-cafe' ? images.cafe : { uri: photo.uri }} style={d.storePhoto} contentFit="cover" /><Pressable accessibilityLabel={`${index + 1}번째 매장 사진 삭제`} accessibilityRole="button" style={d.photoDelete} disabled={busy || checkingPhoto} onPress={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))}><View style={d.photoDeleteCircle}><CuritText style={d.photoDeleteText}>×</CuritText></View></Pressable></View>)}
+            {photos.length < 5 ? <Pressable accessibilityRole="button" style={[d.storePhotoAdd, !photos.length && d.storePhotoAddEmpty]} disabled={busy || checkingPhoto} onPress={() => { void pickStorePhoto(); }}>
+              <Icon name="image" color={colors.brand} />
+              <CuritText style={d.hint}>{checkingPhoto ? '사진 처리 중…' : photos.length ? '사진 추가' : '대표 사진 등록'}</CuritText>
+            </Pressable> : null}
+          </View>
           <CuritText style={d.hint}>JPG · PNG · WEBP, 파일당 5MB 이하 · 최대 5장</CuritText>
           {storePhoto.error ? <CuritText accessibilityRole="alert" style={d.error}>{storePhoto.error}</CuritText> : null}
         </> : null}
@@ -419,12 +441,12 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false }:
         </> : null}
         {step === 5 ? <>
           <CuritText weight="bold" style={d.projectTitle}>등록 내용을 확인해 주세요</CuritText>
-          <View style={d.reviewCard}><ReviewRow label="매장" value={`${name} · ${category || '업종 미입력'}`} /><ReviewRow label="주소" value={address} /><ReviewRow label="고객층" value={audience} /><ReviewRow label="분위기" value={moods.join(', ')} /><ReviewRow label="협업 목적" value={purposes.join(', ')} /><ReviewRow label="사진" value={`${photos.length}장`} /><ReviewRow label="전시 구역" value={zones.join(', ')} /></View>
+          <View style={d.reviewCard}><ReviewRow label="매장" value={`${name} · ${category || '업종 미입력'}`} /><ReviewRow label="주소" value={address} /><ReviewRow label="고객층" value={audience} /><ReviewRow label="분위기" value={moods.join(', ')} /><ReviewRow label="협업 목적" value={purposes.join(', ')} /><ReviewRow label="사진" value={photos.length ? `${photos.length}장` : '나중에 등록'} /><ReviewRow label="전시 구역" value={zones.join(', ')} /></View>
           <View style={d.editNotice}><CuritText style={d.hint}>등록 후에도 마이페이지의 ‘프로필 및 공간 정보’에서 수정할 수 있습니다.</CuritText></View>
         </> : null}
         {error ? <CuritText style={d.error}>{error}</CuritText> : null}
       </ScrollView>
-      <View style={d.stickyFooter}><Button label={busy ? '저장 중…' : step === 5 ? '매장 등록 완료' : `다음: ${['', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step]}`} disabled={!stepValid || busy || checkingPhoto} onPress={() => { void next(); }} /></View>
+      <View style={d.stickyFooter}><Button label={busy ? '저장 중…' : photosOnly ? '사진 저장' : step === 5 ? '매장 등록 완료' : step === 3 && !photos.length ? '사진 없이 계속' : `다음: ${['', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step]}`} disabled={!stepValid || busy || checkingPhoto} onPress={() => { void next(); }} /></View>
     </KeyboardAvoidingView>
   );
 }
@@ -463,4 +485,5 @@ const d = StyleSheet.create({
   steps: { flexDirection: 'row', gap: 8 }, step: { flex: 1, gap: 7 }, stepLine: { height: 4, borderRadius: 2, backgroundColor: colors.border }, stepLineActive: { backgroundColor: colors.brand }, stepLabel: { color: colors.muted, fontSize: 10 },
   accordion: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden' }, accordionHeader: { minHeight: 62, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, requiredTitle: { flexDirection: 'row', alignItems: 'center', gap: 3 }, requiredStar: { color: colors.danger }, accordionRight: { flexDirection: 'row', alignItems: 'center', gap: 9 }, accordionBody: { paddingHorizontal: 12, paddingBottom: 14, gap: 9 }, smallLabel: { fontSize: 12 }, textarea: { minHeight: 104, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 13, fontFamily: fonts.regular, fontSize: 14, color: colors.ink, textAlignVertical: 'top' }, textInput: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 13, fontFamily: fonts.regular, fontSize: 14, color: colors.ink },
   choiceGroup: { gap: 12 }, choiceWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, storePhotoWrap: { width: '30%', aspectRatio: 1, borderRadius: radius.md, overflow: 'hidden' }, storePhoto: { width: '100%', height: '100%' }, storePhotoAdd: { width: '30%', aspectRatio: 1, borderWidth: 1, borderStyle: 'dashed', borderColor: '#C8D3BF', borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.brandPale }, photoDelete: { position: 'absolute', right: 0, top: 0, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, photoDeleteCircle: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#0009', alignItems: 'center', justifyContent: 'center' }, photoDeleteText: { color: colors.surface, fontSize: 18, lineHeight: 20 }, reviewCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 16 }, reviewRow: { minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 14 }, reviewValue: { flex: 1, textAlign: 'right' },
+  storePhotoAddEmpty: { width: '100%', minHeight: 136, aspectRatio: undefined },
 });

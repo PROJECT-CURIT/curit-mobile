@@ -335,7 +335,7 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
     onPropose(period);
   };
   return <View style={[c.recommendation, !inset && c.recommendationWide]}>
-    {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>이미지 준비 중</CuritText></View>}
+    {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>{item.targetType === 'store' ? '매장 사진 없음' : '이미지 준비 중'}</CuritText></View>}
     <View style={c.recommendationBody}>
       <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.recommendationTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}점</CuritText></View></View>
       <CuritText style={c.description}>{item.description}</CuritText>

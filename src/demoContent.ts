@@ -182,7 +182,7 @@ export const demoStoreOnboarding: StoreOnboarding = {
   purposeTags: ['분위기 전환', '상품 판매', '지역 크리에이터 소개'],
   monthlyBudgetMin: 200000,
   monthlyBudgetMax: 500000,
-  photoPaths: [],
+  photoPaths: ['demo-cafe'],
   exhibitionZones: [
     { type: '벽면', widthCm: 180, heightCm: 120 },
     { type: '선반', widthCm: 120, heightCm: 45 },
