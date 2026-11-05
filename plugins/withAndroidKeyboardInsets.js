@@ -7,17 +7,18 @@ const method = `
     val initialBottom = content.paddingBottom
     val location = IntArray(2)
     val ime = androidx.core.view.WindowInsetsCompat.Type.ime()
-    val navigation = androidx.core.view.WindowInsetsCompat.Type.navigationBars()
 
     fun applyInsets(insets: androidx.core.view.WindowInsetsCompat) {
       var padding = initialBottom
       if (insets.isVisible(ime) && content.height > 0) {
         content.getLocationOnScreen(location)
         val keyboardTop = windowManager.currentWindowMetrics.bounds.bottom - insets.getInsets(ime).bottom
-        val safeBottom = location[1] + content.height - insets.getInsets(navigation).bottom
+        val contentBottom = location[1] + content.height
         // Some Android windows already resize. Only account for the part
-        // still covered by the IME in an edge-to-edge window.
-        padding += (safeBottom - keyboardTop).coerceAtLeast(0)
+        // still covered by the IME in an edge-to-edge window. The IME inset
+        // already includes the navigation area: subtracting it again leaves
+        // the bottom of input fields and send buttons under the keyboard.
+        padding += (contentBottom - keyboardTop).coerceAtLeast(0)
       }
       if (padding != content.paddingBottom) {
         content.setPadding(content.paddingLeft, content.paddingTop, content.paddingRight, padding)
