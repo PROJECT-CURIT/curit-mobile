@@ -54,6 +54,7 @@ export interface MatchRecommendation {
   description: string;
   score: number;
   reasons: string[];
+  confirmationNotes?: string[];
   tags: string[];
   searchTerms?: string[];
   imageUrl?: string;

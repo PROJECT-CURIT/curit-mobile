@@ -284,7 +284,7 @@ function StoreHome({ displayName, demo, onOpenPreferences, onOpenRecommendation,
       <CuritText style={[s.dnaHint, { marginBottom: 18 }]}>등록한 공간 정보와 공개된 작품 조건을 비교해 추천해요.</CuritText>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
       {!recommended.error && (demo || !recommended.loading) ? <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="art" onPress={() => onOpenRecommendation(item)} />)}</View> : null}
-      {!recommended.loading && !recommended.error && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 예산을 저장하면 전시 가능한 작품을 비교해 드립니다." /> : null}
+      {!recommended.loading && !recommended.error && !items.length ? <Empty title="추천할 작품을 찾고 있어요" description="공간 취향과 전시 구역을 저장하면 협업 후보를 비교해 드립니다." /> : null}
       {current ? <Pressable accessibilityRole="button" accessibilityLabel="현재 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>현재 협업 · {collaborationStatusLabel(current.status)}</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.creatorName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : summary.failed ? '성과 정보를 확인할 수 없어요' : `QR ${summary.qrViews}회 · ${summary.salesCount}건 판매`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );

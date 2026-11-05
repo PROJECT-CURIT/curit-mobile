@@ -255,7 +255,7 @@ function PublicProjectModal({ id, artist, demo, onClose }: { id: string; artist?
 function demoWelcome(role: Role): CuratorMessage {
   return {
     id: 'demo-welcome', sender: 'assistant',
-    content: role === 'store' ? '등록한 공간 DNA와 예산, 설치 구역을 바탕으로 실제 협업 가능한 작품을 찾아드릴게요.' : '작품 DNA와 활동 지역을 바탕으로 실제 협업 가능한 매장을 찾아드릴게요.',
+    content: role === 'store' ? '등록한 공간과 작품의 취향·지역·판매 재고를 비교해 협업 후보를 찾아드릴게요.' : '작품 DNA와 활동 지역을 바탕으로 실제 협업 가능한 매장을 찾아드릴게요.',
     recommendations: [], actions: role === 'store' ? ['우리 공간에 어울리는 작품을 추천해 주세요', '협업 진행 방법을 알려주세요'] : ['내 작품과 어울리는 매장을 추천해 주세요', '협업과 출고 흐름을 알려주세요'], createdAt: new Date().toISOString(),
   };
 }
@@ -344,7 +344,7 @@ export function CuratorScreen({ role, demo, onBack, onProposalCreated }: { role:
 
   const topics = role === 'store' ? ['우리 공간에 어울리는 작품을 추천해 주세요', '협업 진행 방법을 알려주세요', 'QR 판매 운영을 알려주세요'] : ['내 작품과 어울리는 매장을 추천해 주세요', '협업과 출고 흐름을 알려주세요', '판매와 정산을 알려주세요'];
   return <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Header title={role === 'creator' ? 'AI 콘셉트 큐레이터' : 'CURI:T AI 큐레이터'} subtitle="공간·작품·예산·재고 기반 추천" back={onBack} />
+    <Header title={role === 'creator' ? 'AI 콘셉트 큐레이터' : 'CURI:T AI 큐레이터'} subtitle="취향·지역·재고 기반 추천" back={onBack} />
     <ScrollView ref={scrollRef} style={c.flex} contentContainerStyle={c.chatScroll} keyboardShouldPersistTaps="handled">
       {loading ? <ActivityIndicator color={colors.brand} style={c.loader} /> : messages.map((message, index) => <View key={message.id} style={c.messageBlock} onLayout={index === messages.length - 1 ? event => scrollRef.current?.scrollTo({ y: Math.max(0, event.nativeEvent.layout.y - 10), animated: true }) : undefined}>
         <View style={[c.bubbleRow, message.sender === 'user' && c.bubbleRowUser]}>
@@ -430,6 +430,7 @@ function RecommendationCard({ item, busy, demo, onPropose, inset = true }: { ite
       <CuritText style={c.description}>{item.description}</CuritText>
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
+      {!inset && item.confirmationNotes?.length ? <View style={c.reasonBox}><CuritText weight="semibold">협업 전에 확인해 주세요</CuritText>{item.confirmationNotes.map(note => <CuritText key={note} style={c.reasonText}>{note}</CuritText>)}</View> : null}
       <View style={c.tags}>{item.tags.slice(0, 4).map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
       <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy} onPress={() => {
         if (item.collaborationId) onPropose();

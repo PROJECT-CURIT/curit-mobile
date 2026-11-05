@@ -1,7 +1,7 @@
 import { dispatchCollaborationPush, mediaUrl } from './platform';
 import { getSupabase } from './supabase';
 import { randomUUID } from 'expo-crypto';
-import { calculateMatchScore } from './matchScoring';
+import { calculateMatchScore, matchCreatorTraits, type CreatorMatchTraits } from './matchScoring';
 import type {
   CollaborationItem,
   CollaborationMessage,
@@ -53,7 +53,7 @@ type StoreRow = {
   exhibition_zones: { type?: string; label?: string }[];
 };
 
-type CreatorProfileRow = {
+type CreatorProfileRow = CreatorMatchTraits & {
   user_id: string;
   introduction: string;
   categories: string[];
@@ -74,6 +74,7 @@ export type CreatorDirectoryEntry = {
 
 const catalogPageSize = 80;
 const publicProjectFields = 'id, creator_id, title, story, concept, region, purpose, status, cover_path, updated_at';
+const creatorMatchFields = 'user_id, introduction, categories, regions, dna_moods, dna_colors, preferred_spaces, collaboration_goals, install_conditions';
 type CatalogQuery = PromiseLike<{ data: unknown; error: { message: string } | null }> & {
   abortSignal(signal: AbortSignal): void;
   order(column: 'id'): void;
@@ -106,7 +107,7 @@ async function projectMetadata(projects: ProjectRow[], signal?: AbortSignal) {
   const creatorIds = [...new Set(projects.map(project => project.creator_id))];
   const projectIds = projects.map(project => project.id);
   const profilesQuery = supabase.from('profiles').select('id, display_name').in('id', creatorIds);
-  const creatorsQuery = supabase.from('creator_profiles').select('user_id, categories').in('user_id', creatorIds);
+  const creatorsQuery = supabase.from('creator_profiles').select(creatorMatchFields).in('user_id', creatorIds);
   if (signal) { profilesQuery.abortSignal(signal); creatorsQuery.abortSignal(signal); }
   const [profiles, creators, items] = await Promise.all([
     profilesQuery,
@@ -117,13 +118,14 @@ async function projectMetadata(projects: ProjectRow[], signal?: AbortSignal) {
   if (error) throw new Error(error.message);
   const names = new Map((profiles.data ?? []).map(row => [String(row.id), String(row.display_name || '크리에이터')]));
   const categories = new Map((creators.data ?? []).map(row => [String(row.user_id), (row.categories ?? []) as string[]]));
+  const traits = new Map((creators.data ?? []).map(row => [String(row.user_id), row as CreatorProfileRow]));
   const byProject = new Map<string, ProjectItemRow[]>();
   for (const item of items) {
     const list = byProject.get(item.project_id);
     if (list) list.push(item);
     else byProject.set(item.project_id, [item]);
   }
-  return { names, categories, byProject };
+  return { names, categories, traits, byProject };
 }
 
 const STOP_WORDS = new Set(['그리고', '또는', '위한', '있는', '없는', '합니다', '해요', '공간', '작품', '전시', '판매']);
@@ -198,18 +200,20 @@ async function storeRecommendations(preferenceText = '', all = false, signal?: A
   const ranked: MatchRecommendation[] = [];
   for (let start = 0; start < projects.length; start += catalogPageSize) {
     const batch = projects.slice(start, start + catalogPageSize);
-    const { names, categories, byProject } = await projectMetadata(batch, signal);
+    const { names, categories, traits, byProject } = await projectMetadata(batch, signal);
     for (const project of batch) {
       const creatorCategories = categories.get(project.creator_id) ?? [];
       const projectItems = (byProject.get(project.id) ?? []).filter(item => item.stock > 0 && item.sale_mode === 'display_sale');
       if (!projectItems.length) continue;
       const projectTerms = terms([project.title, project.story, project.concept, project.purpose, project.region, ...creatorCategories, ...projectItems.flatMap(item => [item.name, item.material])]);
       const matched = overlap(storeTerms, projectTerms);
+      const dna = matchCreatorTraits(traits.get(project.creator_id), store);
       const regionFit = regionsOverlap(project.region, store.address);
       const installFit = store.exhibition_zones.length > 0;
-      const score = calculateMatchScore({ matchedTermCount: matched.length, regionFit, hasAvailableItems: true, hasExhibitionZones: installFit });
+      const score = calculateMatchScore({ matchedTermCount: new Set([...matched, ...dna.keywords]).size, regionFit, hasAvailableItems: true, hasExhibitionZones: installFit });
       const reasons = [
-        matched.length ? `${matched.slice(0, 3).map(displayTerm).join('·')} 키워드가 등록 정보에서 겹쳐요` : '취향 키워드가 적어 작품을 직접 확인해 주세요',
+        ...dna.reasons.slice(0, 2),
+        ...(matched.length ? [`${matched.slice(0, 3).map(displayTerm).join('·')} 키워드가 등록 정보에서 겹쳐요`] : dna.reasons.length ? [] : ['취향 키워드가 적어 작품을 직접 확인해 주세요']),
         `${projectItems.length}개 판매 가능 상품에 재고가 있어요`,
         installFit ? `${store.exhibition_zones.length}개 전시 구역을 등록했어요` : '전시 구역을 등록하면 배치 가능성을 더 확인할 수 있어요',
         regionFit ? '작가 활동 지역과 매장 지역이 겹쳐요' : '지역 조건은 협업 제안 전에 확인해 주세요',
@@ -222,6 +226,7 @@ async function storeRecommendations(preferenceText = '', all = false, signal?: A
         description: project.concept || project.story || '작품과 굿즈 전시 협업을 제안할 수 있어요.',
         score,
         reasons,
+        confirmationNotes: [dna.installationNote, '작품 치수와 실제 설치 가능 여부는 협업 전에 확인해 주세요.', '매장 월 예산과 상품 판매가는 별도로 확인해 주세요.'].filter(Boolean),
         tags: [...new Set([...creatorCategories, ...matched])],
         searchTerms: projectItems.flatMap(item => [item.name, item.material]),
         imageUrl: projectItems[0]?.image_path ? mediaUrl(projectItems[0].image_path) : undefined,
@@ -240,7 +245,7 @@ async function creatorRecommendations(preferenceText = '', all = false, signal?:
   const { data: auth, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!auth.user) throw new Error('로그인이 필요합니다.');
-  const creatorQuery = supabase.from('creator_profiles').select('user_id, introduction, categories, regions').eq('user_id', auth.user.id);
+  const creatorQuery = supabase.from('creator_profiles').select(creatorMatchFields).eq('user_id', auth.user.id);
   const projectQuery = supabase.from('projects').select(publicProjectFields).eq('creator_id', auth.user.id).in('status', ['recruiting', 'matched']).order('updated_at', { ascending: false }).limit(1);
   if (signal) { creatorQuery.abortSignal(signal); projectQuery.abortSignal(signal); }
   const [creatorResult, projectResult, stores, collaborationRows] = await Promise.all([
@@ -261,8 +266,9 @@ async function creatorRecommendations(preferenceText = '', all = false, signal?:
   const ranked = stores.map(store => {
     const storeTerms = terms([store.category, store.address, store.introduction, store.target_audience, ...store.mood_tags, ...store.purpose_tags]);
     const matched = overlap(creatorTerms, storeTerms);
+    const dna = matchCreatorTraits(creator, store);
     const regionFit = regionsOverlap((creator?.regions ?? []).join(' '), store.address);
-    const score = calculateMatchScore({ matchedTermCount: matched.length, regionFit, hasAvailableItems: ownItems.length > 0, hasExhibitionZones: store.exhibition_zones.length > 0 });
+    const score = calculateMatchScore({ matchedTermCount: new Set([...matched, ...dna.keywords]).size, regionFit, hasAvailableItems: ownItems.length > 0, hasExhibitionZones: store.exhibition_zones.length > 0 });
     const zones = store.exhibition_zones.map(zone => zone.label || zone.type).filter(Boolean);
     return {
       targetId: store.id,
@@ -272,10 +278,12 @@ async function creatorRecommendations(preferenceText = '', all = false, signal?:
       description: store.introduction || `${store.target_audience} 고객이 방문하는 공간입니다.`,
       score,
       reasons: [
-        matched.length ? `${matched.slice(0, 3).map(displayTerm).join('·')} 키워드가 등록 정보에서 겹쳐요` : '취향 키워드가 적어 매장 공간을 직접 확인해 주세요',
+        ...dna.reasons.slice(0, 2),
+        ...(matched.length ? [`${matched.slice(0, 3).map(displayTerm).join('·')} 키워드가 등록 정보에서 겹쳐요`] : dna.reasons.length ? [] : ['취향 키워드가 적어 매장 공간을 직접 확인해 주세요']),
         zones.length ? `${zones.slice(0, 2).join('·')} 구역이 등록돼 있어요` : '전시 구역 정보가 없어 협의가 필요해요',
         regionFit ? '활동 지역과 매장 지역이 겹쳐요' : '지역 조건은 협업 제안 전에 확인해 주세요',
-      ],
+      ].slice(0, 3),
+      confirmationNotes: [dna.installationNote, '작품 치수와 실제 설치 가능 여부는 협업 전에 확인해 주세요.'].filter(Boolean),
       tags: [...new Set([...store.mood_tags, store.category, ...zones])].filter((tag): tag is string => Boolean(tag)),
       searchTerms: [...store.purpose_tags, ...store.exhibition_zones.map(zone => zone.type ?? '')],
       imageUrl: store.photo_paths[0] ? mediaUrl(store.photo_paths[0]) : undefined,
@@ -352,7 +360,7 @@ function mapCuratorMessage(row: Record<string, unknown>): CuratorMessage {
 
 function welcome(role: Role) {
   return role === 'store'
-    ? { content: '안녕하세요. 등록한 공간 DNA와 예산, 설치 구역, 작품 재고를 함께 확인해 맞는 전시 협업을 찾아드릴게요.', actions: ['우리 공간에 어울리는 작품을 추천해 주세요', '협업 진행 방법을 알려주세요', 'QR 판매 운영을 알려주세요'] }
+    ? { content: '안녕하세요. 공간과 작품의 취향·지역·판매 재고·등록 구역을 비교해 협업 후보를 찾아드릴게요. 예산과 실제 설치 조건은 협업 전에 함께 확인해 주세요.', actions: ['우리 공간에 어울리는 작품을 추천해 주세요', '협업 진행 방법을 알려주세요', 'QR 판매 운영을 알려주세요'] }
     : { content: '안녕하세요. 작품 DNA와 활동 지역, 매장 공간 조건을 비교해 실제 협업 가능한 공간을 찾아드릴게요.', actions: ['내 작품과 어울리는 매장을 추천해 주세요', '협업과 출고 흐름을 알려주세요', '판매와 정산을 알려주세요'] };
 }
 
@@ -398,11 +406,11 @@ function answerFor(role: Role, prompt: string, recommendations: MatchRecommendat
     actions: role === 'creator' ? ['내 작품과 어울리는 매장을 추천해 주세요'] : ['우리 공간에 어울리는 작품을 추천해 주세요'],
   };
   if (/정산|판매|QR|수령|결제/.test(prompt)) return {
-    content: '방문객이 상품별 QR에서 결제하면 재고가 차감되고 정산 원장이 생성됩니다. 현재 기준은 크리에이터 80%, 매장 10%, 플랫폼 10%이며, 실제 승인된 협업 조건을 주문 시점에 고정해 계산합니다.',
+    content: '결제 승인된 협업 주문은 재고와 정산 원장에 반영됩니다. 기본 배분은 크리에이터 80%, 매장 10%, 플랫폼 10%이며, 승인된 협업 조건을 주문 시점에 고정합니다. 계좌이체 안내 상품은 별도로 입금을 확인해야 합니다.',
     actions: ['추천 후보 보기'],
   };
   return {
-    content: '추천은 분위기만으로 정하지 않습니다. 공간·작품 태그, 지역, 예산, 설치 구역, 판매 가능한 재고를 먼저 확인하고, 선택·거절·협업 결과를 다음 추천에 반영합니다. 어떤 후보를 찾고 있는지 더 구체적으로 알려주세요.',
+    content: '저장한 작품 DNA와 공간 취향, 선호 업종, 협업 목적, 지역, 판매 재고와 등록 구역으로 조건 일치도를 계산합니다. 취향을 수정하거나 원하는 조건을 말하면 새 추천에 반영해요. 설치 가능 여부와 비용은 양측 확인이 필요합니다.',
     actions: role === 'store' ? ['우리 공간에 어울리는 작품을 추천해 주세요'] : ['내 작품과 어울리는 매장을 추천해 주세요'],
   };
 }
