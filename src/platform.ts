@@ -562,7 +562,7 @@ export async function loadSettlements(): Promise<SettlementEntry[]> {
 export function friendlyError(error: unknown) {
   const raw = message(error);
   if (/JWT expired|Auth session missing|Session from session_id claim in JWT does not exist|Session not found|Refresh Token Not Found/i.test(raw)) return '로그인 상태가 만료됐어요. 다시 로그인한 뒤 저장해 주세요.';
-  if (/failed to fetch|network request failed|networkerror|fetch failed/i.test(raw)) return '연결이 원활하지 않아요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+  if (/failed to fetch|network request failed|networkerror|fetch failed|load failed|network connection was lost|internet connection appears to be offline/i.test(raw)) return '연결이 원활하지 않아요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
   if (/Invalid login credentials/i.test(raw)) return '이메일 또는 비밀번호가 맞지 않습니다.';
   if (/User already registered/i.test(raw)) return '이미 가입된 이메일입니다.';
   if (/Password should be/i.test(raw)) return '비밀번호는 8자 이상으로 입력해 주세요.';

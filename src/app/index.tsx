@@ -346,7 +346,10 @@ export default function AppIndex() {
   function renderAuthenticated(session: Session) {
     if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => { setCreatorOnboardingFlow(false); setSubview(null); }} onNext={creatorOnboardingFlow ? () => { setCreatorOnboardingFlow(false); setSubview('creator-profile-edit'); } : undefined} /></ScreenFrame>;
     if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" project={creatorProject} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} onOpenProject={() => setSubview('creator-project')} /></ScreenFrame>;
-    if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={() => setSubview('creator-profile')} /></ScreenFrame>;
+    if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={profile => {
+      setSession(current => current ? { ...current, displayName: profile.displayName } : current);
+      setSubview('creator-profile');
+    }} /></ScreenFrame>;
     if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onBack={() => setSubview(null)} onEdit={store => { setStoreOnboarding(store); setSubview('store-edit'); }} onEditPhotos={store => { setStoreOnboarding(store); setSubview('store-photos'); }} onPreferences={() => { setStorePreferencesParent('profile'); setSubview('store-preferences'); }} /></ScreenFrame>;
     if ((subview === 'store-edit' || subview === 'store-photos') && storeOnboarding) {
       const photosOnly = subview === 'store-photos';

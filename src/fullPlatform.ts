@@ -39,7 +39,8 @@ export type VerificationRequest = {
 };
 
 async function currentUserId() {
-  const { data } = await getSupabase().auth.getUser();
+  const { data, error } = await getSupabase().auth.getUser();
+  if (error) throw new Error(error.message);
   if (!data.user) throw new Error('로그인이 필요합니다.');
   return data.user.id;
 }
