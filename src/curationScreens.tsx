@@ -19,6 +19,7 @@ import { projects } from './data';
 import { demoCollaborationList, nextDemoCollaborationStatus } from './demoContent';
 import { exhibitionPeriodError, formatExhibitionDateInput, suggestedExhibitionPeriod, type ExhibitionPeriod } from './exhibitionPeriod';
 import { friendlyError } from './platform';
+import { storeColors } from './storePreferences';
 import { colors, fonts, radius } from './theme';
 import type { CollaborationItem, CollaborationMessage, CollaborationSummary, CuratorMessage, MatchRecommendation, Role } from './types';
 import type { CreatorDirectoryEntry } from './curation';
@@ -31,6 +32,7 @@ const statusLabel: Record<CollaborationSummary['status'], string> = {
 const dnaFilterGroups = [
   ['매장 유형', ['카페', '서점', '쇼룸']],
   ['분위기', ['미니멀', '우드톤', '조용함']],
+  ['공간 색감', storeColors],
   ['전시 위치', ['벽면', '선반', '테이블', '창가', '카운터']],
 ] as const;
 
@@ -341,7 +343,7 @@ function RecommendationCard({ item, busy, onPropose, inset = true }: { item: Mat
       <CuritText style={c.description}>{item.description}</CuritText>
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
       <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
-      <View style={c.tags}>{item.tags.map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
+      <View style={c.tags}>{item.tags.slice(0, 4).map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
       <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy} onPress={() => {
         if (item.collaborationId) onPropose();
         else { submitting.current = false; setProposalOpen(true); }

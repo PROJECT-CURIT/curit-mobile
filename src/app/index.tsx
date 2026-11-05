@@ -328,7 +328,7 @@ export default function AppIndex() {
     const photosOnly = subview === 'store-photos';
     return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={{ ...storeOnboarding, step: photosOnly ? 3 : 1 }} photosOnly={photosOnly} onBack={() => setSubview('store-profile')} onComplete={finishStoreEdit} /></ScreenFrame>;
   }
-  if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen demo={session.demo} userId={session.userId} onBack={() => { if (!session.demo) void hydrateStore(session.userId); setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null); }} /></ScreenFrame>;
+  if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onSaved={setStoreOnboarding} onBack={() => setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null)} /></ScreenFrame>;
   if (subview === 'verification') return <ScreenFrame><VerificationScreen kind={session.role === 'creator' ? 'creator_activity' : 'store_operation'} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
   if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo}
     onOpenCollaboration={id => {

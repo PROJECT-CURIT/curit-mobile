@@ -34,7 +34,7 @@ import {
   loadManagedOrders,
   loadStoreOnboarding,
   mediaUrl,
-  saveStoreOnboarding,
+  saveStorePreferences,
   updateManagedOrder,
   updateQrListing,
   type CreatorProjectDetails,
@@ -42,8 +42,9 @@ import {
   type StoreOnboarding,
 } from './platform';
 import type { QrProduct } from './types';
-import { demoCreatorProfile, demoSocialComments, demoSocialPosts, demoStoreOnboarding } from './demoContent';
+import { demoCreatorProfile, demoSocialComments, demoSocialPosts } from './demoContent';
 import { images } from './data';
+import { formatStoreBudget, storeBudgetError, storeChoices, storeColors, storeMoods, storePurposes, storeZones } from './storePreferences';
 
 const categoryOptions = ['도예·세라믹', '판화·프린트', '패브릭·섬유', '회화', '조각', '사진', '드로잉', '기타'];
 const regionOptions = ['서울', '경기', '인천', '강원', '대전·세종·충청', '광주·전라', '대구·경북', '부산·울산·경남', '제주', '전국 / 온라인'];
@@ -152,27 +153,80 @@ export function StoreProfileScreen({ userId, onBack, onEdit, onEditPhotos, onPre
     {cover ? <Image source={cover === 'demo-cafe' ? images.cafe : { uri: mediaUrl(cover) }} style={f.storeCover} contentFit="cover" /> : <View style={[f.storeCover, f.placeholder]}><Icon name="store" size={36} color={colors.brand} /><CuritText style={f.muted}>등록된 매장 사진이 없어요</CuritText></View>}
     <Button label={cover ? '매장 사진 수정' : '매장 사진 추가'} variant="secondary" onPress={() => onEditPhotos(store)} />
     <CuritText weight="bold" style={f.pageTitle}>{store.name}</CuritText><CuritText style={f.description}>{store.category} · {store.address}</CuritText><CuritText style={f.longText}>{store.introduction}</CuritText>
-    <View style={f.infoCard}><InfoRow label="주 고객층" value={store.targetAudience} /><InfoRow label="월 예산" value={`${(store.monthlyBudgetMin || 0).toLocaleString()}~${(store.monthlyBudgetMax || 0).toLocaleString()}원`} /><InfoRow label="전시 구역" value={store.exhibitionZones.map(zone => zone.type).join(' · ')} /></View>
+    <View style={f.infoCard}><InfoRow label="주 고객층" value={store.targetAudience} /><InfoRow label="월 예산" value={formatStoreBudget(store.monthlyBudgetMin, store.monthlyBudgetMax)} /><InfoRow label="전시 구역" value={store.exhibitionZones.map(zone => zone.label || zone.type).join(' · ')} /></View>
     <SectionTitle title="공간 취향" action="수정" onPress={onPreferences} /><View style={f.wrap}>{[...store.moodTags, ...store.purposeTags].map(value => <Chip key={value} label={value} />)}</View>
   </ScrollView></View>;
 }
 
-export function StorePreferencesScreen({ userId, onBack, demo = false }: { userId: string; onBack: () => void; demo?: boolean }) {
+export function StorePreferencesScreen({ userId, onBack, onSaved, sample }: { userId: string; onBack: () => void; onSaved: (value: StoreOnboarding) => void; sample?: StoreOnboarding }) {
   const [store, setStore] = useState<StoreOnboarding | null>(null);
+  const [saved, setSaved] = useState<StoreOnboarding | null>(null);
+  const [minBudget, setMinBudget] = useState('');
+  const [maxBudget, setMaxBudget] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { const request = demo ? Promise.resolve(demoStoreOnboarding) : loadStoreOnboarding(userId); void request.then(setStore).catch(error => setNotice(friendlyError(error))); }, [demo, userId]);
+  const saveLock = useRef(false);
+  useEffect(() => {
+    let active = true;
+    const request = sample ? Promise.resolve(sample) : loadStoreOnboarding(userId);
+    void request.then(value => {
+      if (!active) return;
+      if (!value) throw new Error('매장 정보를 불러오지 못했어요.');
+      setStore(value); setSaved(value);
+      setMinBudget(String(value.monthlyBudgetMin ?? ''));
+      setMaxBudget(String(value.monthlyBudgetMax ?? ''));
+    }).catch(error => { if (active) setNotice(friendlyError(error)); });
+    return () => { active = false; };
+  }, [sample, userId]);
   if (!store && !notice) return <LoadingScreen title="공간 취향 · 전시 구역" onBack={onBack} />;
-  if (!store) return <View style={f.flex}><Header title="공간 취향 · 전시 구역" back={onBack} /><Notice text={notice} /></View>;
+  if (!store || !saved) return <View style={f.flex}><Header title="공간 취향 · 전시 구역" back={onBack} /><Notice text={notice} /></View>;
   const zones = store.exhibitionZones.map(zone => zone.type);
-  const save = async () => { setSaving(true); setNotice(''); try { if (!demo) await saveStoreOnboarding(store); setNotice('공간 취향과 전시 구역을 저장했습니다.'); } catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); } };
-  return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="공간 취향 · 전시 구역" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
-    <ChoiceCard title="공간 분위기" options={moodOptions} selected={store.moodTags} onToggle={value => setStore({ ...store, moodTags: store.moodTags.includes(value) ? store.moodTags.filter(item => item !== value) : [...store.moodTags, value] })} />
-    <ChoiceCard title="협업 목적" options={['분위기 전환', '공간 전시', '포토존 구성', '지역 크리에이터 소개', '상품 판매', '브랜드 표현']} selected={store.purposeTags} onToggle={value => setStore({ ...store, purposeTags: store.purposeTags.includes(value) ? store.purposeTags.filter(item => item !== value) : [...store.purposeTags, value] })} />
-    <View style={f.two}><View style={f.flex}><Field label="최소 예산" value={String(store.monthlyBudgetMin || '')} onChangeText={value => setStore({ ...store, monthlyBudgetMin: Number(value.replace(/\D/g, '')) || null })} keyboardType="number-pad" /></View><View style={f.flex}><Field label="최대 예산" value={String(store.monthlyBudgetMax || '')} onChangeText={value => setStore({ ...store, monthlyBudgetMax: Number(value.replace(/\D/g, '')) || null })} keyboardType="number-pad" /></View></View>
-    <ChoiceCard title="전시 구역" options={['벽면', '카운터', '테이블', '선반', '입구', '대기공간', '창가']} selected={zones} onToggle={value => { const next = zones.includes(value) ? store.exhibitionZones.filter(zone => zone.type !== value) : [...store.exhibitionZones, { type: value, widthCm: null, heightCm: null }]; setStore({ ...store, exhibitionZones: next }); }} />
-    {notice ? <Notice text={notice} /> : null}<Button label={saving ? '저장 중…' : '변경사항 저장'} disabled={saving} onPress={() => { void save(); }} />
-  </ScrollView></KeyboardAvoidingView>;
+  const budgetError = storeBudgetError(minBudget, maxBudget);
+  const patch = (value: Partial<StoreOnboarding>) => { if (!saving) { setStore({ ...store, ...value }); setNotice(''); } };
+  const toggleMood = (value: string) => toggle(value, store.moodTags, moodTags => patch({ moodTags }));
+  const save = async () => {
+    if (saveLock.current || budgetError || !zones.length) return;
+    saveLock.current = true;
+    setSaving(true); setNotice('');
+    const updated = { ...store, monthlyBudgetMin: minBudget ? Number(minBudget) : null, monthlyBudgetMax: maxBudget ? Number(maxBudget) : null };
+    try {
+      if (!sample) await saveStorePreferences(updated);
+      setStore(updated); setSaved(updated);
+      onSaved(updated);
+      setNotice('공간 취향과 전시 구역을 저장했습니다.');
+    } catch (error) {
+      setNotice(friendlyError(error));
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
+  };
+  return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Header title="공간 취향 · 전시 구역" back={onBack} />
+    <ScrollView style={f.flex} contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+      <CuritText style={f.description}>저장하면 매장 프로필과 공간 추천에 반영돼요.</CuritText>
+      <ChoiceCard title="공간 분위기" options={storeChoices(storeMoods, saved.moodTags.filter(value => !storeColors.includes(value)))} selected={store.moodTags} onToggle={toggleMood} />
+      <ChoiceCard title="공간 색감" options={storeColors} selected={store.moodTags} onToggle={toggleMood} />
+      <ChoiceCard title="협업 목적" options={storeChoices(storePurposes, saved.purposeTags)} selected={store.purposeTags} onToggle={value => toggle(value, store.purposeTags, purposeTags => patch({ purposeTags }))} />
+      <View style={f.two}>
+        <View style={f.flex}><Field label="최소 예산(원)" value={minBudget} onChangeText={value => { setMinBudget(value.replace(/\D/g, '')); setNotice(''); }} keyboardType="number-pad" editable={!saving} /></View>
+        <View style={f.flex}><Field label="최대 예산(원)" value={maxBudget} onChangeText={value => { setMaxBudget(value.replace(/\D/g, '')); setNotice(''); }} keyboardType="number-pad" editable={!saving} /></View>
+      </View>
+      {budgetError ? <CuritText accessibilityRole="alert" style={f.danger}>{budgetError}</CuritText> : null}
+      <ChoiceCard title="전시 구역 *" options={storeChoices(storeZones, saved.exhibitionZones.map(zone => zone.type))} selected={zones} onToggle={value => {
+        const original = saved.exhibitionZones.find(zone => zone.type === value);
+        const exhibitionZones = zones.includes(value)
+          ? store.exhibitionZones.filter(zone => zone.type !== value)
+          : [...store.exhibitionZones, original ?? { type: value, widthCm: null, heightCm: null }];
+        patch({ exhibitionZones });
+      }} />
+      {!zones.length ? <CuritText accessibilityRole="alert" style={f.danger}>전시 구역을 1곳 이상 선택해 주세요.</CuritText> : null}
+    </ScrollView>
+    <View style={f.sticky}>
+      {notice ? <Notice text={notice} /> : null}
+      <Button label={saving ? '저장 중…' : '변경사항 저장'} disabled={saving || Boolean(budgetError) || !zones.length} onPress={() => { void save(); }} />
+    </View>
+  </KeyboardAvoidingView>;
 }
 
 export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = false }: { item: QrProduct; onBack: () => void; onSaved: (item: QrProduct) => void; demo?: boolean }) {

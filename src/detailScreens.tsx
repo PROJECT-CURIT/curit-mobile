@@ -6,6 +6,7 @@ import { friendlyError, mediaUrl, saveStoreOnboarding, saveStorePhotos, uploadMe
 import { colors, fonts, radius } from './theme';
 import { Button, Chip, CuritText, Field, Header, Icon } from './ui';
 import { images } from './data';
+import { storeBudgetError, storeChoices, storeColors, storeMoods, storePurposes, storeZones } from './storePreferences';
 
 export type ProjectProduct = {
   id: string;
@@ -307,17 +308,19 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
     (initial?.photoPaths ?? []).map(path => ({ uri: demo && path === 'demo-cafe' ? '' : mediaUrl(path), path })),
   );
   const [zones, setZones] = useState<string[]>((initial?.exhibitionZones ?? []).map(zone => zone.type));
-  const [zoneWidth, setZoneWidth] = useState(initial?.exhibitionZones[0]?.widthCm?.toString() ?? '');
-  const [zoneHeight, setZoneHeight] = useState(initial?.exhibitionZones[0]?.heightCm?.toString() ?? '');
+  const initialWidth = initial?.exhibitionZones[0]?.widthCm?.toString() ?? '';
+  const initialHeight = initial?.exhibitionZones[0]?.heightCm?.toString() ?? '';
+  const [zoneWidth, setZoneWidth] = useState(initialWidth);
+  const [zoneHeight, setZoneHeight] = useState(initialHeight);
   const [busy, setBusy] = useState(false);
   const savingStep = useRef(false);
   const storePhoto = usePhotoPicker();
   const { checking: checkingPhoto, clearError: clearPhotoError } = storePhoto;
   const [error, setError] = useState('');
   const firstValid = Boolean(name.trim() && address.trim() && intro.trim() && audience.trim());
-  const budgetValid = (!budgetMin || !budgetMax || Number(budgetMin) <= Number(budgetMax))
-    && [budgetMin, budgetMax].every(value => !value || Number(value) <= 2_147_483_647);
-  const stepValid = step === 1 ? firstValid : step === 2 ? moods.length > 0 && purposes.length > 0 && budgetValid : step === 4 ? zones.length > 0 : true;
+  const budgetError = storeBudgetError(budgetMin, budgetMax);
+  const stepValid = step === 1 ? firstValid : step === 2 ? moods.some(value => !storeColors.includes(value)) && purposes.length > 0 && !budgetError : step === 4 ? zones.length > 0 : true;
+  const savedMoods = (initial?.moodTags ?? []).filter(value => !storeColors.includes(value));
 
   const toggle = (value: string, current: string[], update: (next: string[]) => void) =>
     update(current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
@@ -333,7 +336,15 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
     monthlyBudgetMin: budgetMin ? Number(budgetMin) : null,
     monthlyBudgetMax: budgetMax ? Number(budgetMax) : null,
     photoPaths,
-    exhibitionZones: zones.map(type => ({ type, widthCm: zoneWidth ? Number(zoneWidth) : null, heightCm: zoneHeight ? Number(zoneHeight) : null })),
+    exhibitionZones: zones.map(type => {
+      const saved = initial?.exhibitionZones.find(zone => zone.type === type);
+      return {
+        ...saved,
+        type,
+        widthCm: saved && zoneWidth === initialWidth ? saved.widthCm : zoneWidth ? Number(zoneWidth) : null,
+        heightCm: saved && zoneHeight === initialHeight ? saved.heightCm : zoneHeight ? Number(zoneHeight) : null,
+      };
+    }),
     step: nextStep,
     complete,
   });
@@ -414,10 +425,11 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
         {step === 2 ? <>
           <CuritText weight="bold" style={d.projectTitle}>원하는 공간 분위기를 알려주세요</CuritText>
           <CuritText style={d.description}>선택 내용은 AI 추천의 초기 조건으로 사용됩니다.</CuritText>
-          <ChoiceGroup title="선호 분위기 *" values={['따뜻한', '미니멀', '빈티지', '자연', '컬러풀']} selected={moods} onToggle={value => toggle(value, moods, setMoods)} />
-          <ChoiceGroup title="협업 목적 *" values={['분위기 전환', '포토존', '빈 공간 활용', '추가 수익', '지역 작가 소개']} selected={purposes} onToggle={value => toggle(value, purposes, setPurposes)} />
+          <ChoiceGroup title="선호 분위기 *" values={storeChoices(storeMoods, savedMoods)} selected={moods} onToggle={value => toggle(value, moods, setMoods)} />
+          <ChoiceGroup title="공간 색감 · 선택" values={storeColors} selected={moods} onToggle={value => toggle(value, moods, setMoods)} />
+          <ChoiceGroup title="협업 목적 *" values={storeChoices(storePurposes, initial?.purposeTags ?? [])} selected={purposes} onToggle={value => toggle(value, purposes, setPurposes)} />
           <View style={d.twoColumns}><View style={d.flex}><Field label="최소 예산(원)" value={budgetMin} onChangeText={value => setBudgetMin(value.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="100000" /></View><View style={d.flex}><Field label="최대 예산(원)" value={budgetMax} onChangeText={value => setBudgetMax(value.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="500000" /></View></View>
-          {!budgetValid ? <CuritText accessibilityRole="alert" style={d.error}>최대 예산은 최소 예산 이상으로 입력해 주세요. 입력할 수 있는 최대 금액은 2,147,483,647원입니다.</CuritText> : null}
+          {budgetError ? <CuritText accessibilityRole="alert" style={d.error}>{budgetError}</CuritText> : null}
         </> : null}
         {step === 3 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장 사진을 등록해 주세요</CuritText>
@@ -435,7 +447,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
         {step === 4 ? <>
           <CuritText weight="bold" style={d.projectTitle}>전시 가능한 구역을 선택해 주세요</CuritText>
           <CuritText style={d.description}>실제 설치 가능한 공간만 선택하면 추천 실패를 줄일 수 있어요.</CuritText>
-          <ChoiceGroup title="전시 구역 *" values={['벽면', '선반', '테이블', '카운터', '창가']} selected={zones} onToggle={value => toggle(value, zones, setZones)} />
+          <ChoiceGroup title="전시 구역 *" values={storeChoices(storeZones, (initial?.exhibitionZones ?? []).map(zone => zone.type))} selected={zones} onToggle={value => toggle(value, zones, setZones)} />
           <View style={d.twoColumns}><View style={d.flex}><Field label="가로 크기(cm)" value={zoneWidth} onChangeText={value => setZoneWidth(value.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="120" /></View><View style={d.flex}><Field label="세로 크기(cm)" value={zoneHeight} onChangeText={value => setZoneHeight(value.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="90" /></View></View>
           <View style={d.editNotice}><CuritText style={d.hint}>콘센트, 직사광선, 습기처럼 작품에 영향을 주는 조건은 매칭 제안 단계에서 추가로 확인합니다.</CuritText></View>
         </> : null}

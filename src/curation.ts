@@ -215,7 +215,7 @@ async function creatorRecommendations(preferenceText = ''): Promise<MatchRecomme
         zones.length ? `${zones.slice(0, 2).join('·')} 구역이 등록돼 있어요` : '전시 구역 정보가 없어 협의가 필요해요',
         regionFit ? '활동 지역과 매장 지역이 겹쳐요' : '지역 조건은 협업 제안 전에 확인해 주세요',
       ],
-      tags: [...new Set([...store.mood_tags, store.category, ...zones])].filter((tag): tag is string => Boolean(tag)).slice(0, 4),
+      tags: [...new Set([...store.mood_tags, store.category, ...zones])].filter((tag): tag is string => Boolean(tag)),
       imageUrl: store.photo_paths[0] ? mediaUrl(store.photo_paths[0]) : undefined,
       collaborationId: collaborations.get(store.id)?.id,
       collaborationStatus: collaborations.get(store.id)?.status,

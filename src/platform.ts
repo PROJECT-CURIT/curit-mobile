@@ -18,7 +18,7 @@ export type StoreOnboarding = {
   monthlyBudgetMin: number | null;
   monthlyBudgetMax: number | null;
   photoPaths: string[];
-  exhibitionZones: { type: string; widthCm: number | null; heightCm: number | null }[];
+  exhibitionZones: { type: string; widthCm: number | null; heightCm: number | null; label?: string }[];
   step: number;
   complete: boolean;
 };
@@ -149,11 +149,25 @@ export async function saveStoreOnboarding(value: StoreOnboarding) {
 }
 
 export async function saveStorePhotos(photoPaths: string[]) {
+  await updateStoreProfile({ photo_paths: photoPaths });
+}
+
+export async function saveStorePreferences(value: Pick<StoreOnboarding, 'moodTags' | 'purposeTags' | 'monthlyBudgetMin' | 'monthlyBudgetMax' | 'exhibitionZones'>) {
+  await updateStoreProfile({
+    mood_tags: value.moodTags,
+    purpose_tags: value.purposeTags,
+    monthly_budget_min: value.monthlyBudgetMin,
+    monthly_budget_max: value.monthlyBudgetMax,
+    exhibition_zones: value.exhibitionZones,
+  });
+}
+
+async function updateStoreProfile(fields: Record<string, unknown>) {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
   const { error } = await supabase.from('store_profiles')
-    .update({ photo_paths: photoPaths })
+    .update(fields)
     .eq('owner_id', auth.user.id)
     .select('id')
     .single();
@@ -192,6 +206,7 @@ export async function loadStoreOnboarding(userId: string): Promise<StoreOnboardi
     exhibitionZones: Array.isArray(data.exhibition_zones)
       ? data.exhibition_zones.map((zone: Record<string, unknown>) => ({
         type: String(zone.type || ''),
+        label: typeof zone.label === 'string' ? zone.label : undefined,
         widthCm: zone.widthCm === null || zone.widthCm === undefined ? null : Number(zone.widthCm),
         heightCm: zone.heightCm === null || zone.heightCm === undefined ? null : Number(zone.heightCm),
       }))

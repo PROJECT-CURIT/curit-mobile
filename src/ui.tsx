@@ -108,7 +108,8 @@ export function Field(props: TextInputProps & { label?: string }) {
 }
 
 export function Chip({ label, active, onPress }: { label: string; active?: boolean; onPress?: () => void }) {
-  return <Pressable accessibilityRole={onPress ? 'button' : undefined} accessibilityState={onPress ? { selected: Boolean(active) } : undefined} disabled={!onPress} hitSlop={onPress ? 8 : undefined} onPress={onPress} style={[styles.chip, active && styles.chipActive]}><CuritText weight={active ? 'semibold' : 'regular'} style={[styles.chipText, active && { color: colors.surface }]}>{label}</CuritText></Pressable>;
+  const webState = Platform.OS === 'web' && onPress && active !== undefined ? { 'aria-pressed': active } : {};
+  return <Pressable {...webState} accessibilityRole={onPress ? 'button' : undefined} accessibilityState={onPress ? { selected: Boolean(active) } : undefined} disabled={!onPress} hitSlop={onPress ? 8 : undefined} onPress={onPress} style={[styles.chip, active && styles.chipActive]}><CuritText weight={active ? 'semibold' : 'regular'} style={[styles.chipText, active && { color: colors.surface }]}>{label}</CuritText></Pressable>;
 }
 
 export function SectionTitle({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
