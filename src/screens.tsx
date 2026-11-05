@@ -18,6 +18,13 @@ const demoSettlements: SettlementEntry[] = [
   { id: 'demo-settlement-paid', orderId: 'QR-DEMO-20261018', collaborationId: 'demo', grossAmount: 18000, creatorAmount: 14400, storeAmount: 1800, platformAmount: 1800, status: 'paid', scheduledFor: '2026-10-25', createdAt: '2026-10-18T05:10:00Z' },
 ];
 
+function pendingSettlementTotal(entries: SettlementEntry[], role: Role) {
+  return entries.reduce((total, entry) => {
+    if (entry.status !== 'scheduled' && entry.status !== 'ready') return total;
+    return total + (role === 'creator' ? entry.creatorAmount : entry.storeAmount);
+  }, 0);
+}
+
 async function fetchQrCatalog(demo?: boolean) {
   const [fieldResult, managedResult] = await Promise.allSettled([
     loadFieldSaleProducts(),
@@ -122,7 +129,7 @@ export function RoleSelectionScreen({ onSelect, onBack }: { onSelect: (role: Rol
 }
 
 function useCommerceSummary(role: Role, demo?: boolean) {
-  const [summary, setSummary] = useState({ qrViews: demo ? 203 : 0, salesCount: demo ? 8 : 0, expectedSettlement: demo ? 310000 : 0, loading: !demo });
+  const [summary, setSummary] = useState({ qrViews: demo ? 203 : 0, salesCount: demo ? 8 : 0, expectedSettlement: demo ? pendingSettlementTotal(demoSettlements, role) : 0, loading: !demo, failed: false });
   useEffect(() => {
     if (demo) return;
     let active = true;
@@ -133,12 +140,13 @@ function useCommerceSummary(role: Role, demo?: boolean) {
         setSummary({
           qrViews: qrProducts.reduce((sum, item) => sum + (item.viewCount || 0), 0),
           salesCount: new Set(eligible.map(entry => entry.orderId)).size,
-          expectedSettlement: eligible.reduce((sum, entry) => sum + (role === 'creator' ? entry.creatorAmount : entry.storeAmount), 0),
+          expectedSettlement: pendingSettlementTotal(entries, role),
           loading: false,
+          failed: false,
         });
       })
       .catch(() => {
-        if (active) setSummary(current => ({ ...current, loading: false }));
+        if (active) setSummary(current => ({ ...current, loading: false, failed: true }));
       });
     return () => { active = false; };
   }, [demo, role]);
@@ -178,7 +186,6 @@ function useCollaborationList(role: Role, demo?: boolean) {
 }
 
 function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendation, onOpenCollaboration }: HomeProps) {
-  const summary = useCommerceSummary('creator', demo);
   const recommended = useRecommendations('creator', demo);
   const collaborations = useCollaborationList('creator', demo);
   const current = collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
@@ -206,7 +213,7 @@ function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendatio
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
       <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onOpenRecommendation(item)} />)}</View>
       {!recommended.loading && !items.length ? <Empty title="추천할 공간을 찾고 있어요" description="작품 DNA와 활동 지역을 저장하면 맞는 매장을 비교해 드립니다." /> : null}
-      {current ? <Pressable accessibilityRole="button" accessibilityLabel="진행 중인 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText><CuritText style={s.gridMeta}>{summary.loading ? '성과 집계 중' : `${summary.salesCount}건 판매 · ${money(summary.expectedSettlement)} 예상 정산`}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
+      {current ? <Pressable accessibilityRole="button" accessibilityLabel="진행 중인 협업 상세 열기" style={s.compactCollaboration} onPress={() => onOpenCollaboration(current)}><View style={s.flex}><CuritText style={s.gridMeta}>진행 중인 협업</CuritText><CuritText weight="semibold">{current.projectTitle} · {current.storeName}</CuritText></View><Icon name="chevron" color={colors.subtle} /></Pressable> : null}
     </ScrollView>
   );
 }
@@ -302,7 +309,7 @@ function CreatorManagement({ demo, onOpenSettlements, onOpenCollaboration }: { d
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
   return <View style={s.flex}><Header title="협업 관리" /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 대기" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="출고 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
-    <View style={s.quickGrid}><QuickAction icon="management" label="판매·정산" description={summary.loading ? '정산 내역 확인' : `예상 ${money(summary.expectedSettlement)}`} onPress={onOpenSettlements} /></View>
+    <View style={s.quickGrid}><QuickAction icon="management" label="판매·정산" description={summary.loading || summary.failed ? '정산 내역 확인' : `${money(summary.expectedSettlement)} 정산 예정`} onPress={onOpenSettlements} /></View>
     <SectionTitle title="협업 제안 및 전시" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="creator" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 협업이 없습니다" description="AI 큐레이터의 추천에서 매장에 협업을 제안해 보세요." />}
   </ScrollView></View>;
 }
@@ -316,7 +323,7 @@ function StoreManagement({ demo, onOpenQr, onOpenPickup, onOpenSettlements, onOp
   const exhibitionCount = collaborations.items.filter(item => item.status === 'active').length;
   return <View style={s.flex}><Header title="매장 관리" /><ScrollView contentContainerStyle={s.scroll}>
     <View style={s.metricsBox}><Metric value={collaborations.loading ? '—' : String(proposalCount)} label="제안 확인" /><Metric value={collaborations.loading ? '—' : String(readyCount)} label="전시 준비" /><Metric value={collaborations.loading ? '—' : String(exhibitionCount)} label="전시 중" /></View>
-    <View style={s.commerceStrip}><Metric value={summary.loading ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading ? '—' : `${summary.salesCount}건`} label="누적 판매" /><Metric value={summary.loading ? '—' : money(summary.expectedSettlement)} label="예상 정산" /></View>
+    <View style={s.commerceStrip}><Metric value={summary.loading || summary.failed ? '—' : String(summary.qrViews)} label="QR 조회" /><Metric value={summary.loading || summary.failed ? '—' : `${summary.salesCount}건`} label="누적 판매" /><Metric value={summary.loading || summary.failed ? '—' : money(summary.expectedSettlement)} label="정산 예정" /></View>
     <View style={s.quickGrid}><QuickAction icon="qr" label="QR 상품 관리" description="가격·수량·판매 상태" onPress={onOpenQr} /><QuickAction icon="store" label="수령 관리" description="예약·즉시 수령 전달" onPress={onOpenPickup} /><QuickAction icon="management" label="판매·정산" description="주문·정산 내역" onPress={onOpenSettlements} /></View><SectionTitle title="협업·전시 현황" />{active.length ? active.map(item => <CollaborationCard key={item.id} item={item} role="store" onPress={() => onOpenCollaboration(item)} />) : <Empty title="진행 중인 전시가 없습니다" description="AI 추천에서 작품을 선택해 협업 제안을 보내보세요." />}
   </ScrollView></View>;
 }
@@ -368,10 +375,9 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration, onOp
     setLoading(true); setError(''); setSales(null); setSalesError('');
     setAttempt(value => value + 1);
   };
-  const pending = entries.filter(entry => entry.status === 'scheduled' || entry.status === 'ready');
   const paid = entries.filter(entry => entry.status === 'paid');
   const share = (entry: SettlementEntry) => role === 'creator' ? entry.creatorAmount : entry.storeAmount;
-  const expected = pending.reduce((sum, entry) => sum + share(entry), 0);
+  const expected = pendingSettlementTotal(entries, role);
   const completed = paid.reduce((sum, entry) => sum + share(entry), 0);
   const entriesByOrder = new Map(entries.map(entry => [entry.orderId, entry]));
   const titles = new Map(sales?.collaborations.map(item => [item.id, item.projectTitle]));
@@ -427,13 +433,46 @@ export function SettlementScreen({ role, demo, onBack, onOpenCollaboration, onOp
 
 function SettlementLine({ label, value }: { label: string; value: string }) { return <View style={s.settlementLine}><CuritText style={s.muted}>{label}</CuritText><CuritText weight="semibold">{value}</CuritText></View>; }
 
-export function MyScreen({ role, displayName, onOpenProject, onOpenProfile, onOpenDna, onOpenStore, onOpenPreferences, onOpenVerification, onOpenNotifications, onOpenAccount }: { role: Role; displayName: string; onOpenProject?: () => void; onOpenProfile: () => void; onOpenDna: () => void; onOpenStore: () => void; onOpenPreferences: () => void; onOpenVerification: () => void; onOpenNotifications: () => void; onOpenAccount: () => void }) {
+function openCollaborationCount(items: CollaborationSummary[]) {
+  return items.filter(item => item.status !== 'completed' && item.status !== 'cancelled').length;
+}
+
+function CreatorActivity({ sampleCollaborations }: { sampleCollaborations?: CollaborationSummary[] }) {
+  const [activity, setActivity] = useState<{ open: number | null; pending: number | null }>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (sampleCollaborations) return;
+    let active = true;
+    void Promise.allSettled([loadCollaborations('creator'), loadSettlements()]).then(([collaborations, settlements]) => {
+      if (!active) return;
+      setActivity({
+        open: collaborations.status === 'fulfilled' ? openCollaborationCount(collaborations.value) : null,
+        pending: settlements.status === 'fulfilled' ? pendingSettlementTotal(settlements.value, 'creator') : null,
+      });
+    });
+    return () => { active = false; };
+  }, [attempt, sampleCollaborations]);
+  const open = sampleCollaborations ? openCollaborationCount(sampleCollaborations) : activity?.open;
+  const pending = sampleCollaborations ? pendingSettlementTotal(demoSettlements, 'creator') : activity?.pending;
+  const failed = open === null || pending === null;
+  return <View style={s.myActivity}>
+    <CuritText accessibilityRole="header" weight="semibold">협업·정산 활동</CuritText>
+    <View style={s.myActivityMetrics}>
+      <View style={s.myActivityMetric}><CuritText style={s.muted}>진행 중 협업</CuritText><CuritText weight="bold" style={s.metricValue}>{open == null ? '—' : `${open}건`}</CuritText></View>
+      <View style={s.myActivityMetric}><CuritText style={s.muted}>정산 예정</CuritText><CuritText weight="bold" style={s.metricValue}>{pending == null ? '—' : money(pending)}</CuritText></View>
+    </View>
+    {failed ? <View style={s.myActivityRetry}><CuritText style={[s.muted, s.flex]}>일부 정보를 불러오지 못했어요.</CuritText><Pressable accessibilityRole="button" style={s.myActivityRetryButton} onPress={() => { setActivity(undefined); setAttempt(value => value + 1); }}><CuritText weight="semibold" style={s.settingsValue}>다시 시도</CuritText></Pressable></View> : null}
+  </View>;
+}
+
+export function MyScreen({ role, displayName, sampleCollaborations, onOpenProject, onOpenProfile, onOpenDna, onOpenStore, onOpenPreferences, onOpenVerification, onOpenNotifications, onOpenAccount }: { role: Role; displayName: string; sampleCollaborations?: CollaborationSummary[]; onOpenProject?: () => void; onOpenProfile: () => void; onOpenDna: () => void; onOpenStore: () => void; onOpenPreferences: () => void; onOpenVerification: () => void; onOpenNotifications: () => void; onOpenAccount: () => void }) {
   const rows = role === 'creator'
     ? [{ icon: 'heart' as const, label: '활동 인증', onPress: onOpenVerification }, { icon: 'store' as const, label: '나의 작품 DNA', onPress: onOpenDna }, { icon: 'qr' as const, label: '내 전시 프로젝트', onPress: onOpenProject }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }]
     : [{ icon: 'store' as const, label: '매장 운영 인증', onPress: onOpenVerification }, { icon: 'heart' as const, label: '공간 취향·전시 구역', onPress: onOpenPreferences }, { icon: 'chat' as const, label: '내 소식', onPress: onOpenNotifications }];
   const openProfile = role === 'creator' ? onOpenProfile : onOpenStore;
   return <View style={s.flex}><Header title="마이" /><ScrollView contentContainerStyle={s.myScroll} showsVerticalScrollIndicator={false}>
     <Pressable accessibilityRole="button" accessibilityLabel={`${role === 'creator' ? '크리에이터' : '매장'} 프로필 보기 및 수정`} style={s.myIdentity} onPress={openProfile}><View style={s.profileAvatar}><CuritText weight="bold" style={{ fontSize: 16 }}>{displayName.slice(0, 2) || 'CU'}</CuritText></View><View style={s.flex}><CuritText weight="bold" style={s.myName}>{displayName}</CuritText><CuritText style={s.muted}>{role === 'creator' ? '크리에이터' : '매장 운영자'}</CuritText></View><View style={s.profileOpen}><CuritText weight="semibold" style={s.profileOpenText}>프로필</CuritText><Icon name="chevron" size={14} color={colors.brand} /></View></Pressable>
+    {role === 'creator' ? <CreatorActivity sampleCollaborations={sampleCollaborations} /> : null}
     <View style={s.myMenuBox}>{rows.map(row => <Pressable accessibilityRole="button" key={row.label} style={s.myMenuRow} onPress={row.onPress}><Icon name={row.icon} size={17} color={colors.muted} /><CuritText style={s.flex}>{row.label}</CuritText><Icon name="chevron" size={14} color={colors.subtle} /></Pressable>)}</View>
     <Pressable accessibilityRole="button" style={s.accountAction} onPress={onOpenAccount}><CuritText style={s.muted}>계정 정보 · 개인정보 관리</CuritText><CuritText style={s.muted}>→</CuritText></Pressable>
   </ScrollView></View>;
@@ -595,6 +634,11 @@ const s = StyleSheet.create({
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingBottom: 22, borderBottomWidth: 1, borderBottomColor: colors.border }, profileAvatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, settingsRow: { minHeight: 54, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' },
   myScroll: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 40 },
   myIdentity: { minHeight: 92, marginTop: 20, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  myActivity: { borderRadius: radius.lg, backgroundColor: colors.brandPale, padding: 16, gap: 12, marginBottom: 14 },
+  myActivityMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  myActivityMetric: { flex: 1, minWidth: 106, gap: 4 },
+  myActivityRetry: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  myActivityRetryButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
   myName: { fontSize: 20, lineHeight: 27, letterSpacing: -.4, marginBottom: 3 },
   profileOpen: { minHeight: 40, paddingLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 3 },
   profileOpenText: { color: colors.brand, fontSize: 11 },
