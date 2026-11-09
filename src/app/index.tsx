@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, Platform, TextInput, View } from 'react-native';
 import { BottomNav, Button, Empty, Header, ScreenFrame, SessionLockedContext } from '../ui';
-import { AccountSettingsScreen, AccountSignupScreen, EmailConfirmationScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
+import { AccountSettingsScreen, AccountSignupScreen, HomeScreen, LoginScreen, ManagementScreen, MyScreen, QrProductsScreen, RoleSelectionScreen, SettlementScreen } from '../screens';
 import { ChatHubScreen, CollaborationDetailScreen, CuratorScreen, MatchingDiscoverScreen, RecommendationScreen } from '../curationScreens';
 import { loadCollaborations } from '../curation';
 import { CreatorProjectEditScreen, CreatorProjectScreen, initialCreatorProducts, StoreSignupScreen, type ProjectProduct } from '../detailScreens';
 import { config } from '../config';
-import { addProjectProduct, currentSession, deleteProjectProduct, friendlyError, loadCreatorProject, loadStoreOnboarding, resendSignupConfirmation, saveCreatorProject, signIn, signOut, signUp, storeOnboardingComplete, updateProjectProduct, type CreatorProjectDetails, type StoreOnboarding } from '../platform';
-import { creatorOnboardingComplete, requestPasswordReset } from '../fullPlatform';
+import { addProjectProduct, currentSession, deleteProjectProduct, friendlyError, loadCreatorProject, loadStoreOnboarding, saveCreatorProject, signIn, signOut, signUp, storeOnboardingComplete, updateProjectProduct, type CreatorProjectDetails, type StoreOnboarding } from '../platform';
+import { requestPasswordReset } from '../fullPlatform';
 import { CreatorDnaScreen, CreatorProfileScreen, NotificationsScreen, PickupScreen, QrProductEditorScreen, StorePreferencesScreen, StoreProfileScreen, VerificationScreen } from '../fullPrototypeScreens';
 import { getSupabase, isSupabaseConfigured } from '../supabase';
 import { colors } from '../theme';
@@ -16,7 +16,7 @@ import type { CollaborationSummary, MatchRecommendation, QrProduct, Role, Sessio
 import { demoCollaboration, demoCollaborationList, demoProposalCollaboration, demoStoreOnboarding } from '../demoContent';
 import type { ExhibitionPeriod } from '../exhibitionPeriod';
 
-type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup' | 'confirmation';
+type AuthView = 'login' | 'role' | 'account-signup' | 'store-signup';
 
 export default function AppIndex() {
   const [session, setSession] = useState<Session | null>(null);
@@ -26,7 +26,7 @@ export default function AppIndex() {
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [authView, setAuthView] = useState<AuthView>('login');
   const [signupRole, setSignupRole] = useState<Role>('creator');
-  const [confirmationEmail, setConfirmationEmail] = useState('');
+  const creatingAccount = useRef(false);
   const [pendingStoreSession, setPendingStoreSession] = useState<Session | null>(null);
   const [pendingStoreOnboarding, setPendingStoreOnboarding] = useState<StoreOnboarding | null>(null);
   const [tab, setTab] = useState<TabKey>('home');
@@ -47,7 +47,7 @@ export default function AppIndex() {
   const [creatorProject, setCreatorProject] = useState<CreatorProjectDetails>({ id: 'demo-project', title: '흙의 기억', story: '흙이 일상에 머무는 순간을 담았습니다.', concept: '따뜻한 생활 도예 컬렉션', region: '서울', purpose: '작품 전시 및 판매', status: 'recruiting', coverPath: '', coverUrl: '', creatorSharePercent: 80 });
   const [selectedQrProduct, setSelectedQrProduct] = useState<QrProduct | null>(null);
   const [storeOnboarding, setStoreOnboarding] = useState<StoreOnboarding | null>(null);
-  const [creatorOnboardingFlow, setCreatorOnboardingFlow] = useState(false);
+  const [firstProject, setFirstProject] = useState(false);
   const [storePreferencesParent, setStorePreferencesParent] = useState<'home' | 'profile'>('profile');
 
   const hydrateCreator = useCallback(async () => {
@@ -62,7 +62,6 @@ export default function AppIndex() {
   const enterSession = useCallback(async (next: Session) => {
     if (next.role === 'creator') {
       await hydrateCreator();
-      if (!next.demo && !(await creatorOnboardingComplete(next.userId))) { setCreatorOnboardingFlow(true); setSubview('creator-dna'); }
     } else if (!next.demo) await hydrateStore(next.userId);
     setSession(next); setTab('home'); setAuthView('login');
   }, [hydrateCreator, hydrateStore]);
@@ -164,6 +163,7 @@ export default function AppIndex() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (creatingAccount.current) return true;
       if (sessionLocked) {
         Keyboard.dismiss();
         return true;
@@ -176,7 +176,6 @@ export default function AppIndex() {
       }
       if (subview === 'creator-project-edit' || subview === 'store-edit' || subview === 'store-photos' || (!session && authView === 'store-signup')) return false;
       if (subview) {
-        if (subview === 'creator-dna' && creatorOnboardingFlow) setCreatorOnboardingFlow(false);
         const parentSubview = subview === 'pickup'
           ? pickupParent
           : subview === 'qr-products'
@@ -204,7 +203,7 @@ export default function AppIndex() {
       return false;
     });
     return () => subscription.remove();
-  }, [authView, creatorOnboardingFlow, noticeCollaborationId, pickupParent, qrParent, session, sessionLocked, storePreferencesParent, subview, tab]);
+  }, [authView, noticeCollaborationId, pickupParent, qrParent, session, sessionLocked, storePreferencesParent, subview, tab]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -229,22 +228,23 @@ export default function AppIndex() {
   };
 
   const createAccount = async (email: string, password: string, displayName: string) => {
+    if (creatingAccount.current) return;
+    creatingAccount.current = true;
     try {
-      const result = await signUp(email, password, displayName, signupRole);
-      if (!result.session) {
-        setConfirmationEmail(email.trim());
-        setAuthView('confirmation');
-        return;
-      }
-      if (signupRole === 'store') {
-        setPendingStoreSession(result.session);
+      const next = await signUp(email, password, displayName, signupRole);
+      if (next.role === 'store') {
+        setPendingStoreSession(next);
         setPendingStoreOnboarding(null);
         setAuthView('store-signup');
       } else {
-        await enterSession(result.session);
+        await enterSession(next);
+        setFirstProject(true);
+        setSubview('creator-project-edit');
       }
     } catch (error) {
       throw new Error(friendlyError(error));
+    } finally {
+      creatingAccount.current = false;
     }
   };
 
@@ -252,7 +252,7 @@ export default function AppIndex() {
     const wasDemo = session?.demo;
     if (session && !sessionLocked && !wasDemo && isSupabaseConfigured) await deactivateNativePush(session.userId).catch(() => undefined);
     setSession(null); setPendingStoreSession(null); setDemoCollaborations([]); setCollaborationDrafts({}); setSelectedCollaboration(null); setNoticeCollaborationId(null); setDiscoverVisited(false); setTab('home'); setSubview(null);
-    setSessionLocked(false);
+    setSessionLocked(false); setFirstProject(false);
     if (!wasDemo && isSupabaseConfigured) {
       if (sessionLocked) {
         const { error } = await getSupabase().auth.signOut({ scope: 'local' });
@@ -303,7 +303,7 @@ export default function AppIndex() {
       return;
     }
     const result = await saveCreatorProject(creatorProjectId, value);
-    setCreatorProject(result.project); setCreatorProducts(result.products);
+    setCreatorProjectId(result.projectId); setCreatorProject(result.project); setCreatorProducts(result.products);
   };
 
   const showCollaboration = (item: CollaborationSummary) => {
@@ -343,23 +343,21 @@ export default function AppIndex() {
       ? <RoleSelectionScreen onBack={() => setAuthView('login')} onSelect={role => { setSignupRole(role); setAuthView('account-signup'); }} />
       : authView === 'account-signup'
         ? <AccountSignupScreen role={signupRole} onBack={() => setAuthView('role')} onSubmit={createAccount} />
-        : authView === 'confirmation'
-          ? <EmailConfirmationScreen email={confirmationEmail} onLogin={() => setAuthView('login')} onResend={() => resendSignupConfirmation(confirmationEmail)} />
-          : <StoreSignupScreen initial={pendingStoreOnboarding} onBack={() => { void leaveStoreOnboarding(); }} onComplete={store => { if (pendingStoreSession) { setStoreOnboarding(store); setSession({ ...pendingStoreSession, displayName: store.name.trim() }); setPendingStoreSession(null); setPendingStoreOnboarding(null); setAuthView('login'); } }} />}</ScreenFrame>;
+        : <StoreSignupScreen quickStart initial={pendingStoreOnboarding} onBack={() => { void leaveStoreOnboarding(); }} onComplete={store => { if (pendingStoreSession) { setStoreOnboarding(store); setSession({ ...pendingStoreSession, displayName: store.name.trim() }); setPendingStoreSession(null); setPendingStoreOnboarding(null); setAuthView('login'); } }} />}</ScreenFrame>;
   function renderAuthenticated(session: Session) {
-    if (subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => { setCreatorOnboardingFlow(false); setSubview(null); }} onNext={creatorOnboardingFlow ? () => { setCreatorOnboardingFlow(false); setSubview('creator-profile-edit'); } : undefined} /></ScreenFrame>;
-    if (subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" project={creatorProject} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} onOpenProject={() => setSubview('creator-project')} /></ScreenFrame>;
-    if (subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={(profile, stillEditing) => {
+    if (session.role === 'creator' && subview === 'creator-dna') return <ScreenFrame><CreatorDnaScreen demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
+    if (session.role === 'creator' && subview === 'creator-profile') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="view" project={creatorProject} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-profile-edit')} onOpenProject={() => setSubview('creator-project')} /></ScreenFrame>;
+    if (session.role === 'creator' && subview === 'creator-profile-edit') return <ScreenFrame><CreatorProfileScreen demo={session.demo} mode="edit" onBack={() => setSubview('creator-profile')} onSaved={(profile, stillEditing) => {
       if (activeUserId.current !== session.userId) return;
       setSession(current => current?.userId === session.userId ? { ...current, displayName: profile.displayName } : current);
       if (stillEditing) setSubview(current => current === 'creator-profile-edit' ? 'creator-profile' : current);
     }} /></ScreenFrame>;
-    if (subview === 'store-profile') return <ScreenFrame><StoreProfileScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onBack={() => setSubview(null)} onEdit={store => { setStoreOnboarding(store); setSubview('store-edit'); }} onEditPhotos={store => { setStoreOnboarding(store); setSubview('store-photos'); }} onPreferences={() => { setStorePreferencesParent('profile'); setSubview('store-preferences'); }} /></ScreenFrame>;
-    if ((subview === 'store-edit' || subview === 'store-photos') && storeOnboarding) {
+    if (session.role === 'store' && subview === 'store-profile') return <ScreenFrame><StoreProfileScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onBack={() => setSubview(null)} onEdit={store => { setStoreOnboarding(store); setSubview('store-edit'); }} onEditPhotos={store => { setStoreOnboarding(store); setSubview('store-photos'); }} onPreferences={() => { setStorePreferencesParent('profile'); setSubview('store-preferences'); }} /></ScreenFrame>;
+    if (session.role === 'store' && (subview === 'store-edit' || subview === 'store-photos') && storeOnboarding) {
       const photosOnly = subview === 'store-photos';
       return <ScreenFrame><StoreSignupScreen demo={session.demo} initial={{ ...storeOnboarding, step: photosOnly ? 3 : 1 }} photosOnly={photosOnly} onBack={() => setSubview('store-profile')} onComplete={finishStoreEdit} /></ScreenFrame>;
     }
-    if (subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onSaved={store => { if (activeUserId.current === session.userId) setStoreOnboarding(store); }} onBack={() => setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null)} /></ScreenFrame>;
+    if (session.role === 'store' && subview === 'store-preferences') return <ScreenFrame><StorePreferencesScreen sample={session.demo ? storeOnboarding ?? demoStoreOnboarding : undefined} userId={session.userId} onSaved={store => { if (activeUserId.current === session.userId) setStoreOnboarding(store); }} onBack={() => setSubview(storePreferencesParent === 'profile' ? 'store-profile' : null)} /></ScreenFrame>;
     if (subview === 'verification') return <ScreenFrame><VerificationScreen kind={session.role === 'creator' ? 'creator_activity' : 'store_operation'} demo={session.demo} onBack={() => setSubview(null)} /></ScreenFrame>;
     if (subview === 'notifications') return <ScreenFrame><NotificationsScreen demo={session.demo}
       onOpenCollaboration={id => {
@@ -373,12 +371,13 @@ export default function AppIndex() {
       onOpenOrder={session.role === 'store' ? id => { setPickupParent('notifications'); setPickupOrderId(id); setSubview('pickup'); } : undefined}
       onBack={() => setSubview(null)} /></ScreenFrame>;
     if (subview === 'account') return <ScreenFrame><AccountSettingsScreen userId={session.userId} email={session.email} role={session.role} demo={session.demo} onBack={() => setSubview(null)} onResetPassword={() => requestPasswordReset(session.email)} onLogout={logout} /></ScreenFrame>;
-    if (subview === 'qr-products') return <ScreenFrame><QrProductsScreen demo={session.demo} collaborationId={qrParent === 'collaboration' ? selectedCollaboration?.id : undefined} onBack={() => setSubview(qrParent)} onSelect={item => { setSelectedQrProduct(item); setSubview('qr-editor'); }} /></ScreenFrame>;
-    if (subview === 'qr-editor' && selectedQrProduct) return <ScreenFrame><QrProductEditorScreen demo={session.demo} item={selectedQrProduct} onBack={() => setSubview('qr-products')} onSaved={setSelectedQrProduct} /></ScreenFrame>;
-    if (subview === 'pickup') return <ScreenFrame><PickupScreen key={pickupOrderId ?? 'list'} demo={session.demo} orderId={pickupOrderId} onBack={() => setSubview(pickupParent)} onOpenList={() => setPickupOrderId(undefined)} onOpenQr={() => { setQrParent('pickup'); setSubview('qr-products'); }} /></ScreenFrame>;
+    if (session.role === 'store' && subview === 'qr-products') return <ScreenFrame><QrProductsScreen demo={session.demo} collaborationId={qrParent === 'collaboration' ? selectedCollaboration?.id : undefined} onBack={() => setSubview(qrParent)} onSelect={item => { setSelectedQrProduct(item); setSubview('qr-editor'); }} /></ScreenFrame>;
+    if (session.role === 'store' && subview === 'qr-editor' && selectedQrProduct) return <ScreenFrame><QrProductEditorScreen demo={session.demo} item={selectedQrProduct} onBack={() => setSubview('qr-products')} onSaved={setSelectedQrProduct} /></ScreenFrame>;
+    if (session.role === 'store' && subview === 'pickup') return <ScreenFrame><PickupScreen key={pickupOrderId ?? 'list'} demo={session.demo} orderId={pickupOrderId} onBack={() => setSubview(pickupParent)} onOpenList={() => setPickupOrderId(undefined)} onOpenQr={() => { setQrParent('pickup'); setSubview('qr-products'); }} /></ScreenFrame>;
     if (subview === 'settlements') return <ScreenFrame><SettlementScreen role={session.role} demo={session.demo} onOpenPickup={session.role === 'store' ? () => { setPickupParent('settlements'); setPickupOrderId(undefined); setSubview('pickup'); } : undefined} onBack={() => setSubview(null)} onOpenCollaboration={id => { void openCollaboration(id).catch(error => Alert.alert('협업 대화를 열 수 없어요', friendlyError(error))); }} /></ScreenFrame>;
-    if (subview === 'creator-project') return <ScreenFrame><CreatorProjectScreen project={creatorProject} products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
-    if (subview === 'creator-project-edit') return <ScreenFrame><CreatorProjectEditScreen project={creatorProject} products={creatorProducts} onSaveProject={saveProject} onSaveProduct={saveCreatorProduct} onUpdateProduct={saveCreatorProductUpdate} onDeleteProduct={removeCreatorProduct} onBack={() => setSubview('creator-project')} /></ScreenFrame>;
+    if (session.role === 'creator' && subview === 'creator-project' && creatorProject.id) return <ScreenFrame><CreatorProjectScreen project={creatorProject} products={creatorProducts} onBack={() => setSubview(null)} onEdit={() => setSubview('creator-project-edit')} /></ScreenFrame>;
+    const finishFirstProject = () => { setFirstProject(false); setTab('home'); setSubview(null); };
+    if (session.role === 'creator' && (subview === 'creator-project-edit' || (subview === 'creator-project' && !creatorProject.id))) return <ScreenFrame><CreatorProjectEditScreen firstProject={firstProject || !creatorProject.id || creatorProject.status === 'draft'} onComplete={finishFirstProject} project={creatorProject} products={creatorProducts} onSaveProject={saveProject} onSaveProduct={saveCreatorProduct} onUpdateProduct={saveCreatorProductUpdate} onDeleteProduct={removeCreatorProduct} onBack={() => { if (firstProject || !creatorProject.id) finishFirstProject(); else setSubview('creator-project'); }} /></ScreenFrame>;
     if (subview === 'curator') return <ScreenFrame><CuratorScreen role={session.role} demo={session.demo} onBack={() => setSubview(null)} onProposalCreated={openCollaboration} /></ScreenFrame>;
     if (subview === 'recommendation' && selectedRecommendation) return <ScreenFrame><RecommendationScreen item={selectedRecommendation} demo={session.demo} onBack={() => setSubview(null)} onOpenCollaboration={openCollaboration} /></ScreenFrame>;
     if (subview === 'collaboration' && !selectedCollaboration && noticeCollaborationId) return <ScreenFrame>
@@ -403,7 +402,7 @@ export default function AppIndex() {
         }} /></ScreenFrame>;
     }
 
-    const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onOpenPreferences={() => {
+    const content = tab === 'home' ? <HomeScreen role={session.role} displayName={session.displayName} demo={session.demo} onCreateProject={session.role === 'creator' && !creatorProject.id ? () => { setFirstProject(true); setSubview('creator-project-edit'); } : undefined} onOpenPreferences={() => {
       if (session.role === 'creator') setSubview('creator-dna');
       else { setStorePreferencesParent('home'); setSubview('store-preferences'); }
     }} onOpenRecommendation={item => { setSelectedRecommendation(item); setSubview('recommendation'); }} onOpenCollaboration={showCollaboration} />

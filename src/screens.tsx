@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { registerNativePush } from './pushNotifications';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Button, Chip, CuritText, Empty, Field, Header, Icon, SectionTitle } from './ui';
 import { colors, fonts, radius } from './theme';
@@ -109,31 +109,44 @@ export function AccountSignupScreen({ role, onBack, onSubmit }: { role: Role; on
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const valid = displayName.trim() && /.+@.+\..+/.test(email) && password.length >= 8 && password === passwordConfirm;
+  const submitting = useRef(false);
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const passwordsMatch = password === passwordConfirm;
+  const valid = Boolean(displayName.trim()) && validEmail && password.length >= 8 && passwordsMatch;
   const submit = async () => {
-    if (!valid || busy) return;
-    setBusy(true); setNotice('');
-    try { await onSubmit(email, password, displayName); } catch (caught) { setNotice(caught instanceof Error ? caught.message : '가입하지 못했습니다.'); } finally { setBusy(false); }
-  };
-  return <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="회원가입" subtitle={role === 'creator' ? '크리에이터' : '매장 운영자'} back={onBack} /><ScrollView contentContainerStyle={s.accountSignup} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled"><View><CuritText weight="bold" style={s.pageTitle}>계정을 만들어 주세요</CuritText><CuritText style={s.pageDescription}>이메일 인증 후 모든 기기에서 같은 프로젝트와 이미지를 사용할 수 있어요.</CuritText></View><Field label={role === 'creator' ? '활동명 *' : '담당자명 *'} value={displayName} onChangeText={setDisplayName} placeholder={role === 'creator' ? '예: 김서연 도예' : '예: 최선문'} /><Field label="이메일 *" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="name@example.com" /><Field label="비밀번호 *" value={password} onChangeText={setPassword} secureTextEntry placeholder="8자 이상" /><Field label="비밀번호 확인 *" value={passwordConfirm} onChangeText={setPasswordConfirm} secureTextEntry placeholder="한 번 더 입력" />{passwordConfirm && password !== passwordConfirm ? <CuritText style={{ color: colors.danger }}>비밀번호가 일치하지 않습니다.</CuritText> : null}{notice ? <CuritText style={{ color: colors.danger }}>{notice}</CuritText> : null}<Button label={busy ? '계정 생성 중…' : role === 'store' ? '계정 생성 후 매장 등록' : '크리에이터로 시작'} disabled={!valid || busy} onPress={() => { void submit(); }} /></ScrollView></KeyboardAvoidingView>;
-}
-
-export function EmailConfirmationScreen({ email, onLogin, onResend }: { email: string; onLogin: () => void; onResend: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
-  const resend = async () => {
-    if (busy) return;
-    setBusy(true); setNotice('');
+    if (!valid || submitting.current) return;
+    submitting.current = true;
+    setBusy(true);
+    setNotice('');
+    Keyboard.dismiss();
     try {
-      await onResend();
-      setNotice('새 인증 메일을 보냈습니다. 가장 최근 메일의 링크를 열어 주세요.');
+      await onSubmit(email, password, displayName);
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : '인증 메일을 다시 보내지 못했습니다.');
+      setNotice(caught instanceof Error ? caught.message : '가입하지 못했습니다.');
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
-  return <View style={s.flex}><Header title="이메일 인증" /><View style={s.confirmationBody}><View style={s.roleIcon}><Icon name="chat" color={colors.brand} /></View><CuritText weight="bold" style={s.pageTitle}>인증 메일을 확인해 주세요</CuritText><CuritText style={s.pageDescription}>{email} 주소로 인증 링크를 보냈습니다. 가장 최근 메일의 링크를 열면 CURI:T 앱으로 돌아와 인증이 완료됩니다.</CuritText>{notice ? <CuritText style={{ color: notice.startsWith('새 인증') ? colors.brand : colors.danger }}>{notice}</CuritText> : null}<Button label={busy ? '보내는 중…' : '인증 메일 다시 보내기'} disabled={busy} onPress={() => { void resend(); }} /><Button label="로그인으로 돌아가기" variant="secondary" onPress={onLogin} /></View></View>;
+  return (
+    <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Header title="회원가입" subtitle={role === 'creator' ? '크리에이터' : '매장 운영자'} back={busy ? undefined : onBack} />
+      <ScrollView contentContainerStyle={s.accountSignup} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+        <View>
+          <CuritText weight="bold" style={s.pageTitle}>계정을 만들어 주세요</CuritText>
+          <CuritText style={s.pageDescription}>가입할 이메일과 비밀번호를 입력해 주세요.</CuritText>
+        </View>
+        <Field label="담당자명 *" value={displayName} onChangeText={setDisplayName} editable={!busy} placeholder="이름 입력" />
+        <Field label="이메일 *" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" keyboardType="email-address" placeholder="name@example.com" />
+        {email.trim() && !validEmail ? <CuritText style={{ color: colors.danger }}>이메일 주소를 확인해 주세요.</CuritText> : null}
+        <Field label="비밀번호 *" value={password} onChangeText={setPassword} editable={!busy} secureTextEntry placeholder="8자 이상" />
+        <Field label="비밀번호 확인 *" value={passwordConfirm} onChangeText={setPasswordConfirm} editable={!busy} secureTextEntry placeholder="한 번 더 입력" />
+        {passwordConfirm && !passwordsMatch ? <CuritText style={{ color: colors.danger }}>비밀번호가 일치하지 않습니다.</CuritText> : null}
+        {notice ? <CuritText accessibilityRole="alert" style={{ color: colors.danger }}>{notice}</CuritText> : null}
+        <Button label={busy ? '계정 생성 중…' : '계정 만들기'} disabled={!valid || busy} onPress={() => { void submit(); }} />
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 }
 
 export function RoleSelectionScreen({ onSelect, onBack }: { onSelect: (role: Role) => void; onBack: () => void }) {
@@ -156,7 +169,7 @@ function useCommerceSummary(role: Role, demo?: boolean) {
     if (demo) return;
     let active = true;
     const controller = new AbortController();
-    void loadWithDeadline(signal => Promise.all([loadSettlements(signal), loadManagedQrProducts(signal)]), controller)
+    void loadWithDeadline(signal => Promise.all([loadSettlements(signal), role === 'store' ? loadManagedQrProducts(signal) : Promise.resolve([] as QrProduct[])]), controller)
       .then(([entries, qrProducts]) => {
         if (!active) return;
         const eligible = entries.filter(entry => entry.status !== 'cancelled' && entry.status !== 'held');
@@ -180,6 +193,7 @@ type HomeProps = {
   displayName: string;
   demo?: boolean;
   onOpenPreferences: () => void;
+  onCreateProject?: () => void;
   onOpenRecommendation: (item: MatchRecommendation) => void;
   onOpenCollaboration: (item: CollaborationSummary) => void;
 };
@@ -228,7 +242,7 @@ function LoadFailure({ message, onRetry }: { message: string; onRetry: () => voi
   return <View style={s.errorBox}><CuritText accessibilityRole="alert" style={{ color: colors.danger }}>{message}</CuritText><Button label="다시 불러오기" variant="secondary" onPress={onRetry} /></View>;
 }
 
-function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendation, onOpenCollaboration }: HomeProps) {
+function CreatorHome({ displayName, demo, onCreateProject, onOpenPreferences, onOpenRecommendation, onOpenCollaboration }: HomeProps) {
   const recommended = useRecommendations('creator', demo);
   const collaborations = useCollaborationList('creator', demo);
   const current = collaborations.loading || collaborations.error ? undefined : collaborations.items.find(item => !['completed', 'cancelled'].includes(item.status));
@@ -254,6 +268,7 @@ function CreatorHome({ displayName, demo, onOpenPreferences, onOpenRecommendatio
         <Pressable accessibilityRole="button" accessibilityLabel="나의 작품 DNA 설정" style={s.preferenceLink} onPress={onOpenPreferences}><CuritText weight="semibold" style={s.preferenceLinkText}>작품 DNA 설정</CuritText><Icon name="chevron" size={13} color={colors.brand} /></Pressable>
       </View>
       {error ? <LoadFailure message={error} onRetry={() => { recommended.reload(); collaborations.reload(); }} /> : null}
+      {onCreateProject ? <Button label="첫 전시 프로젝트 등록" variant="secondary" onPress={onCreateProject} /> : null}
       <View style={s.curationSectionTop}><CuritText weight="semibold" style={s.curationSectionTitle}>내 작품과 어울리는 공간</CuritText></View>
       {recommended.loading && !demo ? <ActivityIndicator color={colors.brand} style={{ marginVertical: 40 }} /> : null}
       {!recommended.error && (demo || !recommended.loading) ? <View style={s.curationGrid}>{items.slice(0, 4).map((item, index) => <CurationTile key={item.targetId} index={index} title={item.title} subtitle={item.subtitle} description={item.description} score={item.score} image={item.image} role="space" onPress={() => onOpenRecommendation(item)} />)}</View> : null}
@@ -624,11 +639,11 @@ export function QrProductsScreen({ demo, collaborationId, onBack, onSelect }: { 
       {visibleItems.map(item => <Pressable accessibilityRole="button" key={item.id || item.token} disabled={Boolean(issuing)} style={s.qrRow} onPress={() => { void openOrIssue(item); }}>
         {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={s.qrImage} contentFit="cover" /> : <View style={[s.qrImage, s.qrImagePlaceholder]}><Icon name="qr" size={20} color={colors.brand} /></View>}
         <View style={s.flex}>
-          <View style={s.qrProductHeading}><CuritText weight="semibold" numberOfLines={1}>{item.name}</CuritText><Chip label={item.source === 'field-sale' ? '현장 QR' : '협업 QR'} /></View>
+          <View style={s.qrProductHeading}><CuritText weight="semibold" numberOfLines={1}>{item.name}</CuritText></View>
           <CuritText style={s.muted}>{money(item.price)} · {item.inventoryTracked === false ? '수량 별도 관리' : `재고 ${item.stock}개`} · {item.issuable ? 'QR 발급 전' : item.status === 'ACTIVE' ? '판매 중' : item.status === 'SOLD_OUT' ? '품절' : item.source === 'field-sale' ? '구매 안내 준비 중' : '판매 전'}</CuritText>
           <CuritText style={s.tokenText} numberOfLines={1}>{item.issuable ? '눌러서 상품 전용 QR 발급' : item.token}</CuritText>
         </View>
-        <View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="qr" size={21} color={colors.brand} />}</View>
+        <View style={s.qrArrow}>{issuing === (item.id || item.productId) ? <ActivityIndicator size="small" color={colors.brand} /> : <Icon name="chevron" size={16} color={colors.subtle} />}</View>
       </Pressable>)}
     </ScrollView>
   </View>;
@@ -645,7 +660,6 @@ const s = StyleSheet.create({
   demoBox: { marginTop: 24, padding: 16, backgroundColor: colors.brandPale, borderRadius: radius.md, gap: 10 }, demoNote: { color: colors.muted, fontSize: 12 }, twoButtons: { flexDirection: 'row', gap: 8 },
   roleBody: { flex: 1, padding: 24, gap: 16 }, pageTitle: { fontSize: 25, marginTop: 18 }, pageDescription: { color: colors.muted, marginTop: 8 },
   accountSignup: { flexGrow: 1, padding: 24, gap: 18 },
-  confirmationBody: { flex: 1, padding: 24, justifyContent: 'center', gap: 18 },
   roleCard: { minHeight: 104, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }, roleIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, cardTitle: { fontSize: 17, marginBottom: 4 },
   scroll: { padding: 20, paddingBottom: 32 }, homeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }, eyebrow: { color: colors.brand, fontSize: 10, letterSpacing: 2, fontFamily: fonts.bold }, greeting: { fontSize: 21, marginTop: 4 },
   curationScroll: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 },

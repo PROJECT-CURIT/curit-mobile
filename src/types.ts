@@ -33,6 +33,9 @@ export interface QrProduct {
   supplyLimit?: number;
   description?: string;
   material?: string;
+  care?: string;
+  pickupHours?: string;
+  version?: string;
   canStartSale?: boolean;
   status: 'ACTIVE' | 'PAUSED' | 'SOLD_OUT';
   pickupMode: string;
@@ -53,6 +56,7 @@ export interface MatchRecommendation {
   subtitle: string;
   description: string;
   score: number;
+  scoreBreakdown?: { label: string; points: number; max: number }[];
   reasons: string[];
   confirmationNotes?: string[];
   tags: string[];
@@ -93,7 +97,10 @@ export interface CollaborationSummary {
   updatedAt: string;
 }
 
+export type TermRequestStatus = 'pending' | 'accepted' | 'rejected' | 'closed';
+
 export interface CollaborationMessage {
+  termRequestStatus?: TermRequestStatus;
   id: string;
   collaborationId: string;
   senderId: string;

@@ -106,11 +106,12 @@ function ProductDetailRow({ label, value }: { label: string; value: string }) {
   return <View style={d.productDetailRow}><CuritText style={d.productDetailLabel}>{label}</CuritText><CuritText style={d.productDetailValue}>{value}</CuritText></View>;
 }
 
-export function CreatorProjectEditScreen({ project, products, onSaveProject, onSaveProduct, onUpdateProduct, onDeleteProduct, onBack }: { project: CreatorProjectDetails; products: ProjectProduct[]; onSaveProject: (value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) => Promise<void>; onSaveProduct: (item: Omit<ProjectProduct, 'id'>) => Promise<void>; onUpdateProduct: (id: string, item: Omit<ProjectProduct, 'id'>) => Promise<void>; onDeleteProduct: (id: string) => Promise<void>; onBack: () => void }) {
+export function CreatorProjectEditScreen({ project, products, onSaveProject, onSaveProduct, onUpdateProduct, onDeleteProduct, onBack, firstProject = false, onComplete }: { firstProject?: boolean; onComplete: () => void; project: CreatorProjectDetails; products: ProjectProduct[]; onSaveProject: (value: Omit<CreatorProjectDetails, 'id' | 'coverUrl'> & { coverUri?: string }) => Promise<void>; onSaveProduct: (item: Omit<ProjectProduct, 'id'>) => Promise<void>; onUpdateProduct: (id: string, item: Omit<ProjectProduct, 'id'>) => Promise<void>; onDeleteProduct: (id: string) => Promise<void>; onBack: () => void }) {
   const scrollRef = useRef<ScrollViewInstance>(null);
   const productFormY = useRef<number | null>(null);
   const revealProductForm = useRef(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [initialRegistration] = useState(firstProject);
   const [formOpen, setFormOpen] = useState(false);
   const emptyDraft: ProductDraft = { name: '', price: '', stock: '', image: '', imagePath: undefined, mode: '전시·판매', type: 'goods', description: '', material: '', widthMm: '', heightMm: '', care: '' };
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft);
@@ -122,7 +123,7 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
   const [purpose, setPurpose] = useState(project.purpose);
   const [coverUri, setCoverUri] = useState('');
   const [creatorShare, setCreatorShare] = useState(String(project.creatorSharePercent));
-  const [publish, setPublish] = useState(!['draft', 'archived'].includes(project.status));
+  const [publish, setPublish] = useState(initialRegistration || !['draft', 'archived'].includes(project.status));
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const photo = usePhotoPicker();
@@ -162,7 +163,7 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
   const saveBasic = async () => {
     if (!title.trim() || !concept.trim() || !region.trim()) { setNotice('프로젝트명, 콘셉트, 활동 지역을 입력해 주세요.'); return; }
     setSaving(true); setNotice('');
-    try { await onSaveProject(projectPayload(project.status)); setCoverUri(''); photo.clearError(); setStep(2); }
+    try { await onSaveProject(projectPayload(project.status)); setCoverUri(''); photo.clearError(); if (initialRegistration && !products.length) setFormOpen(true); setStep(2); }
     catch (error) { setNotice(friendlyError(error)); } finally { setSaving(false); }
   };
 
@@ -219,9 +220,9 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
 
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Header title="전시 프로젝트 수정" subtitle={`${step}/3 · ${['기본 정보', '작품·굿즈', '최종 확인'][step - 1]}`} back={back} />
+      <Header title={initialRegistration ? "첫 전시 프로젝트 등록" : "전시 프로젝트 수정"} subtitle={`${step}/${initialRegistration ? 2 : 3} · ${['기본 정보', '작품·굿즈', '최종 확인'][step - 1]}`} back={back} />
       <ScrollView ref={scrollRef} style={d.flex} contentContainerStyle={d.editScroll} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <StepProgress current={step} labels={['1 기본', '2 상품', '3 확인']} />
+        <StepProgress current={step} labels={initialRegistration ? ['1 기본', '2 상품'] : ['1 기본', '2 상품', '3 확인']} />
         {step === 1 ? <>
           <View><CuritText weight="bold" style={d.projectTitle}>프로젝트를 소개해 주세요</CuritText><CuritText style={d.description}>공간 운영자가 협업 여부를 판단할 핵심 정보입니다.</CuritText></View>
           <Pressable accessibilityRole="button" accessibilityLabel="프로젝트 대표 이미지 선택" style={d.coverPicker} disabled={saving || photo.checking} onPress={() => { void photo.choose(setCoverUri); }}>{coverUri || project.coverUrl ? <Image source={{ uri: coverUri || project.coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <><Icon name="discover" color={colors.brand} /><CuritText style={d.hint}>대표 이미지 선택</CuritText></>}</Pressable>
@@ -284,7 +285,14 @@ export function CreatorProjectEditScreen({ project, products, onSaveProject, onS
           </View>
         )}
         <View style={d.editNotice}><CuritText style={d.hint}>이미 확정된 협업의 가격·공급 조건은 바뀌지 않으며, 변경 내용은 이후 제안부터 적용됩니다.</CuritText></View>
-        {!formOpen ? <Button label="다음 · 최종 확인" disabled={!products.length} onPress={() => setStep(3)} /> : null}
+        {!formOpen && initialRegistration ? <>
+          {notice ? <CuritText accessibilityRole="alert" style={d.error}>{notice}</CuritText> : null}
+          {products.length ? <Button label={saving ? '등록 중…' : '등록 완료 · 홈으로'} disabled={saving} onPress={() => {
+            setSaving(true); setNotice('');
+            void onSaveProject(projectPayload('recruiting')).then(onComplete).catch(error => setNotice(friendlyError(error))).finally(() => setSaving(false));
+          }} /> : null}
+          <Button label={products.length ? '임시 저장하고 홈으로' : '나중에 상품 등록'} variant="secondary" disabled={saving} onPress={onComplete} />
+        </> : !formOpen ? <Button label="다음 · 최종 확인" disabled={!products.length} onPress={() => setStep(3)} /> : null}
         </> : null}
         {step === 3 ? <>
           <View><CuritText weight="bold" style={d.projectTitle}>공개 전 최종 확인</CuritText><CuritText style={d.description}>등록한 정보는 협업 추천과 제안서에 그대로 사용됩니다.</CuritText></View>
@@ -304,8 +312,8 @@ function ProductType({ active, title, caption, onPress }: { active: boolean; tit
   return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[d.typeCard, active && d.typeCardActive]} onPress={onPress}><CuritText weight="semibold" style={active ? d.status : undefined}>{title}</CuritText><CuritText style={d.hint}>{caption}</CuritText></Pressable>;
 }
 
-export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, photosOnly = false }: { initial?: StoreOnboarding | null; onBack: () => void; onComplete: (store: StoreOnboarding) => void; demo?: boolean; photosOnly?: boolean }) {
-  const [step, setStep] = useState(initial?.step ?? 1);
+export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, photosOnly = false, quickStart = false }: { quickStart?: boolean; initial?: StoreOnboarding | null; onBack: () => void; onComplete: (store: StoreOnboarding) => void; demo?: boolean; photosOnly?: boolean }) {
+  const [step, setStep] = useState(quickStart ? 1 : initial?.step ?? 1);
   const [introOpen, setIntroOpen] = useState(true);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [name, setName] = useState(initial?.name ?? '');
@@ -330,7 +338,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
   const storePhoto = usePhotoPicker();
   const { checking: checkingPhoto, clearError: clearPhotoError } = storePhoto;
   const [error, setError] = useState('');
-  const firstValid = Boolean(name.trim() && address.trim() && intro.trim() && audience.trim());
+  const firstValid = Boolean(name.trim() && address.trim() && (quickStart || (intro.trim() && audience.trim())));
   const budgetError = storeBudgetError(budgetMin, budgetMax);
   const stepValid = step === 1 ? firstValid : step === 2 ? moods.some(value => !storeColors.includes(value)) && purposes.length > 0 && !budgetError : step === 4 ? zones.length > 0 : true;
   const savedMoods = (initial?.moodTags ?? []).filter(value => !storeColors.includes(value));
@@ -382,7 +390,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
         const updated = { ...initial, step: 5, photoPaths };
         if (!demo) await saveStorePhotos(updated.photoPaths);
         onComplete(updated);
-      } else if (step === 5) {
+      } else if (quickStart || step === 5) {
         const updated = payload(5, true, photoPaths);
         if (!demo) await saveStoreOnboarding(updated);
         onComplete(updated);
@@ -417,23 +425,23 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
   }, [back]);
   return (
     <KeyboardAvoidingView style={d.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Header title={photosOnly ? '매장 사진 수정' : '매장 공간 등록'} subtitle={photosOnly ? undefined : `${step}/5 · ${['기본 정보', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step - 1]}`} back={back} />
+      <Header title={photosOnly ? '매장 사진 수정' : '매장 공간 등록'} subtitle={photosOnly || quickStart ? undefined : `${step}/5 · ${['기본 정보', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step - 1]}`} back={back} />
       <ScrollView style={d.flex} contentContainerStyle={d.signupScroll} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
-        {photosOnly ? null : <StepProgress current={step} />}
+        {photosOnly || quickStart ? null : <StepProgress current={step} />}
         {step === 1 ? <>
           <CuritText weight="bold" style={d.projectTitle}>매장을 소개해 주세요</CuritText>
-          <CuritText style={d.description}>기본 정보를 입력하면 맞는 크리에이터를 찾아드려요.</CuritText>
-          <Field label="매장명 *" value={name} onChangeText={setName} placeholder="예: 최종 매장" />
+          <CuritText style={d.description}>{quickStart ? '매장명과 주소만 먼저 등록하세요. 사진과 전시 구역은 마이에서 추가할 수 있어요.' : '기본 정보를 입력하면 맞는 크리에이터를 찾아드려요.'}</CuritText>
+          <Field label="매장명 *" value={name} onChangeText={setName} placeholder="예: 연남 북카페" />
           <Field label="업종 · 선택" value={category} onChangeText={setCategory} placeholder="예: 카페" />
-          <Field label="상세 주소 *" value={address} onChangeText={setAddress} placeholder="예: 서울 마포구 검증로 1" />
-          <RequiredAccordion title="매장 소개" open={introOpen} complete={!!intro.trim()} onPress={() => setIntroOpen(value => !value)}>
+          <Field label="상세 주소 *" value={address} onChangeText={setAddress} placeholder="예: 서울 마포구 연남로" />
+          {quickStart ? null : <><RequiredAccordion title="매장 소개" open={introOpen} complete={!!intro.trim()} onPress={() => setIntroOpen(value => !value)}>
             <CuritText weight="semibold" style={d.smallLabel}>크리에이터에게 보여줄 소개</CuritText>
             <TextInput multiline value={intro} onChangeText={setIntro} placeholder="매장의 분위기와 함께하고 싶은 작품을 알려주세요." placeholderTextColor="#B7B7B7" style={d.textarea} />
           </RequiredAccordion>
           <RequiredAccordion title="주 고객층" open={audienceOpen} complete={!!audience.trim()} onPress={() => setAudienceOpen(value => !value)}>
             <CuritText weight="semibold" style={d.smallLabel}>주로 방문하는 손님</CuritText>
             <TextInput value={audience} onChangeText={setAudience} placeholder="예: 20–30대 직장인, 예술 관심층" placeholderTextColor="#B7B7B7" style={d.textInput} />
-          </RequiredAccordion>
+          </RequiredAccordion></>}
         </> : null}
         {step === 2 ? <>
           <CuritText weight="bold" style={d.projectTitle}>원하는 공간 분위기를 알려주세요</CuritText>
@@ -471,7 +479,7 @@ export function StoreSignupScreen({ initial, onBack, onComplete, demo = false, p
         </> : null}
         {error ? <CuritText style={d.error}>{error}</CuritText> : null}
       </ScrollView>
-      <View style={d.stickyFooter}><Button label={busy ? '저장 중…' : photosOnly ? '사진 저장' : step === 5 ? '매장 등록 완료' : step === 3 && !photos.length ? '사진 없이 계속' : `다음: ${['', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step]}`} disabled={!stepValid || busy || checkingPhoto} onPress={() => { void next(); }} /></View>
+      <View style={d.stickyFooter}><Button label={busy ? '저장 중…' : photosOnly ? '사진 저장' : quickStart || step === 5 ? '매장 등록하고 홈으로' : step === 3 && !photos.length ? '사진 없이 계속' : `다음: ${['', '공간 취향', '매장 사진', '전시 구역', '최종 확인'][step]}`} disabled={!stepValid || busy || checkingPhoto} onPress={() => { void next(); }} /></View>
     </KeyboardAvoidingView>
   );
 }

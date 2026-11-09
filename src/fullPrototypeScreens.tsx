@@ -37,6 +37,7 @@ import {
   saveStorePreferences,
   updateManagedOrder,
   updateQrListing,
+  uploadMedia,
   type CreatorProjectDetails,
   type ManagedOrder,
   type StoreOnboarding,
@@ -277,6 +278,10 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
   const [item, setItem] = useState(initial);
   const [stock, setStock] = useState(String(initial.stock));
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const qrPhoto = usePhotoPicker();
+  const [photoUri, setPhotoUri] = useState('');
+  const [presentationNotice, setPresentationNotice] = useState('');
+  const [presentation, setPresentation] = useState(() => ({ name: initial.name, description: initial.description ?? '', composition: initial.material ?? '', care: initial.care ?? '', pickupHours: initial.pickupHours ?? '' }));
   const [notice, setNotice] = useState('');
   const [saleNotice, setSaleNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -317,17 +322,44 @@ export function QrProductEditorScreen({ item: initial, onBack, onSaved, demo = f
     catch (error) { if (saleStatus === 'active') setReady(false); setFeedback(friendlyError(error)); }
     finally { saveLock.current = false; setSaving(false); }
   };
-  return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="QR 상품 정보 확인" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+  const presentationChanged = Boolean(photoUri) || presentation.name.trim() !== item.name ||
+    presentation.description.trim() !== (item.description ?? '') || presentation.composition.trim() !== (item.material ?? '') ||
+    presentation.care.trim() !== (item.care ?? '') || presentation.pickupHours.trim() !== (item.pickupHours ?? '');
+  const savePresentation = async () => {
+    if (saveLock.current || !item.id || !item.version || !presentationChanged || !presentation.name.trim()) return;
+    saveLock.current = true; setSaving(true); setPresentationNotice('');
+    try {
+      const imagePath = photoUri ? await uploadMedia(photoUri, 'store') : undefined;
+      const updated = await updateQrListing(item.id, { presentation: { ...presentation, imagePath }, expectedVersion: item.version });
+      setItem(updated); onSaved(updated); setPhotoUri(''); setReady(false);
+      if (!stockChanged) setStock(String(updated.stock));
+      setPresentationNotice('구매 페이지에 반영했어요.');
+      Keyboard.dismiss();
+    } catch (error) { setPresentationNotice(friendlyError(error)); }
+    finally { saveLock.current = false; setSaving(false); }
+  };
+  return <KeyboardAvoidingView style={f.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Header title="QR 상품 관리" back={onBack} /><ScrollView contentContainerStyle={f.scroll} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
     {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={f.qrProductImage} /> : null}<CuritText style={f.hint}>{item.artistName || '등록 작가'}</CuritText>
     <Field label="상품명" value={item.name} editable={false} />
     <View style={f.two}><View style={f.flex}><Field label="합의 판매가" value={`${item.price.toLocaleString('ko-KR')}원`} editable={false} /></View><View style={f.flex}><Field label="구매 가능 수량 *" value={stock} editable={!saving} onChangeText={value => { setStock(value.replace(/\D/g, '')); setReady(false); }} keyboardType="number-pad" /></View></View>
     {item.supplyLimit !== undefined ? <CuritText style={f.hint}>확정 공급량 {item.supplyLimit}개 중 판매 완료 수량을 제외하고 설정할 수 있어요.</CuritText> : null}
     {!valuesValid ? <CuritText style={f.hint}>구매 가능 수량을 0~{stockLimit.toLocaleString('ko-KR')}개 사이로 입력해 주세요.</CuritText> : null}
-    {item.description || item.material ? <View style={f.qrDetails}>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: detailsOpen }} style={f.qrDetailsAction} onPress={() => setDetailsOpen(value => !value)}><CuritText weight="semibold">작가가 등록한 상품 정보</CuritText><CuritText>{detailsOpen ? '−' : '＋'}</CuritText></Pressable>
-      {detailsOpen && item.description ? <CuritText style={f.description}>{item.description}</CuritText> : null}
-      {detailsOpen && item.material ? <CuritText style={f.hint}>소재 · {item.material}</CuritText> : null}
-    </View> : null}
+    <View style={f.qrDetails}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: detailsOpen }} style={f.qrDetailsAction} onPress={() => setDetailsOpen(value => !value)}><CuritText weight="semibold">구매 페이지 정보 수정</CuritText><CuritText>{detailsOpen ? '−' : '＋'}</CuritText></Pressable>
+      {detailsOpen ? <View style={{ gap: 12 }}>
+        <CuritText style={f.hint}>상품 설명과 수령 안내를 QR 웹에 반영합니다. 합의 판매가와 수령 방식은 그대로 유지돼요.</CuritText>
+        <Field label="상품명 *" value={presentation.name} maxLength={100} onChangeText={value => setPresentation(current => ({ ...current, name: value }))} editable={!saving} />
+        <Field label="상품 설명" value={presentation.description} maxLength={1000} multiline onChangeText={value => setPresentation(current => ({ ...current, description: value }))} editable={!saving} />
+        <Field label="소재" value={presentation.composition} maxLength={200} onChangeText={value => setPresentation(current => ({ ...current, composition: value }))} editable={!saving} />
+        <Field label="관리 방법" value={presentation.care} maxLength={400} multiline onChangeText={value => setPresentation(current => ({ ...current, care: value }))} editable={!saving} />
+        <Field label="수령 시간 안내" value={presentation.pickupHours} maxLength={150} onChangeText={value => setPresentation(current => ({ ...current, pickupHours: value }))} editable={!saving} />
+        {photoUri ? <Image source={{ uri: photoUri }} style={f.qrProductImage} contentFit="cover" /> : null}
+        <Button label={photoUri ? '다른 사진 선택' : '상품 사진 변경'} variant="secondary" disabled={saving || qrPhoto.checking} onPress={() => { void qrPhoto.choose(setPhotoUri); }} />
+        {qrPhoto.error ? <Notice text={qrPhoto.error} /> : null}
+        {presentationNotice ? <Notice text={presentationNotice} /> : null}
+        <Button label={saving ? '저장 중…' : '구매 페이지에 반영'} disabled={!presentationChanged || saving || qrPhoto.checking || !presentation.name.trim() || !item.version} onPress={() => { void savePresentation(); }} />
+      </View> : null}
+    </View>
     <View style={f.infoBanner}><CuritText weight="semibold">수령 방식</CuritText><CuritText style={f.hint}>{item.pickupMode === 'exhibition' ? '전시 종료 후 현장 수령' : '주문 후 현장 수령'}</CuritText></View>
     {notice ? <Notice text={notice} /> : null}
     <Button label={saving ? '저장 중…' : '수량 저장'} disabled={saving || !valuesValid || !stockChanged} onPress={() => { void save(); }} />
@@ -409,6 +441,7 @@ function FieldSaleProductScreen({ item, onBack }: { item: QrProduct; onBack: () 
       <CuritText style={f.hint}>현장 판매 상품 · {item.status === 'SOLD_OUT' ? '품절' : item.status === 'ACTIVE' ? '구매 가능' : '구매 안내 준비 중'}</CuritText>
       <CuritText weight="bold" style={{ fontSize: 20, marginTop: 10 }}>{item.price.toLocaleString('ko-KR')}원</CuritText>
       <CuritText style={f.description}>{item.inventoryTracked === false ? '수량은 매장 재고를 확인해 주세요.' : `등록 수량 ${item.stock}개`}</CuritText>
+      <CuritText style={f.hint}>이 상품은 현장 판매 페이지에서 등록한 상품이에요. 앱에서는 구매 페이지와 QR을 확인할 수 있어요.</CuritText>
       <QrLinkCard item={item} initiallyExpanded />
     </ScrollView>
   </View>;

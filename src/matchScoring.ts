@@ -1,6 +1,27 @@
-export function calculateMatchScore(input: { matchedTermCount: number; regionFit: boolean; hasAvailableItems: boolean; hasExhibitionZones: boolean }) {
-  const taste = Math.min(40, Math.max(0, input.matchedTermCount) * 10);
-  return Math.min(100, taste + (input.regionFit ? 20 : 0) + (input.hasAvailableItems ? 20 : 0) + (input.hasExhibitionZones ? 20 : 0));
+type MatchEvidence = { matchedTermCount: number; regionFit: boolean; hasAvailableItems: boolean; hasExhibitionZones: boolean; dimensionFit?: 'fits' | 'unknown' | 'too-large' };
+
+export function matchScoreBreakdown(input: MatchEvidence) {
+  return [
+    { label: '취향·협업 목적', points: Math.min(40, Math.max(0, input.matchedTermCount) * 10), max: 40 },
+    { label: '활동 지역', points: input.regionFit ? 20 : 0, max: 20 },
+    { label: '판매 가능 재고', points: input.hasAvailableItems ? 20 : 0, max: 20 },
+    { label: '전시 구역·치수', points: !input.hasExhibitionZones || input.dimensionFit === 'too-large' ? 0 : input.dimensionFit === 'unknown' ? 10 : 20, max: 20 },
+  ];
+}
+
+export function calculateMatchScore(input: MatchEvidence) {
+  return matchScoreBreakdown(input).reduce((total, part) => total + part.points, 0);
+}
+
+type ExhibitionZone = { widthCm?: number | null; heightCm?: number | null; widthMm?: number | null; heightMm?: number | null };
+type ArtworkSize = { width_mm?: number | null; height_mm?: number | null };
+
+export function matchDimensions(items: ArtworkSize[], zones: ExhibitionZone[]): 'fits' | 'unknown' | 'too-large' {
+  const zoneSizes = zones.map(zone => [zone.widthMm ?? Number(zone.widthCm) * 10, zone.heightMm ?? Number(zone.heightCm) * 10]);
+  const itemSizes = items.map(item => [Number(item.width_mm), Number(item.height_mm)]);
+  const hasSize = (size: number[]) => size.every(value => Number.isFinite(value) && value > 0);
+  if (itemSizes.some(size => hasSize(size) && zoneSizes.some(zone => hasSize(zone) && size[0]! <= zone[0]! && size[1]! <= zone[1]!))) return 'fits';
+  return itemSizes.length && zoneSizes.length && itemSizes.every(hasSize) && zoneSizes.every(hasSize) ? 'too-large' : 'unknown';
 }
 
 export type CreatorMatchTraits = {

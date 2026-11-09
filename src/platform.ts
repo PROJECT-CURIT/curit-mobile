@@ -3,7 +3,6 @@ import type { QrProduct, Role, Session } from './types';
 import { getSupabase } from './supabase';
 import type { ProjectProduct } from './detailScreens';
 import { buildCommerceApiUrl } from './config';
-import { authRedirectUrl } from './authRedirect';
 
 type ProfileRow = { id: string; role: Role; display_name: string };
 
@@ -70,34 +69,19 @@ export async function signIn(email: string, password: string): Promise<Session> 
   return { userId: data.user.id, email: data.user.email, role: profile.role, displayName: await accountDisplayName(profile) };
 }
 
-export async function signUp(email: string, password: string, displayName: string, role: Role) {
+export async function signUp(email: string, password: string, displayName: string, role: Role): Promise<Session> {
   const supabase = getSupabase();
   const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
-    options: {
-      emailRedirectTo: authRedirectUrl('signup'),
-      data: { role, display_name: displayName.trim() },
-    },
+    options: { data: { role, display_name: displayName.trim() } },
   });
   if (error) throw new Error(error.message);
   if (!data.session || !data.user?.email) {
-    return { session: null, confirmationRequired: true as const };
+    throw new Error('현재 가입 서버에서 바로 로그인할 수 없어요. 잠시 후 다시 시도해 주세요.');
   }
   const profile = await profileFor(data.user.id);
-  return {
-    session: { userId: data.user.id, email: data.user.email, role: profile.role, displayName: profile.display_name } satisfies Session,
-    confirmationRequired: false as const,
-  };
-}
-
-export async function resendSignupConfirmation(email: string) {
-  const { error } = await getSupabase().auth.resend({
-    type: 'signup',
-    email: email.trim(),
-    options: { emailRedirectTo: authRedirectUrl('signup') },
-  });
-  if (error) throw new Error(error.message);
+  return { userId: data.user.id, email: data.user.email, role: profile.role, displayName: profile.display_name };
 }
 
 export async function signOut() {
@@ -268,6 +252,9 @@ function mapManagedQrProduct(item: Record<string, unknown>): QrProduct {
     supplyLimit: typeof item.supplyLimit === 'number' ? item.supplyLimit : undefined,
     description: typeof item.description === 'string' ? item.description : undefined,
     material: typeof item.material === 'string' ? item.material : undefined,
+    care: typeof item.care === 'string' ? item.care : undefined,
+    pickupHours: typeof item.pickupHours === 'string' ? item.pickupHours : undefined,
+    version: typeof item.version === 'string' ? item.version : undefined,
     canStartSale: typeof item.canStartSale === 'boolean' ? item.canStartSale : undefined,
     status: ['ACTIVE', 'PAUSED', 'SOLD_OUT'].includes(String(item.status)) ? item.status as QrProduct['status'] : 'PAUSED',
     pickupMode: String(item.pickupMode || 'immediate'),
@@ -288,7 +275,9 @@ export async function issueQrListing(projectItemId: string, collaborationId: str
   return mapManagedQrProduct(item as Record<string, unknown>);
 }
 
-export async function updateQrListing(id: string, updates: { stock: number; expectedStock: number } | { saleStatus: 'preparing' } | { saleStatus: 'active'; readinessConfirmed: true; expectedStock: number }): Promise<QrProduct> {
+export type QrPresentation = { name: string; description: string; composition: string; care: string; pickupHours: string; imagePath?: string };
+
+export async function updateQrListing(id: string, updates: { stock: number; expectedStock: number } | { saleStatus: 'preparing' } | { saleStatus: 'active'; readinessConfirmed: true; expectedStock: number } | { presentation: QrPresentation; expectedVersion: string }): Promise<QrProduct> {
   const item = await managementRequest(`/api/management/listings/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
@@ -434,7 +423,7 @@ export async function loadCreatorProject() {
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
-  let { data: project, error } = await supabase
+  const { data: project, error } = await supabase
     .from('projects')
     .select(`${projectDetailFields}, creator_share_percent`)
     .eq('creator_id', auth.user.id)
@@ -442,15 +431,11 @@ export async function loadCreatorProject() {
     .limit(1)
     .maybeSingle<ProjectDetailRow & { creator_share_percent: number | null }>();
   if (error) throw new Error(error.message);
-  if (!project) {
-    const result = await supabase
-      .from('projects')
-      .insert({ creator_id: auth.user.id, title: '최종 프로젝트', concept: '프로젝트 정보와 상품을 등록해 주세요.', region: '서울', status: 'draft' })
-      .select(`${projectDetailFields}, creator_share_percent`)
-      .single();
-    if (result.error) throw new Error(result.error.message);
-    project = result.data;
-  }
+  if (!project) return {
+    projectId: '',
+    project: { id: '', title: '', concept: '', story: '', region: '', purpose: '', status: 'draft' as const, coverPath: '', coverUrl: '', creatorSharePercent: 80 },
+    products: [],
+  };
   return {
     projectId: project.id,
     project: {
@@ -491,7 +476,7 @@ export async function saveCreatorProject(projectId: string, value: Omit<CreatorP
   const supabase = await activeProjectClient();
   let coverPath = value.coverPath;
   if (value.coverUri && !/^(https?:)/.test(value.coverUri)) coverPath = await uploadMedia(value.coverUri, 'project');
-  const { error } = await supabase.from('projects').update({
+  const fields = {
     title: value.title.trim(),
     story: value.story.trim(),
     concept: value.concept.trim(),
@@ -500,7 +485,13 @@ export async function saveCreatorProject(projectId: string, value: Omit<CreatorP
     status: value.status,
     cover_path: coverPath || null,
     creator_share_percent: value.creatorSharePercent,
-  }).eq('id', projectId);
+  };
+  const query = supabase.from('projects');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('로그인이 필요합니다.');
+  const { error } = projectId
+    ? await query.update(fields).eq('id', projectId).eq('creator_id', user.id).select('id').single()
+    : await query.insert({ ...fields, creator_id: user.id });
   if (error) throw new Error(error.message);
   return loadCreatorProject();
 }
@@ -580,6 +571,12 @@ export function friendlyError(error: unknown) {
   if (raw === 'INVALID_COLLABORATION_TRANSITION') return '협업 상태가 바뀌었어요. 최신 조건을 불러와 확인해 주세요.';
   if (raw === 'COLLABORATION_CONFIRM_CREATOR_ONLY') return '작품 수량 확인은 크리에이터만 할 수 있어요.';
   if (raw === 'COLLABORATION_QUANTITY_LOCKED') return 'QR이 발급된 상품의 합의 수량은 변경할 수 없어요.';
+  if (raw === 'TERM_REQUEST_PENDING') return '답변을 기다리는 조건 요청이 있어요. 먼저 채팅에서 확인해 주세요.';
+  if (raw === 'STALE_TERM_REQUEST') return '협업 조건이 바뀌었어요. 기존 요청을 거절한 뒤 최신 조건으로 다시 보내 주세요.';
+  if (raw === 'TERM_REQUEST_RESOLVED') return '이미 처리된 요청이에요. 채팅을 새로 불러와 주세요.';
+  if (raw === 'COLLABORATION_TERMS_LOCKED') return '전시가 확정됐거나 QR이 발급되어 전시 기간과 수량은 변경할 수 없어요.';
+  if (raw === 'TERM_REQUEST_TOO_LONG') return '변경 내용이 너무 길어요. 운영 조건을 줄이거나 항목을 나눠 보내 주세요.';
+  if (raw === 'NO_TERM_CHANGES') return '기존 조건과 다른 내용을 입력해 주세요.';
   if (raw === 'COLLABORATION_CLOSED') return '종료된 협업의 조건은 변경할 수 없어요.';
   if (raw === 'INVALID_COLLABORATION_ITEM') return '협업에 포함된 작품을 다시 확인해 주세요.';
   return raw;

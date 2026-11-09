@@ -1,5 +1,5 @@
-import { useContext, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import {
   createCollaborationProposal,
@@ -14,6 +14,8 @@ import {
   sendCollaborationMessage,
   sendCuratorMessage,
   saveCollaborationTerms,
+  requestCollaborationTerms,
+  resolveCollaborationTerms,
   transitionCollaboration,
 } from './curation';
 import { SocialFeedSection } from './fullPrototypeScreens';
@@ -420,16 +422,20 @@ function RecommendationCard({ item, busy, demo, onPropose, inset = true, showCon
     onPropose(period);
   };
   const cover = item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={c.recommendationImage} contentFit="cover" /> : <View style={[c.recommendationImage, c.cardImagePlaceholder]}><Icon name={item.targetType === 'project' ? 'discover' : 'store'} color={colors.brand} /><CuritText style={c.pinCaption}>{item.targetType === 'store' ? '매장 사진 없음' : '이미지 준비 중'}</CuritText></View>;
-  const heading = <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={c.recommendationTitle}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}점</CuritText></View>{item.targetType === 'project' ? <Icon name="chevron" size={17} color={colors.brand} /> : null}</View>;
+  const heading = <View style={c.between}><View style={c.flex}><CuritText weight="bold" style={[c.recommendationTitle, showConfirmationNotes && c.recommendationDetailTitle]}>{item.title}</CuritText><CuritText style={c.muted}>{item.subtitle}</CuritText></View><View style={c.score}><CuritText weight="bold" style={c.brandText}>{item.score}점</CuritText></View>{item.targetType === 'project' ? <Icon name="chevron" size={17} color={colors.brand} /> : null}</View>;
   return <View style={[c.recommendation, !inset && c.recommendationWide]}>
     {item.targetType === 'project' ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 프로젝트 상세`} onPress={() => { Keyboard.dismiss(); setDetailsOpen(true); }}>
-      {cover}<View style={c.recommendationHeading}>{heading}</View>
+      {cover}<View style={[c.recommendationHeading, showConfirmationNotes && c.recommendationDetailHeading]}>{heading}</View>
     </Pressable> : cover}
-    <View style={c.recommendationBody}>
+    <View style={[c.recommendationBody, showConfirmationNotes && c.recommendationDetailBody]}>
       {item.targetType === 'store' ? heading : null}
       <CuritText style={c.description}>{item.description}</CuritText>
       {item.priceRange ? <CuritText weight="semibold">{item.priceRange}</CuritText> : null}
-      <View style={c.reasonBox}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
+      <View style={[c.reasonBox, showConfirmationNotes && c.recommendationDetailReasons]}>{item.reasons.map(reason => <View key={reason} style={c.reasonRow}><CuritText style={c.check}>✓</CuritText><CuritText style={c.reasonText}>{reason}</CuritText></View>)}</View>
+      {showConfirmationNotes && item.scoreBreakdown?.length ? <View style={c.scoreDetails}>
+        <CuritText weight="semibold">추천 점수 기준</CuritText>
+        {item.scoreBreakdown.map(part => <Term key={part.label} label={part.label} value={`${part.points} / ${part.max}점`} />)}
+      </View> : null}
       {showConfirmationNotes && item.confirmationNotes?.length ? <ConfirmationNotes notes={item.confirmationNotes} /> : null}
       <View style={c.tags}>{item.tags.slice(0, 4).map(tag => <CuritText key={tag} style={c.tag}>#{tag}</CuritText>)}</View>
       <Button label={busy ? '처리 중…' : item.collaborationId ? `기존 협업 보기 · ${collaborationRecommendationLabel(item.collaborationStatus)}` : '이 후보에게 협업 제안'} disabled={busy} onPress={() => {
@@ -482,243 +488,274 @@ function collaborationRecommendationLabel(status?: MatchRecommendation['collabor
 }
 
 export function CollaborationDetailScreen({ role, userId, item, demo, input, setInput, onBack, onUpdated, onOpenQr }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; input: string; setInput: Dispatch<SetStateAction<string>>; onBack: () => void; onUpdated: (item: CollaborationSummary) => void; onOpenQr?: () => void }) {
-  const [messages, setMessages] = useState<CollaborationMessage[]>(demo ? [{ id: 'demo-message', collaborationId: item.id, senderId: role === 'creator' ? 'demo-store' : 'demo-creator', content: '전시 조건과 상품 수량을 확인했습니다.', createdAt: new Date().toISOString() }] : []);
-  const [busy, setBusy] = useState(!demo);
-  const messageInFlight = useRef(false);
+  const locked = useContext(SessionLockedContext);
+  const scroll = useRef<ScrollViewInstance>(null);
+  const nearLatest = useRef(true);
+  const [messages, setMessages] = useState<CollaborationMessage[]>([]);
+  const [initialLoading, setInitialLoading] = useState(!demo);
+  const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
   const [notice, setNotice] = useState('');
-  const [collaborationItems, setCollaborationItems] = useState<CollaborationItem[]>(demo ? [{ projectItemId: 'demo-mug', name: '머그컵 (화이트·그레이)', imageUrl: '', price: 35000, stock: 12, quantity: 2, selected: true, creatorConfirmed: item.status === 'active' || item.status === 'completed' || (role === 'store' && item.status === 'approved') }] : []);
-  const [savedSelection, setSavedSelection] = useState<string[]>([]);
-  const [editing, setEditing] = useState(false);
-  const [termsLoaded, setTermsLoaded] = useState(Boolean(demo));
-  const applyItems = (items: CollaborationItem[]) => {
-    setCollaborationItems(items);
-    setSavedSelection(items.filter(value => value.selected).map(value => value.projectItemId));
-    setTermsLoaded(true);
-  };
-  const [zone, setZone] = useState(String(item.terms.installationZone || '선반'));
-  const [termNote, setTermNote] = useState(String(item.terms.note || ''));
-  const [termsBusy, setTermsBusy] = useState(!demo);
-  const currentStatus = item.status;
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [termsError, setTermsError] = useState('');
   const [conditionsOpen, setConditionsOpen] = useState(false);
-  const [periodOpen, setPeriodOpen] = useState(false);
-  const [period, setPeriod] = useState<ExhibitionPeriod>(() => ({
-    startsOn: item.startsOn ?? '', endsOn: item.endsOn ?? '',
-  }));
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [termVersion, setTermVersion] = useState(item);
+  const [savedItems, setSavedItems] = useState<CollaborationItem[]>([]);
+  const [draftItems, setDraftItems] = useState<CollaborationItem[]>([]);
+  const [period, setPeriod] = useState<ExhibitionPeriod>({ startsOn: item.startsOn ?? '', endsOn: item.endsOn ?? '' });
+  const [zone, setZone] = useState(String(item.terms.installationZone ?? ''));
+  const [note, setNote] = useState(String(item.terms.note ?? ''));
+  const [loaded, setLoaded] = useState(Boolean(demo));
   const [periodLocked, setPeriodLocked] = useState(false);
-  const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
-  const refreshMessages = async () => {
-    if (demo) return;
-    setBusy(true);
-    try { setMessages(await loadCollaborationMessages(item.id)); } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(false); }
+
+  const applyTerms = (updated: CollaborationSummary, items: CollaborationItem[]) => {
+    setTermVersion(updated);
+    setSavedItems(items);
+    setDraftItems(items);
+    setPeriod({ startsOn: updated.startsOn ?? '', endsOn: updated.endsOn ?? '' });
+    setZone(String(updated.terms.installationZone ?? ''));
+    setNote(String(updated.terms.note ?? ''));
+    setLoaded(true);
+    onUpdated(updated);
   };
+  const loadConversation = async () => {
+    const [conversation, [updated]] = await Promise.all([loadCollaborationMessages(item.id), loadCollaborations(role, item.id)]);
+    setMessages(conversation);
+    if (updated) onUpdated(updated);
+  };
+  const onUpdatedRef = useRef(onUpdated);
+  useEffect(() => { onUpdatedRef.current = onUpdated; }, [onUpdated]);
   useEffect(() => {
-    if (demo) return;
+    if (demo || locked) return;
     let active = true;
-    void loadCollaborationMessages(item.id)
-      .then(value => { if (active) setMessages(value); })
-      .catch(caught => { if (active) setNotice(friendlyError(caught)); })
-      .finally(() => { if (active) setBusy(false); });
-    return () => { active = false; };
-  }, [demo, item.id]);
-  useEffect(() => {
-    if (demo) return;
-    let active = true;
-    void loadCollaborationItems({ id: item.id, projectId: item.projectId }).then(value => { if (active) applyItems(value); }).catch(caught => { if (active) setNotice(friendlyError(caught)); }).finally(() => { if (active) setTermsBusy(false); });
-    return () => { active = false; };
-  }, [demo, item.id, item.projectId]);
-  const selectedItems = collaborationItems.filter(value => value.selected);
-  const quantitiesFit = selectedItems.every(value => value.quantity <= Math.min(value.stock, 100_000));
-  const supplyConfirmed = selectedItems.length > 0 && quantitiesFit && selectedItems.every(value => value.creatorConfirmed);
-  const periodPending = item.terms.scheduleNeedsReview === true;
-  const isClosed = currentStatus === 'completed' || currentStatus === 'cancelled';
-  const canEdit = role === 'store' && !isClosed && !termsBusy;
-  const canEditPeriod = role === 'store' && ['proposed', 'negotiating', 'approved'].includes(currentStatus) && !periodLocked;
-  const periodChanged = period.startsOn !== item.startsOn || period.endsOn !== item.endsOn;
-  const updateItem = (id: string, change: Partial<Pick<CollaborationItem, 'selected' | 'quantity'>>) => {
-    setEditing(true);
-    setCollaborationItems(current => current.map(value => value.projectItemId === id ? { ...value, ...change, creatorConfirmed: false } : value));
+    let controller: AbortController | undefined;
+    const refresh = async () => {
+      if (controller || actionLock.current || (AppState.currentState && AppState.currentState !== 'active')) return;
+      controller = new AbortController();
+      const timer = setTimeout(() => controller?.abort(), 9_000);
+      try {
+        const [conversation, [updated]] = await Promise.all([
+          loadCollaborationMessages(item.id, controller.signal), loadCollaborations(role, item.id, controller.signal),
+        ]);
+        if (!active || actionLock.current) return;
+        setMessages(conversation);
+        if (updated) onUpdatedRef.current(updated);
+      } catch (error) {
+        if (active && initialLoading) setNotice(friendlyError(error));
+      } finally {
+        clearTimeout(timer);
+        controller = undefined;
+        if (active) setInitialLoading(false);
+      }
+    };
+    void refresh();
+    const interval = setInterval(() => { void refresh(); }, 6000);
+    return () => { active = false; controller?.abort(); clearInterval(interval); };
+  }, [demo, locked, role, item.id, initialLoading]);
+
+  const runAction = async (operation: () => Promise<void>, reportError = setNotice) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setBusy(true); setNotice(''); setTermsError('');
+    try { await operation(); } catch (error) {
+      if (error instanceof Error && error.message === 'COLLABORATION_TERMS_LOCKED') setPeriodLocked(true);
+      reportError(friendlyError(error));
+    } finally { actionLock.current = false; setBusy(false); }
   };
   const refreshTerms = async () => {
-    if (demo || termsBusy) return;
-    setTermsBusy(true); setNotice('');
-    try {
-      const [list, items, conversation] = await Promise.all([
-        loadCollaborations(role, item.id), loadCollaborationItems(item), loadCollaborationMessages(item.id),
-      ]);
-      const updated = list.find(value => value.id === item.id);
-      if (!updated) throw new Error('협업을 다시 열어 주세요.');
-      applyItems(items);
-      setZone(String(updated.terms.installationZone || '선반'));
-      setTermNote(String(updated.terms.note || ''));
-      setPeriod({ startsOn: updated.startsOn ?? '', endsOn: updated.endsOn ?? '' });
-      setMessages(conversation);
-      onUpdated(updated);
-      setEditing(false);
-    } catch (caught) { setNotice(friendlyError(caught)); } finally { setTermsBusy(false); }
+    if (demo) { applyTerms(item, savedItems); return; }
+    const [[updated], items, conversation] = await Promise.all([
+      loadCollaborations(role, item.id), loadCollaborationItems(item), loadCollaborationMessages(item.id),
+    ]);
+    if (!updated) throw new Error('협업을 찾지 못했어요. 다시 열어 주세요.');
+    applyTerms(updated, items);
+    setMessages(conversation);
   };
-  const savePeriod = async () => {
-    if (!canEditPeriod || termsBusy || !periodChanged || exhibitionPeriodError(period)) return;
-    setTermsBusy(true); setNotice('');
-    try {
-      const saved = demo
-        ? { ...period, terms: { ...item.terms, scheduleNeedsReview: true } }
-        : await saveCollaborationTerms(item.id, period, [], true);
-      onUpdated({ ...item, ...saved });
-      setPeriodOpen(false);
-      setNotice('전시 기간을 저장했어요. 크리에이터가 변경된 일정을 확인하면 전시를 확정할 수 있어요.');
-    } catch (caught) {
-      if (caught instanceof Error && caught.message === 'COLLABORATION_SCHEDULE_LOCKED') {
-        setPeriodLocked(true);
-        setPeriodOpen(false);
-      }
-      setNotice(friendlyError(caught));
-    } finally { setTermsBusy(false); }
+  const openConditions = () => {
+    setCancelOpen(false);
+    setConditionsOpen(true);
+    setLoaded(false);
+    void runAction(refreshTerms, setTermsError);
   };
-  const saveTerms = async (confirm = false) => {
-    if (termsBusy || isClosed || !termsLoaded || !selectedItems.length || !quantitiesFit) return;
-    const payload = confirm
-      ? selectedItems.map(value => ({ ...value, creatorConfirmed: true }))
-      : collaborationItems.filter(value => value.selected || savedSelection.includes(value.projectItemId));
-    const success = confirm ? periodPending ? '전시 기간과 작품 수량을 확인했어요.' : '작품 구성과 수량을 확인했습니다.' : '협업 상품과 배치 조건을 저장했습니다.';
-    if (demo) {
-      applyItems(collaborationItems.map(value => confirm && value.selected ? { ...value, creatorConfirmed: true } : value));
-      if (confirm && periodPending) onUpdated({ ...item, terms: { ...item.terms, scheduleNeedsReview: false } });
-      setEditing(false);
-      setNotice(success);
-      return;
-    }
-    setTermsBusy(true); setNotice('');
-    try {
-      const terms = confirm
-        ? item.startsOn && item.endsOn ? { startsOn: item.startsOn, endsOn: item.endsOn } : {}
-        : { installationZone: zone, note: termNote.trim() };
-      const saved = await saveCollaborationTerms(item.id, terms, payload);
-      setEditing(false);
-      onUpdated({ ...item, ...saved });
-      applyItems(await loadCollaborationItems(item));
-      setNotice(success);
-    } catch (caught) { setNotice(friendlyError(caught)); } finally { setTermsBusy(false); }
+
+  const pending = messages.find(message => message.termRequestStatus === 'pending');
+  const closed = item.status === 'completed' || item.status === 'cancelled';
+  const editable = loaded && !closed && !pending && !busy;
+  const scheduleEditable = editable && item.status !== 'active' && !periodLocked;
+  const selectedItems = draftItems.filter(value => value.selected);
+  const quantitiesFit = selectedItems.every(value => value.quantity >= 1 && value.quantity <= Math.min(value.stock, 100_000));
+  const supplyConfirmed = savedItems.some(value => value.selected) && savedItems.filter(value => value.selected).every(value => value.creatorConfirmed && value.quantity <= value.stock);
+  const needsScheduleReview = termVersion.terms.scheduleNeedsReview === true;
+  const stale = termVersion.updatedAt !== item.updatedAt;
+  const periodChanged = period.startsOn !== (termVersion.startsOn ?? '') || period.endsOn !== (termVersion.endsOn ?? '');
+  const periodError = periodChanged ? exhibitionPeriodError(period) : '';
+  const termChanges: Record<string, string> = {
+    ...(periodChanged ? period : {}),
+    ...(zone !== String(termVersion.terms.installationZone ?? '') ? { installationZone: zone } : {}),
+    ...(note.trim() !== String(termVersion.terms.note ?? '') ? { note: note.trim() } : {}),
   };
-  const send = async () => {
+  const savedQuantities = new Map(savedItems.filter(value => value.selected).map(value => [value.projectItemId, value.quantity]));
+  const itemChanges = draftItems.flatMap(value => {
+    const quantity = value.selected ? value.quantity : 0;
+    return quantity !== (savedQuantities.get(value.projectItemId) ?? 0) ? [{ projectItemId: value.projectItemId, quantity }] : [];
+  });
+  const changed = Object.keys(termChanges).length > 0 || itemChanges.length > 0;
+  const requestEnabled = editable && !stale && changed && !periodError && (!itemChanges.length || (quantitiesFit && selectedItems.length > 0));
+  const setQuantity = (id: string, quantity: number) => setDraftItems(current => current.map(value => value.projectItemId === id
+    ? { ...value, selected: quantity > 0, quantity: Math.max(1, quantity) } : value));
+
+  const submitChanges = () => {
+    if (!requestEnabled || demo) return;
+    void runAction(async () => {
+      await requestCollaborationTerms(termVersion, { terms: termChanges, items: itemChanges });
+      setConditionsOpen(false);
+      await loadConversation();
+      scroll.current?.scrollToEnd({ animated: true });
+    }, error => { setTermsError(error); setNotice(error); });
+  };
+  const respond = (id: string, accept: boolean) => void runAction(async () => {
+    await resolveCollaborationTerms(item.id, id, accept);
+    await loadConversation();
+    scroll.current?.scrollToEnd({ animated: true });
+  });
+  const send = () => {
     const draft = input;
-    if (!draft.trim() || busy || messageInFlight.current) return;
-    if (demo) { setMessages(current => [...current, { id: `demo-${Date.now()}`, collaborationId: item.id, senderId: userId, content: draft.trim(), createdAt: new Date().toISOString() }]); setInput(''); return; }
-    messageInFlight.current = true;
-    setBusy(true); setNotice('');
-    try {
-      await sendCollaborationMessage(item.id, draft);
+    if (!draft.trim() || closed || busy) return;
+    void runAction(async () => {
+      if (demo) setMessages(current => [...current, { id: String(Date.now()), collaborationId: item.id, senderId: userId, content: draft.trim(), createdAt: new Date().toISOString() }]);
+      else await sendCollaborationMessage(item.id, draft);
       setInput(current => current === draft ? '' : current);
-      await refreshMessages();
-    } catch (caught) { setNotice(friendlyError(caught)); }
-    finally { messageInFlight.current = false; setBusy(false); }
+      if (!demo) await loadConversation();
+      scroll.current?.scrollToEnd({ animated: true });
+    });
   };
-  const transition = async (action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete') => {
-    if (busy || termsBusy || (action === 'confirm' && (editing || periodOpen || periodPending || !supplyConfirmed))) return;
+  const confirmSupply = () => void runAction(async () => {
+    if (demo) return;
+    const dates = termVersion.startsOn && termVersion.endsOn ? { startsOn: termVersion.startsOn, endsOn: termVersion.endsOn } : {};
+    await saveCollaborationTerms(item.id, dates, savedItems.filter(value => value.selected).map(value => ({ ...value, creatorConfirmed: true })));
+    await refreshTerms();
+  }, setTermsError);
+  const transition = (action: 'accept' | 'confirm' | 'cancel' | 'complete') => void runAction(async () => {
     if (demo) {
-      const nextStatus = nextDemoCollaborationStatus(currentStatus, action, role);
-      if (nextStatus === currentStatus) { setNotice('현재 역할과 협업 단계에서는 이 상태로 변경할 수 없습니다.'); return; }
-      onUpdated({ ...item, status: nextStatus, updatedAt: new Date().toISOString() });
-      setNotice(`협업 상태를 '${statusLabel[nextStatus]}'으로 변경했습니다.`);
-      return;
+      const status = nextDemoCollaborationStatus(item.status, action, role);
+      onUpdated({ ...item, status });
+    } else {
+      await transitionCollaboration(item.id, action);
     }
-    setBusy(true); setNotice('');
-    try {
-      const status = await transitionCollaboration(item.id, action);
-      onUpdated({ ...item, status, updatedAt: new Date().toISOString() });
-      if (status === 'active') setConditionsOpen(false);
-      setNotice(status === 'active' ? '전시가 확정됐어요. 작품의 QR을 발급하거나 판매 상태를 설정할 수 있어요.' : '협업 상태를 변경했습니다.');
-    } catch (caught) { setNotice(friendlyError(caught)); } finally { setBusy(false); }
-  };
-  const actions = useMemo(() => {
-    const result: { action: 'accept' | 'confirm' | 'counter' | 'cancel' | 'complete'; label: string; primary?: boolean }[] = [];
-    if (role === 'creator' && ['proposed', 'negotiating'].includes(currentStatus)) result.push({ action: 'accept', label: '조건 승인', primary: true });
-    if (role === 'store' && currentStatus === 'approved') result.push({ action: 'confirm', label: '전시 확정', primary: true });
-    if (['proposed', 'negotiating', 'approved'].includes(currentStatus)) result.push({ action: 'counter', label: '조건 수정 요청' });
-    if (currentStatus === 'active') result.push({ action: 'complete', label: '전시 종료 처리', primary: true });
-    if (!['completed', 'cancelled'].includes(currentStatus)) result.push({ action: 'cancel', label: '협업 취소' });
-    return result;
-  }, [currentStatus, role]);
-  const itemQuantity = selectedItems.reduce((sum, value) => sum + value.quantity, 0);
-  const quickReplies = ['전시 연장 문의', '작품 교체 문의', '배송 일정 확인', '정산 확인'];
+    setCancelOpen(false); setConditionsOpen(false);
+    if (!demo) await loadConversation();
+    scroll.current?.scrollToEnd({ animated: true });
+  }, error => { setCancelOpen(false); setTermsError(error); setNotice(error); });
+
   return <KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Header title={item.counterpartName} subtitle={`${item.projectTitle} · ${statusLabel[currentStatus]}`} back={onBack} />
-    <ScrollView style={c.flex} contentContainerStyle={c.detailScroll} keyboardShouldPersistTaps="handled">
-      <View style={c.compactSummary}>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: summaryOpen }} accessibilityLabel={`협업 요약 ${summaryOpen ? '접기' : '펼치기'}`} style={c.summaryHeader} onPress={() => setSummaryOpen(value => !value)}>
-          <View style={c.flex}><View style={c.summaryTitleRow}><CuritText weight="semibold" style={c.summaryTitle}>협업 정보</CuritText><View style={c.inlineStatus}><View style={c.chatStatusDot} /><CuritText style={c.chatStatusText}>{statusLabel[currentStatus]}</CuritText></View></View><CuritText style={c.summaryMeta}>{item.startsOn && item.endsOn ? `${item.startsOn} ~ ${item.endsOn}` : '기간 협의 중'} · 작품 {selectedItems.length}종{itemQuantity ? ` ${itemQuantity}개` : ''}</CuritText></View>
-          <CuritText weight="semibold" style={c.summaryToggle}>{summaryOpen ? '접기' : '보기'}</CuritText>
-        </Pressable>
-        {summaryOpen ? <View style={c.summaryBody}>
-          <CuritText style={c.muted}>{item.storeName} × {item.creatorName}</CuritText>
-          <Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} />
-          {periodPending ? <CuritText style={c.flowHint}>{role === 'creator' ? '전시 기간이 변경됐어요. 최신 기간과 작품 수량을 함께 확인해 주세요.' : '변경된 전시 기간의 크리에이터 확인을 기다리고 있어요.'}</CuritText> : null}
-          {canEditPeriod ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: periodOpen }} style={c.conditionToggle} disabled={termsBusy} onPress={() => {
-            setPeriod({ startsOn: item.startsOn ?? '', endsOn: item.endsOn ?? '' });
-            setPeriodOpen(value => !value);
-          }}><CuritText weight="semibold" style={c.brandText}>{periodOpen ? '전시 기간 편집 닫기' : '전시 기간 편집'}</CuritText><CuritText style={c.brandText}>{periodOpen ? '−' : '＋'}</CuritText></Pressable> : null}
-          {canEditPeriod && periodOpen ? <View style={c.conditionBody}>
-            <ExhibitionPeriodFields period={period} onChange={setPeriod} disabled={termsBusy} />
-            <Button label={termsBusy ? '처리 중…' : '전시 기간 저장'} variant="secondary" disabled={termsBusy || !periodChanged || Boolean(exhibitionPeriodError(period))} onPress={() => { void savePeriod(); }} />
-          </View> : null}
-          <CuritText style={c.flowHint}>{item.terms.initiatedBy === 'creator' ? '크리에이터 제안 → 작품 수량 확인 → 전시 확정·QR 발급' : '매장 제안 → 크리에이터 승인·수량 확인 → 전시 확정·QR 발급'}</CuritText>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: conditionsOpen }} style={c.conditionToggle} onPress={() => setConditionsOpen(value => !value)}><CuritText weight="semibold" style={c.brandText}>작품 수량·배치 조건 {conditionsOpen ? '접기' : '관리'}</CuritText><CuritText style={c.brandText}>{conditionsOpen ? '−' : '＋'}</CuritText></Pressable>
-          {conditionsOpen ? <View style={c.conditionBody}>
-            {termsBusy && !termsLoaded ? <ActivityIndicator color={colors.brand} /> : null}
-            {(role === 'store' && !isClosed ? collaborationItems : selectedItems).map(value => (
-              <View key={value.projectItemId} style={c.itemCard}>
-                <View style={c.itemRow}>
-                  {value.imageUrl ? <Image source={{ uri: value.imageUrl }} style={c.itemImage} /> : <View style={[c.itemImage, c.itemPlaceholder]}><Icon name="management" color={colors.brand} /></View>}
-                  <View style={c.flex}>
-                    <CuritText weight="semibold">{value.name}</CuritText>
-                    <CuritText style={c.muted}>{value.price.toLocaleString()}원 · 재고 {value.stock}개</CuritText>
-                    {value.selected ? <CuritText style={value.creatorConfirmed ? c.brandText : c.time}>{value.creatorConfirmed ? '크리에이터 확인 완료' : '수량 확인 전'}</CuritText> : null}
-                  </View>
-                  {role === 'store' && !isClosed ? <Pressable accessibilityRole="checkbox" accessibilityLabel={`${value.name} 전시 선택`} accessibilityState={{ checked: value.selected, disabled: !canEdit }} disabled={!canEdit} style={c.quantityTap} onPress={() => updateItem(value.projectItemId, { selected: !value.selected })}>
-                    <CuritText style={c.quantityButton}>{value.selected ? '☑' : '□'}</CuritText>
-                  </Pressable> : null}
-                </View>
-                {value.selected ? <View style={[c.between, c.itemQuantity]}>
-                  <CuritText style={c.muted}>전시 수량</CuritText>
-                  {role === 'store' && !isClosed ? <View style={c.quantity}>
-                    <Pressable accessibilityLabel={`${value.name} 수량 줄이기`} accessibilityRole="button" disabled={!canEdit || value.quantity <= 1} style={[c.quantityTap, value.quantity <= 1 && c.dim]} onPress={() => updateItem(value.projectItemId, { quantity: value.quantity - 1 })}><CuritText style={c.quantityButton}>−</CuritText></Pressable>
-                    <CuritText weight="bold">{value.quantity}개</CuritText>
-                    <Pressable accessibilityLabel={`${value.name} 수량 늘리기`} accessibilityRole="button" disabled={!canEdit || value.quantity >= Math.min(value.stock, 100_000)} style={[c.quantityTap, value.quantity >= Math.min(value.stock, 100_000) && c.dim]} onPress={() => updateItem(value.projectItemId, { quantity: value.quantity + 1 })}><CuritText style={c.quantityButton}>＋</CuritText></Pressable>
-                  </View> : <CuritText weight="bold">{value.quantity}개</CuritText>}
-                </View> : null}
-              </View>
-            ))}
-            {termsLoaded && !selectedItems.length ? <CuritText style={c.muted}>{role === 'store' ? '전시할 작품을 선택해 주세요.' : '매장이 전시할 작품을 선택하면 이곳에서 확인할 수 있어요.'}</CuritText> : null}
-            {!isClosed && !quantitiesFit ? <CuritText style={c.errorText}>재고보다 많은 수량이 있어요. 전시 수량을 다시 확인해 주세요.</CuritText> : null}
-            {role === 'store' && !isClosed ? <>
-              <CuritText weight="semibold" style={c.conditionLabel}>배치 위치</CuritText>
-              <View style={c.tags}>{['벽면', '선반', '카운터', '테이블', '입구'].map(value => <Chip key={value} label={value} active={zone === value} onPress={() => { if (canEdit) { setZone(value); setEditing(true); } }} />)}</View>
-              <TextInput accessibilityLabel="배치 및 운영 조건" maxLength={1000} value={termNote} onChangeText={value => { setTermNote(value); setEditing(true); }} editable={canEdit} placeholder="설치 위치, 발송 일정, 관리 조건" placeholderTextColor={colors.subtle} multiline style={c.termInput} />
-            </> : <>
-              <Term label="배치 위치" value={zone} />
-              {termNote ? <CuritText style={c.muted}>{termNote}</CuritText> : null}
-            </>}
-            {!isClosed && (role === 'store' || !supplyConfirmed || periodPending) ? <Button label={termsBusy ? '처리 중…' : role === 'creator' ? periodPending ? '전시 기간·작품 수량 확인' : '작품 구성·수량 확인' : '상품·배치 조건 저장'} disabled={termsBusy || !termsLoaded || !selectedItems.length || !quantitiesFit || (role === 'store' && !editing)} variant="secondary" onPress={() => { void saveTerms(role === 'creator'); }} /> : null}
-          </View> : null}
-          {role === 'store' && currentStatus === 'approved' && (!supplyConfirmed || editing) ? <CuritText style={c.flowHint}>{editing ? '변경한 작품과 수량을 먼저 저장해 주세요.' : '크리에이터가 선택한 작품의 수량을 확인하면 전시를 확정할 수 있어요.'}</CuritText> : null}
-          {onOpenQr && currentStatus === 'active' ? <Button label="이 전시의 QR 상품 관리" onPress={onOpenQr} /> : null}
-          {actions.length ? <View style={c.actionButtons}>{actions.map(action => <View key={action.action} style={c.actionButton}><Button label={action.label} variant={action.primary ? 'primary' : 'secondary'} disabled={busy || termsBusy || (action.action === 'confirm' && (!supplyConfirmed || editing || periodOpen || periodPending))} onPress={() => { void transition(action.action); }} /></View>)}</View> : null}
-          {!demo ? <Button label={editing ? '편집 취소' : '최신 조건 불러오기'} variant="secondary" disabled={termsBusy || busy} onPress={() => { void refreshTerms(); }} /> : null}
-        </View> : null}
-      </View>
-      {busy && !messages.length ? <ActivityIndicator color={colors.brand} /> : messages.length ? messages.map(message => <View key={message.id} style={[c.collabBubble, message.senderId === userId ? c.ownCollabBubble : c.otherCollabBubble]}><CuritText style={message.senderId === userId ? c.userText : undefined}>{message.content}</CuritText><CuritText style={[c.time, message.senderId === userId && { color: '#D7DFCF' }]}>{new Date(message.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</CuritText></View>) : <CuritText style={c.muted}>조건이나 일정에 관해 첫 메시지를 남겨보세요.</CuritText>}
+    <Header title={item.counterpartName} back={onBack} />
+    <Pressable accessibilityRole="button" accessibilityLabel="협업 조건 보기" style={c.chatConditionBar} onPress={openConditions}>
+      <View style={c.flex}><CuritText numberOfLines={1} weight="semibold" style={c.summaryTitle}>{item.projectTitle}</CuritText><CuritText style={c.summaryMeta}>{statusLabel[item.status]}{pending ? ' · 조건 요청 1건' : ''}</CuritText></View>
+      <CuritText weight="semibold" style={c.summaryToggle}>협업 조건</CuritText><Icon name="chevron" size={15} color={colors.brand} />
+    </Pressable>
+    <ScrollView ref={scroll} style={c.flex} contentContainerStyle={c.detailScroll} keyboardShouldPersistTaps="handled" onContentSizeChange={() => { if (nearLatest.current) scroll.current?.scrollToEnd({ animated: false }); }}
+      onScroll={event => {
+        const { contentSize, layoutMeasurement, contentOffset } = event.nativeEvent;
+        nearLatest.current = contentSize.height - layoutMeasurement.height - contentOffset.y < 90;
+      }} scrollEventThrottle={32}>
+      {initialLoading ? <ActivityIndicator color={colors.brand} /> : null}
+      {!initialLoading && !messages.length ? <CuritText style={c.muted}>조건이나 일정에 관해 첫 메시지를 남겨보세요.</CuritText> : null}
+      {messages.map(message => {
+        const mine = message.senderId === userId;
+        const requestStatus = message.termRequestStatus;
+        const time = new Date(message.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        return requestStatus ? <View key={message.id} style={[c.requestCard, mine ? c.ownRequest : c.otherRequest]}>
+          <CuritText weight="semibold">조건 수정 요청</CuritText>
+          <CuritText style={c.description}>{message.content.split('\n').slice(1).join('\n')}</CuritText>
+          {requestStatus === 'pending' && !mine && !closed ? <View style={c.actionButtons}>
+            <View style={c.flex}><Button label="거절" variant="secondary" disabled={busy} onPress={() => respond(message.id, false)} /></View>
+            <View style={c.flex}><Button label="수락" disabled={busy} onPress={() => respond(message.id, true)} /></View>
+          </View> : <CuritText style={c.brandText}>{requestStatus === 'accepted' ? '수락됨' : requestStatus === 'rejected' ? '거절됨' : requestStatus === 'closed' ? '협업 종료' : '상대 답변 대기 중'}</CuritText>}
+          <CuritText style={c.time}>{time}</CuritText>
+        </View> : <View key={message.id} style={[c.collabBubble, mine ? c.ownCollabBubble : c.otherCollabBubble]}>
+          <CuritText style={mine ? c.userText : undefined}>{mine && message.content === '상대가 협업 취소를 신청했습니다.' ? '협업을 취소했습니다.' : message.content}</CuritText>
+          <CuritText style={[c.time, mine && { color: '#D7DFCF' }]}>{time}</CuritText>
+        </View>;
+      })}
     </ScrollView>
     {notice ? <Pressable accessibilityLiveRegion="polite" accessibilityRole="button" accessibilityHint="눌러서 안내 닫기" style={[c.notice, { marginHorizontal: 12, marginBottom: 8 }]} onPress={() => setNotice('')}><CuritText style={c.brandText}>{notice}</CuritText></Pressable> : null}
-    <View style={c.composerWrap}>
-      {quickRepliesOpen ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.topicRow}>{quickReplies.map(value => <Pressable key={value} accessibilityRole="button" style={c.quickReply} onPress={() => { setInput(value); setQuickRepliesOpen(false); }}><CuritText style={c.quickReplyText}>{value}</CuritText></Pressable>)}</ScrollView> : null}
-      <View style={c.composer}><Pressable accessibilityRole="button" accessibilityLabel="빠른 문의 열기" accessibilityState={{ expanded: quickRepliesOpen }} style={c.composerMore} onPress={() => setQuickRepliesOpen(value => !value)}><CuritText weight="semibold" style={c.composerMoreText}>＋</CuritText></Pressable><TextInput value={input} onChangeText={setInput} maxLength={2000} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} /><Pressable accessibilityRole="button" accessibilityLabel="협업 메시지 보내기" disabled={!input.trim() || busy} style={[c.send, (!input.trim() || busy) && c.sendDisabled]} onPress={() => { void send(); }}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable></View>
-    </View>
+    {!closed ? <View style={c.composerWrap}><View style={c.composer}>
+      <TextInput value={input} onChangeText={setInput} maxLength={2000} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} onFocus={() => scroll.current?.scrollToEnd({ animated: true })} />
+      <Pressable accessibilityRole="button" accessibilityLabel="협업 메시지 보내기" disabled={!input.trim() || busy} style={[c.send, (!input.trim() || busy) && c.sendDisabled]} onPress={send}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable>
+    </View></View> : null}
+    <Modal visible={conditionsOpen && !locked} animationType="slide" onRequestClose={() => { if (cancelOpen) setCancelOpen(false); else setConditionsOpen(false); }}>
+      <ScreenFrame><KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Header title="협업 조건" subtitle={item.projectTitle} back={() => setConditionsOpen(false)} />
+        <ScrollView contentContainerStyle={c.proposalScroll} keyboardShouldPersistTaps="handled">
+          {termsError ? <CuritText accessibilityRole="alert" style={c.errorText}>{termsError}</CuritText> : null}
+          {busy && !loaded ? <ActivityIndicator color={colors.brand} /> : null}
+          {loaded ? <>
+            <Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} />
+            {pending ? <CuritText style={c.flowHint}>조건 수정 요청이 있어요. 채팅에서 답변을 확인해 주세요.</CuritText> : null}
+            {stale ? <CuritText style={c.flowHint}>다른 기기에서 조건이 변경됐어요. 최신 조건을 불러와 주세요.</CuritText> : null}
+            {scheduleEditable ? <ExhibitionPeriodFields period={period} onChange={setPeriod} disabled={busy} /> : <Term label="전시 기간" value={`${termVersion.startsOn ?? '미정'} ~ ${termVersion.endsOn ?? '미정'}`} />}
+            <CuritText weight="semibold">작품과 전시 수량</CuritText>
+            {(scheduleEditable ? draftItems : selectedItems).map(value => <View key={value.projectItemId} style={c.itemCard}>
+              <View style={c.itemRow}>
+                {value.imageUrl ? <Image source={{ uri: value.imageUrl }} style={c.itemImage} /> : null}
+                <View style={c.flex}><CuritText weight="semibold">{value.name}</CuritText><CuritText style={c.muted}>재고 {value.stock}개{value.creatorConfirmed ? ' · 수량 확인됨' : ''}</CuritText></View>
+                {scheduleEditable ? <Pressable accessibilityRole="checkbox" accessibilityLabel={`${value.name} 전시 선택`} accessibilityState={{ checked: value.selected }} style={c.quantityTap} onPress={() => setQuantity(value.projectItemId, value.selected ? 0 : 1)}><CuritText style={c.quantityButton}>{value.selected ? '☑' : '□'}</CuritText></Pressable> : null}
+              </View>
+              {value.selected ? <View style={c.between}>
+                <CuritText style={c.muted}>전시 수량</CuritText>
+                {scheduleEditable ? <View style={c.quantity}>
+                  <Pressable accessibilityLabel={`${value.name} 수량 줄이기`} accessibilityRole="button" disabled={value.quantity <= 1} style={[c.quantityTap, value.quantity <= 1 && c.dim]} onPress={() => setQuantity(value.projectItemId, value.quantity - 1)}><CuritText style={c.quantityButton}>−</CuritText></Pressable>
+                  <CuritText weight="bold">{value.quantity}개</CuritText>
+                  <Pressable accessibilityLabel={`${value.name} 수량 늘리기`} accessibilityRole="button" disabled={value.quantity >= Math.min(value.stock, 100_000)} style={[c.quantityTap, value.quantity >= Math.min(value.stock, 100_000) && c.dim]} onPress={() => setQuantity(value.projectItemId, value.quantity + 1)}><CuritText style={c.quantityButton}>＋</CuritText></Pressable>
+                </View> : <CuritText weight="semibold">{value.quantity}개</CuritText>}
+              </View> : null}
+            </View>)}
+            {!draftItems.length ? <CuritText style={c.muted}>등록된 작품이 없어요.</CuritText> : null}
+            {editable ? <>
+              <CuritText weight="semibold">배치 위치</CuritText>
+              <View style={c.tags}>{['벽면', '선반', '카운터', '테이블', '입구'].map(value => <Chip key={value} label={value} active={zone === value} onPress={() => setZone(current => current === value ? '' : value)} />)}</View>
+              <Field label="배치·운영 조건" value={note} onChangeText={setNote} multiline maxLength={1000} style={c.termInput} placeholder="예: 선반 왼쪽에 진열해 주세요" />
+            </> : <>
+              <Term label="배치 위치" value={zone || '미정'} />
+              <Term label="운영 조건" value={note || '미정'} />
+            </>}
+            {!closed && !pending ? <Button label="조건 수정 요청" disabled={!requestEnabled || Boolean(demo)} onPress={submitChanges} /> : null}
+            {!closed && !pending && role === 'creator' && savedItems.some(value => value.selected) && (!supplyConfirmed || needsScheduleReview) ? <Button label="기존 작품 수량 확인" variant="secondary" disabled={busy || changed || stale || !quantitiesFit} onPress={confirmSupply} /> : null}
+            {role === 'creator' && ['proposed', 'negotiating'].includes(item.status) ? <Button label="협업 제안 승인" variant="secondary" disabled={busy || Boolean(pending) || changed || stale} onPress={() => transition('accept')} /> : null}
+            {role === 'store' && item.status === 'approved' ? <Button label="전시 확정" variant="secondary" disabled={busy || Boolean(pending) || changed || stale || needsScheduleReview || !supplyConfirmed} onPress={() => transition('confirm')} /> : null}
+            {onOpenQr && item.status === 'active' ? <Button label="이 전시의 QR 상품 관리" onPress={() => { setConditionsOpen(false); onOpenQr(); }} /> : null}
+            {item.status === 'active' ? <Button label="전시 종료 처리" variant="secondary" disabled={busy} onPress={() => transition('complete')} /> : null}
+            {!closed ? <Button label="협업 취소" variant="secondary" disabled={busy} onPress={() => setCancelOpen(true)} /> : null}
+          </> : null}
+          {!demo ? <Button label="최신 조건 불러오기" variant="secondary" disabled={busy} onPress={() => { void runAction(refreshTerms, setTermsError); }} /> : null}
+        </ScrollView>
+        {cancelOpen ? <View style={c.confirmBackdrop} accessibilityViewIsModal>
+          <View style={c.confirmCard}>
+            <CuritText weight="bold" style={c.recommendationTitle}>협업을 취소할까요?</CuritText>
+            <CuritText style={c.description}>상대방에게 채팅으로 알려드려요.</CuritText>
+            <View style={c.actionButtons}><View style={c.flex}><Button label="돌아가기" variant="secondary" disabled={busy} onPress={() => setCancelOpen(false)} /></View>
+            <View style={c.flex}><Button label="협업 취소" disabled={busy} onPress={() => transition('cancel')} /></View></View>
+          </View>
+        </View> : null}
+      </KeyboardAvoidingView></ScreenFrame>
+    </Modal>
   </KeyboardAvoidingView>;
 }
 
 function Term({ label, value }: { label: string; value: string }) { return <View style={c.termRow}><CuritText style={c.termLabel}>{label}</CuritText><CuritText weight="semibold" style={c.termValue}>{value}</CuritText></View>; }
 
 const c = StyleSheet.create({
+  chatConditionBar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 7, gap: 7, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.brandPale },
+  requestCard: { width: '91%', maxWidth: 440, borderWidth: 1, borderColor: colors.border, padding: 14, borderRadius: radius.md, marginBottom: 10, gap: 9 },
+  ownRequest: { alignSelf: 'flex-end', backgroundColor: colors.brandSoft },
+  otherRequest: { alignSelf: 'flex-start', backgroundColor: colors.surface },
+  confirmBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 },
+  confirmCard: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 20, gap: 14 },
+  scoreDetails: { gap: 10, padding: 15, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  recommendationDetailHeading: { paddingHorizontal: 20, paddingTop: 20 },
+  recommendationDetailBody: { paddingHorizontal: 20, paddingVertical: 20, gap: 19 },
+  recommendationDetailReasons: { padding: 15, gap: 12 },
+  recommendationDetailTitle: { lineHeight: 27, marginBottom: 5 },
   proposalScroll: { padding: 20, gap: 14, paddingBottom: 32 }, periodFields: { gap: 10 },
   flex: { flex: 1 }, between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, muted: { color: colors.muted }, brandText: { color: colors.brand },
   hubScroll: { flexGrow: 1, padding: 20, paddingBottom: 36 }, curatorPin: { minHeight: 82, borderRadius: radius.lg, backgroundColor: colors.brandSoft, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }, curatorAvatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }, smallAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft }, pinCaption: { color: colors.muted, fontSize: 11, marginTop: 3 }, pinAction: { color: colors.brand, fontSize: 11 }, listHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 6 }, chatRow: { minHeight: 88, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }, contactAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandPale }, chatName: { fontSize: 16 }, chatProjectRow: { minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 }, project: { flexShrink: 1, color: colors.brand, fontSize: 11, marginVertical: 3 }, chatStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.brandSoft }, chatStatusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.brand }, chatStatusText: { color: colors.brand, fontSize: 9 }, time: { color: colors.subtle, fontSize: 9 }, loader: { marginVertical: 40 }, error: { padding: 14, borderRadius: radius.sm, backgroundColor: '#FFF2EF', marginVertical: 16 }, errorText: { color: colors.danger },
