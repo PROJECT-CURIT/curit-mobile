@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import {
@@ -487,6 +487,8 @@ function collaborationRecommendationLabel(status?: MatchRecommendation['collabor
   return '진행 중';
 }
 
+const collaborationQuickReplies = ['전시 연장 문의', '작품 교체 문의', '배송 일정 확인', '정산 확인'];
+
 export function CollaborationDetailScreen({ role, userId, item, demo, input, setInput, onBack, onUpdated, onOpenQr }: { role: Role; userId: string; item: CollaborationSummary; demo?: boolean; input: string; setInput: Dispatch<SetStateAction<string>>; onBack: () => void; onUpdated: (item: CollaborationSummary) => void; onOpenQr?: () => void }) {
   const locked = useContext(SessionLockedContext);
   const scroll = useRef<ScrollViewInstance>(null);
@@ -495,9 +497,11 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
   const [initialLoading, setInitialLoading] = useState(!demo);
   const [busy, setBusy] = useState(false);
   const actionLock = useRef(false);
+  const actionVersion = useRef(0);
   const [notice, setNotice] = useState('');
   const [termsError, setTermsError] = useState('');
   const [conditionsOpen, setConditionsOpen] = useState(false);
+  const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [termVersion, setTermVersion] = useState(item);
   const [savedItems, setSavedItems] = useState<CollaborationItem[]>([]);
@@ -508,7 +512,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
   const [loaded, setLoaded] = useState(Boolean(demo));
   const [periodLocked, setPeriodLocked] = useState(false);
 
-  const applyTerms = (updated: CollaborationSummary, items: CollaborationItem[]) => {
+  const applyTerms = useCallback((updated: CollaborationSummary, items: CollaborationItem[]) => {
     setTermVersion(updated);
     setSavedItems(items);
     setDraftItems(items);
@@ -516,8 +520,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     setZone(String(updated.terms.installationZone ?? ''));
     setNote(String(updated.terms.note ?? ''));
     setLoaded(true);
-    onUpdated(updated);
-  };
+  }, [setNote, setPeriod, setZone]);
   const loadConversation = async () => {
     const [conversation, [updated]] = await Promise.all([loadCollaborationMessages(item.id), loadCollaborations(role, item.id)]);
     setMessages(conversation);
@@ -531,13 +534,14 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     let controller: AbortController | undefined;
     const refresh = async () => {
       if (controller || actionLock.current || (AppState.currentState && AppState.currentState !== 'active')) return;
+      const version = actionVersion.current;
       controller = new AbortController();
       const timer = setTimeout(() => controller?.abort(), 9_000);
       try {
         const [conversation, [updated]] = await Promise.all([
           loadCollaborationMessages(item.id, controller.signal), loadCollaborations(role, item.id, controller.signal),
         ]);
-        if (!active || actionLock.current) return;
+        if (!active || version !== actionVersion.current) return;
         setMessages(conversation);
         if (updated) onUpdatedRef.current(updated);
       } catch (error) {
@@ -550,38 +554,32 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     };
     void refresh();
     const interval = setInterval(() => { void refresh(); }, 6000);
-    return () => { active = false; controller?.abort(); clearInterval(interval); };
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') void refresh(); });
+    return () => { active = false; controller?.abort(); clearInterval(interval); subscription.remove(); };
   }, [demo, locked, role, item.id, initialLoading]);
 
   const runAction = async (operation: () => Promise<void>, reportError = setNotice) => {
     if (actionLock.current) return;
     actionLock.current = true;
+    actionVersion.current += 1;
     setBusy(true); setNotice(''); setTermsError('');
     try { await operation(); } catch (error) {
       if (error instanceof Error && error.message === 'COLLABORATION_TERMS_LOCKED') setPeriodLocked(true);
       reportError(friendlyError(error));
     } finally { actionLock.current = false; setBusy(false); }
   };
-  const refreshTerms = async () => {
-    if (demo) { applyTerms(item, savedItems); return; }
-    const [[updated], items, conversation] = await Promise.all([
-      loadCollaborations(role, item.id), loadCollaborationItems(item), loadCollaborationMessages(item.id),
-    ]);
-    if (!updated) throw new Error('협업을 찾지 못했어요. 다시 열어 주세요.');
-    applyTerms(updated, items);
-    setMessages(conversation);
-  };
   const openConditions = () => {
+    Keyboard.dismiss();
     setCancelOpen(false);
+    setQuickRepliesOpen(false);
+    setTermsError('');
+    if (demo) applyTerms(item, savedItems);
+    else setLoaded(false);
     setConditionsOpen(true);
-    setLoaded(false);
-    void runAction(refreshTerms, setTermsError);
   };
 
   const pending = messages.find(message => message.termRequestStatus === 'pending');
   const closed = item.status === 'completed' || item.status === 'cancelled';
-  const editable = loaded && !closed && !pending && !busy;
-  const scheduleEditable = editable && item.status !== 'active' && !periodLocked;
   const selectedItems = draftItems.filter(value => value.selected);
   const quantitiesFit = selectedItems.every(value => value.quantity >= 1 && value.quantity <= Math.min(value.stock, 100_000));
   const supplyConfirmed = savedItems.some(value => value.selected) && savedItems.filter(value => value.selected).every(value => value.creatorConfirmed && value.quantity <= value.stock);
@@ -592,7 +590,7 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
   const termChanges: Record<string, string> = {
     ...(periodChanged ? period : {}),
     ...(zone !== String(termVersion.terms.installationZone ?? '') ? { installationZone: zone } : {}),
-    ...(note.trim() !== String(termVersion.terms.note ?? '') ? { note: note.trim() } : {}),
+    ...(note.trim() !== String(termVersion.terms.note ?? '').trim() ? { note: note.trim() } : {}),
   };
   const savedQuantities = new Map(savedItems.filter(value => value.selected).map(value => [value.projectItemId, value.quantity]));
   const itemChanges = draftItems.flatMap(value => {
@@ -600,6 +598,33 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     return quantity !== (savedQuantities.get(value.projectItemId) ?? 0) ? [{ projectItemId: value.projectItemId, quantity }] : [];
   });
   const changed = Object.keys(termChanges).length > 0 || itemChanges.length > 0;
+  const { id: collaborationId, projectId, updatedAt } = item;
+  useEffect(() => {
+    // Refresh an untouched form, but keep a local draft if the other participant changes the terms.
+    if (!conditionsOpen || demo || locked || busy || (loaded && (!stale || changed))) return;
+    const controller = new AbortController();
+    let active = true;
+    void loadWithDeadline(async signal => {
+      const [[updated], items] = await Promise.all([
+        loadCollaborations(role, collaborationId, signal),
+        loadCollaborationItems({ id: collaborationId, projectId }, signal),
+      ]);
+      if (!updated) throw new Error('협업을 찾지 못했어요.');
+      return { updated, items };
+    }, controller).then(({ updated, items }) => {
+      if (controller.signal.aborted) return;
+      applyTerms(updated, items);
+      onUpdatedRef.current(updated);
+      setTermsError('');
+    }).catch(error => {
+      if (!active) return;
+      setTermsError(`${friendlyError(error)} 협업 조건 화면을 다시 열어 주세요.`);
+    });
+    return () => { active = false; controller.abort(); };
+  }, [applyTerms, busy, changed, collaborationId, conditionsOpen, demo, loaded, locked, projectId, role, stale, updatedAt]);
+
+  const editable = loaded && !closed && !pending && !busy && (!stale || changed);
+  const scheduleEditable = editable && item.status !== 'active' && !periodLocked;
   const requestEnabled = editable && !stale && changed && !periodError && (!itemChanges.length || (quantitiesFit && selectedItems.length > 0));
   const setQuantity = (id: string, quantity: number) => setDraftItems(current => current.map(value => value.projectItemId === id
     ? { ...value, selected: quantity > 0, quantity: Math.max(1, quantity) } : value));
@@ -620,12 +645,13 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
   });
   const send = () => {
     const draft = input;
-    if (!draft.trim() || closed || busy) return;
+    if (!draft.trim() || busy || locked) return;
     void runAction(async () => {
-      if (demo) setMessages(current => [...current, { id: String(Date.now()), collaborationId: item.id, senderId: userId, content: draft.trim(), createdAt: new Date().toISOString() }]);
-      else await sendCollaborationMessage(item.id, draft);
+      const message = demo
+        ? { id: String(Date.now()), collaborationId: item.id, senderId: userId, content: draft.trim(), createdAt: new Date().toISOString() }
+        : await sendCollaborationMessage(item.id, draft);
+      if (message) setMessages(current => [...current, message]);
       setInput(current => current === draft ? '' : current);
-      if (!demo) await loadConversation();
       scroll.current?.scrollToEnd({ animated: true });
     });
   };
@@ -633,7 +659,8 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
     if (demo) return;
     const dates = termVersion.startsOn && termVersion.endsOn ? { startsOn: termVersion.startsOn, endsOn: termVersion.endsOn } : {};
     await saveCollaborationTerms(item.id, dates, savedItems.filter(value => value.selected).map(value => ({ ...value, creatorConfirmed: true })));
-    await refreshTerms();
+    await loadConversation();
+    setLoaded(false);
   }, setTermsError);
   const transition = (action: 'accept' | 'confirm' | 'cancel' | 'complete') => void runAction(async () => {
     if (demo) {
@@ -679,20 +706,29 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
       })}
     </ScrollView>
     {notice ? <Pressable accessibilityLiveRegion="polite" accessibilityRole="button" accessibilityHint="눌러서 안내 닫기" style={[c.notice, { marginHorizontal: 12, marginBottom: 8 }]} onPress={() => setNotice('')}><CuritText style={c.brandText}>{notice}</CuritText></Pressable> : null}
-    {!closed ? <View style={c.composerWrap}><View style={c.composer}>
-      <TextInput value={input} onChangeText={setInput} maxLength={2000} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} onFocus={() => scroll.current?.scrollToEnd({ animated: true })} />
-      <Pressable accessibilityRole="button" accessibilityLabel="협업 메시지 보내기" disabled={!input.trim() || busy} style={[c.send, (!input.trim() || busy) && c.sendDisabled]} onPress={send}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable>
-    </View></View> : null}
+    <View style={c.composerWrap}>
+      {quickRepliesOpen ? <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={c.topicRow}>
+        {collaborationQuickReplies.map(value => <Pressable key={value} accessibilityRole="button" style={c.quickReply} onPress={() => {
+          setInput(current => current.trim() ? `${current.trimEnd()} ${value}`.slice(0, 2000) : value);
+          setQuickRepliesOpen(false);
+        }}><CuritText style={c.quickReplyText}>{value}</CuritText></Pressable>)}
+      </ScrollView> : null}
+      <View style={c.composer}>
+        <Pressable accessibilityRole="button" accessibilityLabel={quickRepliesOpen ? '빠른 문의 닫기' : '빠른 문의 열기'} accessibilityState={{ expanded: quickRepliesOpen }} style={c.composerMore} onPress={() => setQuickRepliesOpen(value => !value)}><CuritText weight="semibold" style={c.composerMoreText}>{quickRepliesOpen ? '−' : '＋'}</CuritText></Pressable>
+        <TextInput value={input} onChangeText={setInput} maxLength={2000} placeholder="메시지를 입력해 주세요" placeholderTextColor={colors.subtle} style={c.input} onFocus={() => scroll.current?.scrollToEnd({ animated: true })} />
+        <Pressable accessibilityRole="button" accessibilityLabel="협업 메시지 보내기" disabled={!input.trim() || busy || locked} style={[c.send, (!input.trim() || busy || locked) && c.sendDisabled]} onPress={send}><CuritText weight="bold" style={c.sendText}>↑</CuritText></Pressable>
+      </View>
+    </View>
     <Modal visible={conditionsOpen && !locked} animationType="slide" onRequestClose={() => { if (cancelOpen) setCancelOpen(false); else setConditionsOpen(false); }}>
       <ScreenFrame><KeyboardAvoidingView style={c.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Header title="협업 조건" subtitle={item.projectTitle} back={() => setConditionsOpen(false)} />
         <ScrollView contentContainerStyle={c.proposalScroll} keyboardShouldPersistTaps="handled">
           {termsError ? <CuritText accessibilityRole="alert" style={c.errorText}>{termsError}</CuritText> : null}
-          {busy && !loaded ? <ActivityIndicator color={colors.brand} /> : null}
+          {(!loaded || (stale && !changed)) && !termsError ? <ActivityIndicator color={colors.brand} accessibilityLabel="협업 조건을 확인하고 있어요" /> : null}
           {loaded ? <>
             <Term label="판매 배분" value={`작가 ${item.creatorShare}% · 매장 ${item.storeShare}% · 플랫폼 ${item.platformShare}%`} />
             {pending ? <CuritText style={c.flowHint}>조건 수정 요청이 있어요. 채팅에서 답변을 확인해 주세요.</CuritText> : null}
-            {stale ? <CuritText style={c.flowHint}>다른 기기에서 조건이 변경됐어요. 최신 조건을 불러와 주세요.</CuritText> : null}
+            {stale && changed ? <CuritText style={c.flowHint}>작성하는 동안 협업 조건이 바뀌었어요. 입력한 내용을 확인한 뒤 조건 화면을 다시 열어 주세요.</CuritText> : null}
             {scheduleEditable ? <ExhibitionPeriodFields period={period} onChange={setPeriod} disabled={busy} /> : <Term label="전시 기간" value={`${termVersion.startsOn ?? '미정'} ~ ${termVersion.endsOn ?? '미정'}`} />}
             <CuritText weight="semibold">작품과 전시 수량</CuritText>
             {(scheduleEditable ? draftItems : selectedItems).map(value => <View key={value.projectItemId} style={c.itemCard}>
@@ -727,7 +763,6 @@ export function CollaborationDetailScreen({ role, userId, item, demo, input, set
             {item.status === 'active' ? <Button label="전시 종료 처리" variant="secondary" disabled={busy} onPress={() => transition('complete')} /> : null}
             {!closed ? <Button label="협업 취소" variant="secondary" disabled={busy} onPress={() => setCancelOpen(true)} /> : null}
           </> : null}
-          {!demo ? <Button label="최신 조건 불러오기" variant="secondary" disabled={busy} onPress={() => { void runAction(refreshTerms, setTermsError); }} /> : null}
         </ScrollView>
         {cancelOpen ? <View style={c.confirmBackdrop} accessibilityViewIsModal>
           <View style={c.confirmCard}>

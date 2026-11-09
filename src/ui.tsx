@@ -119,7 +119,11 @@ export function SectionTitle({ title, action, onPress }: { title: string; action
 }
 
 export function Empty({ title, description }: { title: string; description: string }) {
-  return <View style={styles.empty}><View style={styles.emptyIcon}><Icon name="chat" color={colors.brand} /></View><CuritText weight="bold" style={{ fontSize: 16 }}>{title}</CuritText><CuritText style={styles.emptyDescription}>{description}</CuritText></View>;
+  return <View style={styles.empty}>
+    <View style={styles.emptyIcon}><Icon name="chat" color={colors.brand} /></View>
+    <CuritText weight="bold" style={styles.emptyTitle}>{title}</CuritText>
+    <CuritText style={styles.emptyDescription}>{description}</CuritText>
+  </View>;
 }
 
 const styles = StyleSheet.create({
@@ -153,7 +157,8 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, lineHeight: 15 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   sectionAction: { minWidth: 44, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center', paddingLeft: 12 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 36, gap: 10 },
+  empty: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 36, paddingHorizontal: 24, gap: 10 },
   emptyIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' },
-  emptyDescription: { color: colors.muted, textAlign: 'center' },
+  emptyTitle: { alignSelf: 'stretch', textAlign: 'center', fontSize: 16, lineHeight: 24 },
+  emptyDescription: { alignSelf: 'stretch', color: colors.muted, textAlign: 'center' },
 });

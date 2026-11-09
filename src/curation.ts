@@ -544,12 +544,14 @@ export async function transitionCollaboration(collaborationId: string, action: '
   return result.data.status as CollaborationStatus;
 }
 
-export async function loadCollaborationItems(collaboration: Pick<CollaborationSummary, 'id' | 'projectId'>): Promise<CollaborationItem[]> {
+export async function loadCollaborationItems(collaboration: Pick<CollaborationSummary, 'id' | 'projectId'>, signal?: AbortSignal): Promise<CollaborationItem[]> {
   const supabase = getSupabase();
-  const [itemsResult, selectedResult] = await Promise.all([
+  const queries = [
     supabase.from('project_items').select('id, name, image_path, price, stock').eq('project_id', collaboration.projectId).order('created_at'),
     supabase.from('collaboration_items').select('project_item_id, quantity, creator_confirmed').eq('collaboration_id', collaboration.id),
-  ]);
+  ] as const;
+  if (signal) for (const query of queries) query.abortSignal(signal);
+  const [itemsResult, selectedResult] = await Promise.all(queries);
   if (itemsResult.error || selectedResult.error) throw new Error(itemsResult.error?.message || selectedResult.error?.message || '협업 상품을 불러오지 못했습니다.');
   const selected = new Map((selectedResult.data || []).map(row => [String(row.project_item_id), row]));
   return (itemsResult.data || []).filter(row => Number(row.stock) > 0 || selected.has(String(row.id))).map(row => ({
@@ -623,6 +625,9 @@ export async function sendCollaborationMessage(collaborationId: string, content:
   const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('로그인이 필요합니다.');
-  const result = await supabase.from('collaboration_messages').insert({ collaboration_id: collaborationId, sender_id: auth.user.id, content: text });
+  const result = await supabase.from('collaboration_messages')
+    .insert({ collaboration_id: collaborationId, sender_id: auth.user.id, content: text })
+    .select('id, created_at').single();
   if (result.error) throw new Error(result.error.message);
+  return { id: String(result.data.id), collaborationId, senderId: auth.user.id, content: text, createdAt: String(result.data.created_at) };
 }
